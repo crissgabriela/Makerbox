@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal Académico | MakerBox</title>
+    <style>
+        /* Definición de la paleta de colores del logo MakerBox */
+        :root {
+            --maker-purple: #46247a; /* Morado del texto Maker */
+            --maker-magenta: #c72979; /* Fucsia del texto Box */
+            --maker-cyan: #00aeef; /* Celeste de Ingeniería UTALCA */
+            --bg-light: #f8f9fa;
+            --text-dark: #2d2d2d;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-light);
+            color: var(--text-dark);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        /* Cabecera con un gradiente que imita el isotipo del logo */
+        header {
+            width: 100%;
+            background: linear-gradient(135deg, var(--maker-magenta), var(--maker-purple), var(--maker-cyan));
+            padding: 40px 20px;
+            text-align: center;
+            color: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            letter-spacing: 1px;
+        }
+
+        header p {
+            margin-top: 10px;
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        /* Contenedor principal del menú */
+        main {
+            width: 100%;
+            max-width: 800px;
+            padding: 40px 20px;
+            box-sizing: border-box;
+        }
+
+        .menu-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Estilo de los botones/enlaces del menú */
+        .menu-item {
+            display: flex;
+            align-items: center;
+            background: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            text-decoration: none;
+            color: var(--maker-purple);
+            font-weight: 600;
+            font-size: 1.3rem;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border-left: 6px solid var(--maker-cyan); /* Acento visual para pregrado */
+        }
+
+        /* Efecto de fluidez al pasar el mouse */
+        .menu-item:hover {
+            transform: translateX(10px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.1);
+            color: var(--maker-magenta);
+            border-left-color: var(--maker-magenta);
+        }
+
+        /* Estilo especial para destacar MakerBox */
+        .menu-item.makerbox {
+            border-left: 6px solid var(--maker-magenta);
+            background: linear-gradient(to right, #ffffff, #fdf2f7);
+            margin-top: 20px; /* Separación visual de los módulos de pregrado */
+        }
+
+        .menu-item.makerbox:hover {
+            border-left-color: var(--maker-purple);
+            color: var(--maker-purple);
+        }
+
+        /* Animación de entrada para que no aparezca de golpe */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .menu-item {
+            animation: fadeIn 0.6s ease-out forwards;
+            opacity: 0;
+        }
+
+        .menu-item:nth-child(1) { animation-delay: 0.1s; }
+        .menu-item:nth-child(2) { animation-delay: 0.2s; }
+        .menu-item:nth-child(3) { animation-delay: 0.3s; }
+        .menu-item:nth-child(4) { animation-delay: 0.4s; }
+        .menu-item:nth-child(5) { animation-delay: 0.6s; }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Portal de Recursos</h1>
+        <p>Módulos Académicos e Innovación</p>
+    </header>
+
+    <main>
+        <nav class="menu-grid">
+            <a href="#resistencia" class="menu-item">Resistencia de Materiales</a>
+            <a href="#manufactura" class="menu-item">Manufactura Asistida por Computadora</a>
+            <a href="#procesos" class="menu-item">Procesos de Fabricación</a>
+            <a href="#electromagnetismo" class="menu-item">Electromagnetismo</a>
+            
+            <a href="#makerbox" class="menu-item makerbox">Talleres MakerBox</a>
+        </nav>
+    </main>
+
+</body>
+</html>
