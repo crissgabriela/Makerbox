@@ -1,8 +1,9 @@
 'use client';
 
 import React from 'react';
-import { SIGNS_DICTIONARY, normalizeText, getChileanSpriteStyle } from '@/lib/signsData';
-import { Sparkles, Info, Heart } from 'lucide-react';
+import Image from 'next/image';
+import { SIGNS_DICTIONARY, normalizeText } from '@/lib/signsData';
+import { Sparkles } from 'lucide-react';
 
 interface SignDisplayProps {
   text: string;
@@ -64,7 +65,7 @@ export const SignDisplay: React.FC<SignDisplayProps> = ({ text, onSelectLetter }
             }
 
             const sign = SIGNS_DICTIONARY[char];
-            const spriteStyle = getChileanSpriteStyle(char, 1.15);
+            const imageFileName = char === 'Ñ' ? 'N_TILDE.png' : `${char}.png`;
 
             return (
               <div
@@ -77,12 +78,14 @@ export const SignDisplay: React.FC<SignDisplayProps> = ({ text, onSelectLetter }
                   {char}
                 </div>
 
-                {/* Recorte de la ilustración chilena oficial */}
-                <div className="w-24 h-28 flex items-center justify-center bg-white rounded-xl border border-slate-100 p-1 shadow-inner overflow-hidden my-1">
-                  <div
-                    style={spriteStyle}
-                    className="object-contain"
-                    aria-label={`Seña para letra ${char}`}
+                {/* Ilustración chilena oficial en alta resolución y transparente */}
+                <div className="w-24 h-28 flex items-center justify-center bg-white rounded-xl border border-slate-100 p-2 shadow-inner overflow-hidden my-1">
+                  <Image
+                    src={`/signs/letters/${imageFileName}`}
+                    alt={`Seña oficial para letra ${char}`}
+                    width={80}
+                    height={100}
+                    className="object-contain max-h-24 w-auto drop-shadow-sm"
                   />
                 </div>
 

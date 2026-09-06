@@ -13,8 +13,8 @@ import { LaserConfig } from '@/types';
 import { Sparkles, Maximize, Minimize, Heart, Award } from 'lucide-react';
 
 const DEFAULT_CONFIG: LaserConfig = {
-  mode: 'organic_contour',
-  targetHeightMm: 40,
+  mode: 'capsule',
+  targetHeightMm: 38,
   contourOffsetMm: 5,
   baseBarHeightMm: 11,
   addKeychainHole: true,

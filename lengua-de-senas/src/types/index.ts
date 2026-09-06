@@ -10,15 +10,15 @@ export interface SignDefinition {
   wristAnchor: [number, number]; // [startX, endX] at y = height
 }
 
-export type LaserCutMode = 'organic_contour' | 'keychain' | 'silhouette' | 'plaque';
+export type LaserCutMode = 'capsule' | 'organic_contour' | 'keychain' | 'plaque';
 
 export interface LaserConfig {
   mode: LaserCutMode;
   targetHeightMm: number; // e.g. 40 mm
-  contourOffsetMm: number; // e.g. 5 mm (desfase exterior del llavero orgánico)
+  contourOffsetMm: number; // e.g. 5 mm
   baseBarHeightMm: number; // e.g. 10 mm
   addKeychainHole: boolean; // true/false
-  holeDiameterMm: number; // e.g. 4 mm
+  holeDiameterMm: number; // e.g. 4.5 mm
   includeTextEngraving: boolean; // engrave latin text under signs
   includeBranding: boolean; // engrave MakerBox / UTalca
   signSpacingMm: number; // spacing between signs in mm (default 3mm)

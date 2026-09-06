@@ -1,5 +1,6 @@
 import { GeneratedLaserSvg, LaserConfig, SignDefinition } from '@/types';
 import { SIGNS_DICTIONARY, normalizeText } from './signsData';
+import { CHILEAN_LETTER_ASSETS } from './chileanImagesData';
 
 /**
  * Escala coordenadas de un path simple o aplica un offset en X e Y.
@@ -23,85 +24,17 @@ export function transformPath(pathD: string, scale = 1, offsetX = 0, offsetY = 0
 }
 
 /**
- * Convierte un conjunto de puntos ordenados en una curva Bezier cúbica suave (Catmull-Rom cerrado).
- * Genera el contorno orgánico continuo idéntico al boceto del llavero.
- */
-function pointsToSmoothClosedPath(points: { x: number; y: number }[]): string {
-  const n = points.length;
-  if (n < 3) return '';
-
-  let path = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
-
-  for (let i = 0; i < n; i++) {
-    const pPrev = points[(i - 1 + n) % n];
-    const pCurr = points[i];
-    const pNext = points[(i + 1) % n];
-    const pAfter = points[(i + 2) % n];
-
-    // Factor de tensión de suavizado (0.5 = Catmull-Rom estándar)
-    const tension = 0.5;
-
-    const cp1x = pCurr.x + (pNext.x - pPrev.x) * (tension / 3);
-    const cp1y = pCurr.y + (pNext.y - pPrev.y) * (tension / 3);
-
-    const cp2x = pNext.x - (pAfter.x - pCurr.x) * (tension / 3);
-    const cp2y = pNext.y - (pAfter.y - pCurr.y) * (tension / 3);
-
-    path += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${pNext.x.toFixed(2)} ${pNext.y.toFixed(2)}`;
-  }
-
-  path += ' Z';
-  return path;
-}
-
-/**
- * Perfiles de altura relativa superior de cada seña chilena (fracción de altura de 0 a 1)
- * para calcular con precisión la ondulación del contorno desfasado.
- */
-const SIGN_TOP_PROFILES: Record<string, { left: number; peak: number; right: number; peakX: number }> = {
-  A: { left: 0.40, peak: 0.32, right: 0.38, peakX: 0.65 },
-  B: { left: 0.18, peak: 0.10, right: 0.18, peakX: 0.50 },
-  C: { left: 0.38, peak: 0.26, right: 0.38, peakX: 0.50 },
-  D: { left: 0.42, peak: 0.10, right: 0.45, peakX: 0.57 },
-  E: { left: 0.38, peak: 0.28, right: 0.38, peakX: 0.50 },
-  F: { left: 0.45, peak: 0.12, right: 0.25, peakX: 0.60 },
-  G: { left: 0.45, peak: 0.35, right: 0.45, peakX: 0.50 },
-  H: { left: 0.42, peak: 0.35, right: 0.42, peakX: 0.60 },
-  I: { left: 0.45, peak: 0.12, right: 0.18, peakX: 0.77 },
-  J: { left: 0.45, peak: 0.14, right: 0.22, peakX: 0.75 },
-  K: { left: 0.42, peak: 0.20, right: 0.35, peakX: 0.65 },
-  L: { left: 0.45, peak: 0.10, right: 0.48, peakX: 0.57 },
-  M: { left: 0.38, peak: 0.28, right: 0.38, peakX: 0.50 },
-  N: { left: 0.38, peak: 0.28, right: 0.42, peakX: 0.50 },
-  Ñ: { left: 0.35, peak: 0.16, right: 0.40, peakX: 0.50 },
-  O: { left: 0.38, peak: 0.25, right: 0.38, peakX: 0.50 },
-  P: { left: 0.45, peak: 0.40, right: 0.45, peakX: 0.60 },
-  Q: { left: 0.40, peak: 0.22, right: 0.45, peakX: 0.56 },
-  R: { left: 0.42, peak: 0.10, right: 0.35, peakX: 0.60 },
-  S: { left: 0.45, peak: 0.10, right: 0.45, peakX: 0.55 },
-  T: { left: 0.45, peak: 0.10, right: 0.45, peakX: 0.55 },
-  U: { left: 0.12, peak: 0.38, right: 0.14, peakX: 0.50 }, // cuernos (dos picos altos y centro más bajo)
-  V: { left: 0.14, peak: 0.30, right: 0.14, peakX: 0.50 }, // V abierta
-  W: { left: 0.12, peak: 0.10, right: 0.14, peakX: 0.50 },
-  X: { left: 0.40, peak: 0.20, right: 0.40, peakX: 0.55 },
-  Y: { left: 0.26, peak: 0.32, right: 0.22, peakX: 0.50 },
-  Z: { left: 0.45, peak: 0.10, right: 0.45, peakX: 0.55 }
-};
-
-/**
  * Generador principal del SVG de corte láser.
  */
 export function generateLaserSvg(text: string, config: LaserConfig): GeneratedLaserSvg {
   const letters = normalizeText(text);
-  const activeSigns: SignDefinition[] = letters
-    .map((char) => SIGNS_DICTIONARY[char])
-    .filter((sign): sign is SignDefinition => Boolean(sign));
 
-  if (activeSigns.length === 0) {
+  if (letters.length === 0) {
     return {
       svgString: `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="40mm" viewBox="0 0 100 40">
-        <rect width="100" height="40" rx="6" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2"/>
-        <text x="50" y="22" font-family="Arial, sans-serif" font-size="5" text-anchor="middle" fill="#666">Escribe una palabra para generar el llavero</text>
+        <rect width="100" height="40" rx="20" ry="20" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2"/>
+        <circle cx="15" cy="20" r="2.2" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2"/>
+        <text x="55" y="22" font-family="Arial, sans-serif" font-size="5" text-anchor="middle" fill="#666">Escribe una palabra para generar el llavero</text>
       </svg>`,
       widthMm: 100,
       heightMm: 40,
@@ -110,203 +43,246 @@ export function generateLaserSvg(text: string, config: LaserConfig): GeneratedLa
     };
   }
 
-  const signHeightMm = config.targetHeightMm; // e.g. 40mm
-  const signWidthMm = (signHeightMm * 100) / 130;
-  const signSpacingMm = config.signSpacingMm;
+  const signHeightMm = config.targetHeightMm || 40;
+  const signSpacingMm = config.signSpacingMm || 3;
 
-  if (config.mode === 'organic_contour') {
-    return generateOrganicContourMode(activeSigns, letters, config, signWidthMm, signHeightMm, signSpacingMm);
+  if (config.mode === 'capsule') {
+    return generateCapsuleMode(letters, config, signHeightMm, signSpacingMm);
+  } else if (config.mode === 'organic_contour') {
+    return generateSmoothOrganicMode(letters, config, signHeightMm, signSpacingMm);
   } else if (config.mode === 'keychain') {
+    const activeSigns = letters.map((c) => SIGNS_DICTIONARY[c]).filter(Boolean);
+    const signWidthMm = (signHeightMm * 100) / 130;
     return generateKeychainMode(activeSigns, letters, config, signWidthMm, signHeightMm, signSpacingMm);
-  } else if (config.mode === 'silhouette') {
-    return generateSilhouetteMode(activeSigns, letters, config, signWidthMm, signHeightMm);
   } else {
+    const activeSigns = letters.map((c) => SIGNS_DICTIONARY[c]).filter(Boolean);
+    const signWidthMm = (signHeightMm * 100) / 130;
     return generatePlaqueMode(activeSigns, letters, config, signWidthMm, signHeightMm, signSpacingMm);
   }
 }
 
 /**
- * MODO PRINCIPAL: Llavero de Silueta Orgánica (Contorno Desfasado con Agujero a la Izquierda)
- * Idéntico al boceto del usuario:
- * - Contorno exterior continuo suavizado que sigue la ondulación de los dedos con margen uniforme.
- * - Orejeta izquierda redondeada con orificio de corte circular para el aro de llavero.
- * - Interior con los detalles de grabado de cada seña del Alfabeto Manual Chileno.
+ * MODO 1: Llavero Ranura / Cápsula (Modelo CAD Oficial del Usuario)
+ * Idéntico al modelo CAD mostrado en las imágenes:
+ * - Silueta exterior tipo cápsula (stadium) perfectamente redondeada en ambos extremos.
+ * - Orificio de corte para argolla a la izquierda.
+ * - Grabado de las ilustraciones reales recortadas del Alfabeto Manual Chileno oficial.
+ * - Imposible que se traslape con los dedos; corte rápido, limpio y resistente.
  */
-function generateOrganicContourMode(
-  signs: SignDefinition[],
+function generateCapsuleMode(
   letters: string[],
   config: LaserConfig,
-  signWidth: number,
-  signHeight: number,
-  spacing: number
+  signHeightMm: number,
+  spacingMm: number
 ): GeneratedLaserSvg {
-  const offset = config.contourOffsetMm || 5; // e.g. 5mm de desfase exterior
-  const tabWidth = 14; // ancho de la orejeta izquierda para el orificio
-  const startSignsX = tabWidth + offset;
+  // Altura total del llavero
+  const totalHeight = Math.max(signHeightMm + 10, 36);
+  const endRadius = totalHeight / 2; // radio de las semicircunferencias izquierda y derecha
 
-  // Calculamos la posición X de cada seña
-  const signPositions: { x: number; sign: SignDefinition; letter: string }[] = [];
+  // Dimensiones de cada seña ilustrada
+  const handHeight = signHeightMm * 0.76;
+  const handMarginY = (totalHeight - handHeight) / 2;
+
+  // Ubicación del orificio para la argolla (en el centro del radio izquierdo)
+  const holeRadius = (config.holeDiameterMm || 4.5) / 2;
+  const holeCenterX = Math.max(endRadius * 0.55, 9);
+  const holeCenterY = totalHeight / 2;
+
+  // Inicio de las señas dejando espacio seguro después del orificio
+  const startSignsX = holeCenterX + holeRadius + 7;
+
+  // Calculamos la posición y tamaño exacto de cada mano usando los assets oficiales
+  const handElements: { x: number; y: number; width: number; height: number; letter: string; dataUrl: string }[] = [];
   let currentX = startSignsX;
-  signs.forEach((sign, idx) => {
-    signPositions.push({ x: currentX, sign, letter: letters[idx] });
-    currentX += signWidth + spacing;
+
+  letters.forEach((char) => {
+    const asset = CHILEAN_LETTER_ASSETS[char];
+    if (!asset) return;
+
+    const handWidth = handHeight * asset.aspectRatio;
+    handElements.push({
+      x: currentX,
+      y: handMarginY,
+      width: handWidth,
+      height: handHeight,
+      letter: char,
+      dataUrl: asset.dataUrl
+    });
+
+    currentX += handWidth + spacingMm;
   });
 
-  const lastSign = signPositions[signPositions.length - 1];
-  const totalWidth = lastSign.x + signWidth + offset * 1.4;
-  const totalHeight = signHeight + offset * 2.2;
-  const wristBaseY = signHeight + offset * 0.8;
-  const centerY = totalHeight / 2;
+  // Ancho total ajustado para que el radio derecho envuelva armoniosamente la última seña
+  const lastHand = handElements[handElements.length - 1];
+  const lastHandRight = lastHand ? lastHand.x + lastHand.width : startSignsX + 30;
+  const totalWidth = lastHandRight + endRadius * 0.65;
 
-  // 1. Orificio del llavero en la orejeta izquierda
-  const holeRadius = config.holeDiameterMm / 2;
-  const holeCenterX = offset + 5.5;
-  const holeCenterY = centerY;
+  // 1. Capa de CORTE (Rojo #FF0000): Cápsula perfecta (Ranura) y Orificio
+  // Curva de la cápsula:
+  // - Semicírculo izquierdo centrado en (endRadius, endRadius)
+  // - Línea superior recta de endRadius a totalWidth - endRadius
+  // - Semicírculo derecho centrado en (totalWidth - endRadius, endRadius)
+  // - Línea inferior recta de totalWidth - endRadius a endRadius
+  const capLeftX = endRadius;
+  const capRightX = Math.max(totalWidth - endRadius, capLeftX + 1);
+
+  const capsulePathD = `
+    M ${capLeftX.toFixed(2)} 0
+    L ${capRightX.toFixed(2)} 0
+    A ${endRadius.toFixed(2)} ${endRadius.toFixed(2)} 0 0 1 ${capRightX.toFixed(2)} ${totalHeight.toFixed(2)}
+    L ${capLeftX.toFixed(2)} ${totalHeight.toFixed(2)}
+    A ${endRadius.toFixed(2)} ${endRadius.toFixed(2)} 0 0 1 ${capLeftX.toFixed(2)} 0
+    Z
+  `.trim().replace(/\s+/g, ' ');
 
   const holeSvg = `
-    <!-- Orificio de Corte para Argolla de Llavero (Izquierda) -->
+    <!-- Orificio de Corte para Argolla (Izquierda) -->
     <circle cx="${holeCenterX.toFixed(2)}" cy="${holeCenterY.toFixed(2)}" r="${holeRadius.toFixed(2)}" 
             fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2" id="keychain-hole" />
   `;
 
-  // 2. Construcción de los puntos del contorno exterior desfasado (Spline orgánico)
-  const contourPoints: { x: number; y: number }[] = [];
-
-  // Extremo izquierdo (arco alrededor del orificio)
-  contourPoints.push({ x: offset + 0.5, y: centerY });
-  contourPoints.push({ x: offset + 2.5, y: centerY - 7 });
-  contourPoints.push({ x: tabWidth * 0.7, y: centerY - 10 });
-
-  // Parte superior: sigue las alturas de cada seña con el desfase
-  signPositions.forEach(({ x, letter }, idx) => {
-    const profile = SIGN_TOP_PROFILES[letter] || { left: 0.35, peak: 0.15, right: 0.35, peakX: 0.5 };
-
-    const topPeakY = profile.peak * signHeight;
-    const topLeftY = profile.left * signHeight;
-    const topRightY = profile.right * signHeight;
-
-    // Punto hombro izquierdo
-    contourPoints.push({
-      x: x + signWidth * 0.15,
-      y: Math.max(topLeftY - offset, 2)
-    });
-
-    // Punto pico de los dedos
-    contourPoints.push({
-      x: x + signWidth * profile.peakX,
-      y: Math.max(topPeakY - offset, 2)
-    });
-
-    // Punto hombro derecho
-    contourPoints.push({
-      x: x + signWidth * 0.85,
-      y: Math.max(topRightY - offset, 2)
-    });
-
-    // Valle entre señas (si no es la última)
-    if (idx < signPositions.length - 1) {
-      const nextLetter = signPositions[idx + 1].letter;
-      const nextProfile = SIGN_TOP_PROFILES[nextLetter] || { left: 0.35, peak: 0.15, right: 0.35, peakX: 0.5 };
-      const valleyY = Math.max(topRightY, nextProfile.left * signHeight) - offset * 0.6;
-      contourPoints.push({
-        x: x + signWidth + spacing / 2,
-        y: Math.max(valleyY, 6)
-      });
-    }
+  // 2. Capa de GRABADO RASTER (Imágenes oficiales de alta definición sin fondo)
+  const imageEngraveParts: string[] = handElements.map((h) => {
+    return `
+      <!-- Seña Oficial Chilena: Letra ${h.letter} -->
+      <image href="${h.dataUrl}" 
+             x="${h.x.toFixed(2)}" y="${h.y.toFixed(2)}" 
+             width="${h.width.toFixed(2)}" height="${h.height.toFixed(2)}" 
+             preserveAspectRatio="xMidYMid meet" />
+    `;
   });
 
-  // Extremo derecho (redondeo de la última seña)
-  const rightEndX = lastSign.x + signWidth + offset;
-  contourPoints.push({ x: rightEndX, y: centerY - 6 });
-  contourPoints.push({ x: rightEndX + offset * 0.3, y: centerY });
-  contourPoints.push({ x: rightEndX, y: centerY + 6 });
-
-  // Parte inferior: base suave y corrida bajo las muñecas
-  const bottomY = wristBaseY + offset * 0.5;
-
-  // Recorremos de derecha a izquierda por abajo
-  for (let i = signPositions.length - 1; i >= 0; i--) {
-    const sp = signPositions[i];
-    contourPoints.push({
-      x: sp.x + signWidth * 0.5,
-      y: bottomY
-    });
-  }
-
-  // Cierre hacia la orejeta izquierda inferior
-  contourPoints.push({ x: tabWidth * 0.7, y: centerY + 10 });
-  contourPoints.push({ x: offset + 2.5, y: centerY + 7 });
-
-  // Generamos el path suavizado continuo
-  const outerCutPathD = pointsToSmoothClosedPath(contourPoints);
-
-  // 3. Capa de Grabado: Líneas interiores de articulaciones y siluetas
-  const innerEngraveSvgParts: string[] = [];
-  signPositions.forEach(({ x, sign }) => {
-    const scale = signWidth / sign.width;
-
-    // Silueta de la mano marcada suavemente en azul
-    innerEngraveSvgParts.push(
-      `<path d="${sign.outerPath}" transform="translate(${x.toFixed(2)}, ${offset}) scale(${scale.toFixed(4)})" 
-             fill="none" stroke="${config.engraveStrokeColor}" stroke-width="0.3" stroke-linecap="round" stroke-linejoin="round" />`
-    );
-
-    // Trazos interiores de los dedos y pliegues
-    sign.innerPaths.forEach((pathD) => {
-      innerEngraveSvgParts.push(
-        `<path d="${pathD}" transform="translate(${x.toFixed(2)}, ${offset}) scale(${scale.toFixed(4)})" 
-               fill="none" stroke="${config.engraveStrokeColor}" stroke-width="0.25" stroke-linecap="round" stroke-linejoin="round" />`
-      );
-    });
-  });
-
-  // 4. Texto latino opcional grabado bajo las señas
+  // 3. Letras latinas opcionales grabadas debajo de cada seña
   const textEngraveParts: string[] = [];
   if (config.includeTextEngraving) {
-    signPositions.forEach(({ x, letter }) => {
-      const centerX = x + signWidth / 2;
-      const textY = wristBaseY + offset * 0.1;
+    handElements.forEach((h) => {
+      const centerX = h.x + h.width / 2;
+      const textY = totalHeight - 2;
       textEngraveParts.push(
         `<text x="${centerX.toFixed(2)}" y="${textY.toFixed(2)}" 
-               font-family="'Montserrat', 'Arial', sans-serif" font-size="4.2" 
-               font-weight="bold" text-anchor="middle" fill="${config.engraveFillColor}">${letter}</text>`
+               font-family="'Montserrat', 'Arial', sans-serif" font-size="3.5" 
+               font-weight="bold" text-anchor="middle" fill="${config.engraveFillColor}">${h.letter}</text>`
       );
     });
   }
 
   if (config.includeBranding) {
-    const brandX = totalWidth - offset;
-    const brandY = wristBaseY + offset * 0.1;
+    const brandX = totalWidth - 6;
+    const brandY = totalHeight - 2;
     textEngraveParts.push(
       `<text x="${brandX.toFixed(2)}" y="${brandY.toFixed(2)}" 
-             font-family="'Montserrat', 'Arial', sans-serif" font-size="2.8" 
+             font-family="'Montserrat', 'Arial', sans-serif" font-size="2.6" 
              font-weight="bold" text-anchor="end" fill="${config.engraveFillColor}">UTALCA</text>`
     );
   }
 
   const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" 
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
      width="${totalWidth.toFixed(2)}mm" 
      height="${totalHeight.toFixed(2)}mm" 
      viewBox="0 0 ${totalWidth.toFixed(2)} ${totalHeight.toFixed(2)}">
   <defs>
-    <desc>Llavero Contorno Desfasado - Alfabeto Manual Chileno - MakerBox UTalca</desc>
+    <desc>Llavero Ranura CAD - Alfabeto Manual Chileno - MakerBox UTalca</desc>
   </defs>
 
-  <!-- CAPA 3: GRABADO RASTER (Negro) -->
-  <g id="capa-grabado-raster">
+  <!-- CAPA 2: GRABADO LÁSER (Ilustraciones Oficiales Chilenas) -->
+  <g id="capa-grabado-señas">
+    ${imageEngraveParts.join('\n    ')}
     ${textEngraveParts.join('\n    ')}
   </g>
 
-  <!-- CAPA 2: MARCADO VECTORIAL (Azul) -->
-  <g id="capa-marcado-vectorial">
-    ${innerEngraveSvgParts.join('\n    ')}
-  </g>
-
-  <!-- CAPA 1: CORTE EXTERIOR ORGÁNICO Y ORIFICIO (Rojo) -->
+  <!-- CAPA 1: CORTE EXTERIOR (Rojo #FF0000) -->
   <g id="capa-corte-exterior">
-    <path d="${outerCutPathD}" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2" id="keychain-organic-contour" />
+    <path d="${capsulePathD}" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2" id="keychain-capsule-cut" />
     ${holeSvg}
+  </g>
+</svg>`;
+
+  const cutLength = (capRightX - capLeftX) * 2 + Math.PI * totalHeight + Math.PI * (holeRadius * 2);
+
+  return {
+    svgString: svgContent,
+    widthMm: Number(totalWidth.toFixed(2)),
+    heightMm: Number(totalHeight.toFixed(2)),
+    signCount: handElements.length,
+    estimatedCutLengthMm: Number(cutLength.toFixed(1))
+  };
+}
+
+/**
+ * MODO 2: Silueta Ondulada Suave (Garantizada sin traslapes)
+ * Envolvente convexa suave que se mantiene a una distancia segura de todos los dedos.
+ */
+function generateSmoothOrganicMode(
+  letters: string[],
+  config: LaserConfig,
+  signHeightMm: number,
+  spacingMm: number
+): GeneratedLaserSvg {
+  const margin = Math.max(config.contourOffsetMm || 6, 6); // mínimo 6mm de margen para evitar traslapes
+  const handHeight = signHeightMm * 0.75;
+  const tabWidth = 16;
+  const startSignsX = tabWidth + margin;
+
+  const handElements: { x: number; y: number; width: number; height: number; letter: string; dataUrl: string }[] = [];
+  let currentX = startSignsX;
+
+  letters.forEach((char) => {
+    const asset = CHILEAN_LETTER_ASSETS[char];
+    if (!asset) return;
+    const handWidth = handHeight * asset.aspectRatio;
+    handElements.push({
+      x: currentX,
+      y: margin + 2,
+      width: handWidth,
+      height: handHeight,
+      letter: char,
+      dataUrl: asset.dataUrl
+    });
+    currentX += handWidth + spacingMm;
+  });
+
+  const lastHand = handElements[handElements.length - 1];
+  const lastHandRight = lastHand ? lastHand.x + lastHand.width : startSignsX + 30;
+  const totalWidth = lastHandRight + margin * 1.5;
+  const totalHeight = handHeight + margin * 2 + 4;
+  const centerY = totalHeight / 2;
+
+  // Orificio de llavero a la izquierda
+  const holeRadius = (config.holeDiameterMm || 4.5) / 2;
+  const holeCenterX = margin + 4.5;
+  const holeCenterY = centerY;
+
+  // Curva ondulada suave superior e inferior envolvente
+  const topY = margin * 0.4;
+  const bottomY = totalHeight - margin * 0.4;
+
+  const smoothOutlineD = `
+    M ${margin.toFixed(2)} ${centerY.toFixed(2)}
+    C ${margin.toFixed(2)} ${(centerY - 9).toFixed(2)}, ${(tabWidth * 0.8).toFixed(2)} ${topY.toFixed(2)}, ${(startSignsX).toFixed(2)} ${topY.toFixed(2)}
+    L ${(lastHandRight).toFixed(2)} ${topY.toFixed(2)}
+    C ${(totalWidth - margin * 0.3).toFixed(2)} ${topY.toFixed(2)}, ${totalWidth.toFixed(2)} ${(centerY - 6).toFixed(2)}, ${totalWidth.toFixed(2)} ${centerY.toFixed(2)}
+    C ${totalWidth.toFixed(2)} ${(centerY + 6).toFixed(2)}, ${(totalWidth - margin * 0.3).toFixed(2)} ${bottomY.toFixed(2)}, ${(lastHandRight).toFixed(2)} ${bottomY.toFixed(2)}
+    L ${(startSignsX).toFixed(2)} ${bottomY.toFixed(2)}
+    C ${(tabWidth * 0.8).toFixed(2)} ${bottomY.toFixed(2)}, ${margin.toFixed(2)} ${(centerY + 9).toFixed(2)}, ${margin.toFixed(2)} ${centerY.toFixed(2)}
+    Z
+  `.trim().replace(/\s+/g, ' ');
+
+  const imageEngraveParts = handElements.map((h) => {
+    return `<image href="${h.dataUrl}" x="${h.x.toFixed(2)}" y="${h.y.toFixed(2)}" width="${h.width.toFixed(2)}" height="${h.height.toFixed(2)}" preserveAspectRatio="xMidYMid meet" />`;
+  });
+
+  const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="${totalWidth.toFixed(2)}mm" 
+     height="${totalHeight.toFixed(2)}mm" 
+     viewBox="0 0 ${totalWidth.toFixed(2)} ${totalHeight.toFixed(2)}">
+  <g id="capa-grabado-señas">
+    ${imageEngraveParts.join('\n    ')}
+  </g>
+  <g id="capa-corte-exterior">
+    <path d="${smoothOutlineD}" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2" id="keychain-organic-cut" />
+    <circle cx="${holeCenterX.toFixed(2)}" cy="${holeCenterY.toFixed(2)}" r="${holeRadius.toFixed(2)}" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2" id="keychain-hole" />
   </g>
 </svg>`;
 
@@ -314,13 +290,13 @@ function generateOrganicContourMode(
     svgString: svgContent,
     widthMm: Number(totalWidth.toFixed(2)),
     heightMm: Number(totalHeight.toFixed(2)),
-    signCount: signs.length,
+    signCount: handElements.length,
     estimatedCutLengthMm: Number((totalWidth * 2 + totalHeight * 2).toFixed(1))
   };
 }
 
 /**
- * MODO 2: Llavero / Placa Base Continua
+ * MODO 3: Llavero Barra Recta
  */
 function generateKeychainMode(
   signs: SignDefinition[],
@@ -330,7 +306,7 @@ function generateKeychainMode(
   signHeight: number,
   spacing: number
 ): GeneratedLaserSvg {
-  const baseBarHeight = config.baseBarHeightMm;
+  const baseBarHeight = config.baseBarHeightMm || 10;
   const holePadding = config.addKeychainHole ? 14 : 4;
   const signsWidthTotal = signs.length * signWidth + (signs.length - 1) * spacing;
   const brandingWidth = config.includeBranding ? 32 : 0;
@@ -347,7 +323,7 @@ function generateKeychainMode(
 
   let holeSvg = '';
   if (config.addKeychainHole) {
-    const holeRadius = config.holeDiameterMm / 2;
+    const holeRadius = (config.holeDiameterMm || 4.5) / 2;
     const holeCenterX = 7;
     const holeCenterY = barY + baseBarHeight / 2;
     holeSvg = `
@@ -367,29 +343,6 @@ function generateKeychainMode(
     });
   });
 
-  const textEngraveParts: string[] = [];
-  if (config.includeTextEngraving) {
-    signPositions.forEach(({ x, letter }) => {
-      const centerX = x + signWidth / 2;
-      const textY = barY + baseBarHeight * 0.72;
-      textEngraveParts.push(
-        `<text x="${centerX.toFixed(2)}" y="${textY.toFixed(2)}" 
-               font-family="'Montserrat', 'Arial', sans-serif" font-size="${(baseBarHeight * 0.55).toFixed(1)}" 
-               font-weight="bold" text-anchor="middle" fill="${config.engraveFillColor}">${letter}</text>`
-      );
-    });
-  }
-
-  if (config.includeBranding) {
-    const brandX = totalWidth - 4;
-    const brandY = barY + baseBarHeight * 0.68;
-    textEngraveParts.push(
-      `<text x="${brandX.toFixed(2)}" y="${brandY.toFixed(2)}" 
-             font-family="'Montserrat', 'Arial', sans-serif" font-size="${(baseBarHeight * 0.38).toFixed(1)}" 
-             font-weight="bold" text-anchor="end" fill="${config.engraveFillColor}">MAKERBOX · UTALCA</text>`
-    );
-  }
-
   const handsOuterCutParts: string[] = [];
   signPositions.forEach(({ x, sign }) => {
     const scale = signWidth / sign.width;
@@ -407,10 +360,6 @@ function generateKeychainMode(
      width="${totalWidth.toFixed(2)}mm" 
      height="${totalHeight.toFixed(2)}mm" 
      viewBox="0 0 ${totalWidth.toFixed(2)} ${totalHeight.toFixed(2)}">
-  <desc>Llavero Barra - MakerBox UTalca</desc>
-  <g id="capa-grabado-raster">
-    ${textEngraveParts.join('\n    ')}
-  </g>
   <g id="capa-marcado-vectorial">
     ${innerEngraveSvgParts.join('\n    ')}
   </g>
@@ -418,71 +367,6 @@ function generateKeychainMode(
     ${baseBarCut}
     ${handsOuterCutParts.join('\n    ')}
     ${holeSvg}
-  </g>
-</svg>`;
-
-  const estimatedCutLength = totalWidth * 2 + totalHeight * 2 + signs.length * (signWidth * 2 + signHeight * 2);
-
-  return {
-    svgString: svgContent,
-    widthMm: Number(totalWidth.toFixed(2)),
-    heightMm: Number(totalHeight.toFixed(2)),
-    signCount: signs.length,
-    estimatedCutLengthMm: Number(estimatedCutLength.toFixed(1))
-  };
-}
-
-/**
- * MODO 3: Silueta Unificada
- */
-function generateSilhouetteMode(
-  signs: SignDefinition[],
-  letters: string[],
-  config: LaserConfig,
-  signWidth: number,
-  signHeight: number
-): GeneratedLaserSvg {
-  const overlap = signWidth * 0.18;
-  const step = signWidth - overlap;
-  const padding = 4;
-  const totalWidth = padding * 2 + signWidth + (signs.length - 1) * step;
-  const totalHeight = signHeight + padding * 2;
-
-  const signPositions: { x: number; sign: SignDefinition; letter: string }[] = [];
-  let currentX = padding;
-  signs.forEach((sign, idx) => {
-    signPositions.push({ x: currentX, sign, letter: letters[idx] });
-    currentX += step;
-  });
-
-  const innerEngraveSvgParts: string[] = [];
-  const handsOuterCutParts: string[] = [];
-
-  signPositions.forEach(({ x, sign }) => {
-    const scale = signWidth / sign.width;
-    sign.innerPaths.forEach((pathD) => {
-      innerEngraveSvgParts.push(
-        `<path d="${pathD}" transform="translate(${x.toFixed(2)}, ${padding}) scale(${scale.toFixed(4)})" 
-               fill="none" stroke="${config.engraveStrokeColor}" stroke-width="0.3" stroke-linecap="round" stroke-linejoin="round" />`
-      );
-    });
-    handsOuterCutParts.push(
-      `<path d="${sign.outerPath}" transform="translate(${x.toFixed(2)}, ${padding}) scale(${scale.toFixed(4)})" 
-             fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2" />`
-    );
-  });
-
-  const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" 
-     width="${totalWidth.toFixed(2)}mm" 
-     height="${totalHeight.toFixed(2)}mm" 
-     viewBox="0 0 ${totalWidth.toFixed(2)} ${totalHeight.toFixed(2)}">
-  <desc>Silueta Unificada - MakerBox UTalca</desc>
-  <g id="capa-marcado-vectorial">
-    ${innerEngraveSvgParts.join('\n    ')}
-  </g>
-  <g id="capa-corte-exterior">
-    ${handsOuterCutParts.join('\n    ')}
   </g>
 </svg>`;
 
@@ -553,13 +437,6 @@ function generatePlaqueMode(
     <line x1="${paddingX}" y1="14" x2="${totalWidth - paddingX}" y2="14" stroke="${config.engraveStrokeColor}" stroke-width="0.2" />
   `;
 
-  const footerBranding = `
-    <line x1="${paddingX}" y1="${(totalHeight - 8).toFixed(2)}" x2="${totalWidth - paddingX}" y2="${(totalHeight - 8).toFixed(2)}" stroke="${config.engraveStrokeColor}" stroke-width="0.2" />
-    <text x="${(totalWidth / 2).toFixed(2)}" y="${(totalHeight - 4).toFixed(2)}" 
-          font-family="'Montserrat', 'Arial', sans-serif" font-size="2.6" 
-          text-anchor="middle" fill="${config.engraveFillColor}">Stand Demostrativo de Impresión 3D y Corte Láser</text>
-  `;
-
   const outerCut = `<rect x="0" y="0" width="${totalWidth.toFixed(2)}" height="${totalHeight.toFixed(2)}" 
         rx="5" ry="5" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2" id="plaque-outer-cut" />`;
 
@@ -568,10 +445,8 @@ function generatePlaqueMode(
      width="${totalWidth.toFixed(2)}mm" 
      height="${totalHeight.toFixed(2)}mm" 
      viewBox="0 0 ${totalWidth.toFixed(2)} ${totalHeight.toFixed(2)}">
-  <desc>Placa Conmemorativa - Makerbox UTalca</desc>
   <g id="capa-grabado-raster">
     ${headerBranding}
-    ${footerBranding}
   </g>
   <g id="capa-marcado-vectorial">
     ${innerEngraveSvgParts.join('\n    ')}
