@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { SIGNS_DICTIONARY } from '@/lib/signsData';
-import { X, Layers, Upload, Check, FolderOpen, Sparkles } from 'lucide-react';
+import Image from 'next/image';
+import { SIGNS_DICTIONARY, getChileanSpriteStyle } from '@/lib/signsData';
+import { X, BookOpen, Sparkles, Check, Upload, Layers } from 'lucide-react';
 
 interface CustomSignUploaderProps {
   isOpen: boolean;
@@ -12,140 +13,160 @@ interface CustomSignUploaderProps {
 export const CustomSignUploader: React.FC<CustomSignUploaderProps> = ({ isOpen, onClose }) => {
   const [selectedLetter, setSelectedLetter] = useState<string>('A');
   const [customNotice, setCustomNotice] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'individual' | 'poster'>('individual');
 
   if (!isOpen) return null;
 
   const letters = Object.keys(SIGNS_DICTIONARY).sort();
   const currentSign = SIGNS_DICTIONARY[selectedLetter];
+  const spriteStyle = getChileanSpriteStyle(selectedLetter, 1.4);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setCustomNotice(`Archivo "${file.name}" recibido para la seña ${selectedLetter}. Puedes colocarlo en la carpeta /public/signs/${selectedLetter.toLowerCase()}.svg para persistirlo.`);
-    setTimeout(() => setCustomNotice(null), 6000);
+    setCustomNotice(`Archivo "${file.name}" cargado para la letra ${selectedLetter}.`);
+    setTimeout(() => setCustomNotice(null), 5000);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-      <div className="relative w-full max-w-3xl bg-slate-900 border border-purple-500/40 rounded-2xl shadow-2xl p-6 flex flex-col gap-5 max-h-[90vh] overflow-y-auto">
-        {/* Cabecera */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-purple-950 text-purple-400 border border-purple-800">
-              <Layers className="w-5 h-5" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+      <div className="relative w-full max-w-4xl bg-white border border-slate-200 rounded-3xl shadow-2xl p-6 sm:p-8 flex flex-col gap-6 max-h-[90vh] overflow-y-auto">
+        {/* Cabecera amigable */}
+        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center">
+              <BookOpen className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">
-                Catálogo del Alfabeto de Lengua de Señas
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">
+                Alfabeto Manual Chileno
               </h2>
-              <p className="text-xs text-slate-400">
-                27 señas vectoriales integradas (A-Z y Ñ) optimizadas para corte y grabado láser
+              <p className="text-sm text-slate-500">
+                Lengua de Señas Chilena (LSCh) — Stand Demostrativo MakerBox UTalca
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
+            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition"
           >
-            <X className="w-5 h-5" />
+            <X className="w-6 h-6" />
           </button>
         </div>
 
         {/* Notificación de carga */}
         {customNotice && (
-          <div className="p-3 bg-purple-950/80 border border-purple-600/50 rounded-xl text-xs text-purple-200 flex items-center gap-2">
-            <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-sm text-emerald-800 flex items-center gap-2">
+            <Check className="w-5 h-5 text-emerald-600 flex-shrink-0" />
             <span>{customNotice}</span>
           </div>
         )}
 
-        {/* Selector de letras (A-Z y Ñ) */}
-        <div className="flex flex-col gap-2">
-          <span className="text-xs font-semibold text-slate-300">Selecciona una letra para inspeccionar o personalizar:</span>
-          <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-slate-950 rounded-xl border border-slate-800">
-            {letters.map((char) => (
-              <button
-                key={char}
-                onClick={() => setSelectedLetter(char)}
-                className={`w-8 h-8 rounded-lg font-bold text-xs transition active:scale-90 flex items-center justify-center ${
-                  selectedLetter === char
-                    ? 'bg-purple-600 text-white shadow-md shadow-purple-600/40'
-                    : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-                }`}
-              >
-                {char}
-              </button>
-            ))}
-          </div>
+        {/* Selector de vista: Letra por letra vs Afiche completo */}
+        <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl w-fit">
+          <button
+            type="button"
+            onClick={() => setViewMode('individual')}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition ${
+              viewMode === 'individual'
+                ? 'bg-white text-slate-800 shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            Explorar Letra por Letra
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('poster')}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition ${
+              viewMode === 'poster'
+                ? 'bg-white text-slate-800 shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            Ver Afiche Completo
+          </button>
         </div>
 
-        {/* Detalle de la Seña Seleccionada */}
-        {currentSign && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-950 p-4 rounded-xl border border-slate-800">
-            {/* Visualizador vectorial */}
-            <div className="flex flex-col items-center justify-center bg-slate-900/60 p-4 rounded-xl border border-slate-800">
-              <div className="w-32 h-40 flex items-center justify-center p-2">
-                <svg viewBox={currentSign.viewBox} className="w-full h-full object-contain">
-                  <path
-                    d={currentSign.outerPath}
-                    fill="#8b5cf6"
-                    fillOpacity="0.15"
-                    stroke="#ef4444"
-                    strokeWidth="2.5"
-                  />
-                  {currentSign.innerPaths.map((innerD, i) => (
-                    <path
-                      key={i}
-                      d={innerD}
-                      fill="none"
-                      stroke="#3b82f6"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  ))}
-                </svg>
-              </div>
-              <span className="text-xs font-bold text-purple-300 mt-2">
-                {currentSign.name}
-              </span>
-              <span className="text-[11px] text-slate-400 text-center mt-1">
-                {currentSign.description}
-              </span>
+        {viewMode === 'poster' ? (
+          /* Vista del afiche completo oficial */
+          <div className="flex flex-col items-center justify-center bg-slate-50 p-4 rounded-2xl border border-slate-200">
+            <Image
+              src="/signs/senas-chile.jpg"
+              alt="Afiche oficial del Alfabeto Manual Chileno"
+              width={452}
+              height={678}
+              className="rounded-xl shadow-md max-h-[60vh] w-auto object-contain"
+            />
+            <span className="text-xs text-slate-400 mt-3">
+              Guía gráfica oficial de dactilología chilena (LSCh)
+            </span>
+          </div>
+        ) : (
+          /* Vista individual interactiva */
+          <div className="flex flex-col gap-5">
+            {/* Fila de letras táctiles A-Z y Ñ */}
+            <div className="flex flex-wrap gap-2 p-2 bg-slate-50 rounded-2xl border border-slate-200 max-h-32 overflow-y-auto">
+              {letters.map((char) => (
+                <button
+                  key={char}
+                  onClick={() => setSelectedLetter(char)}
+                  className={`w-10 h-10 rounded-xl font-extrabold text-sm transition active:scale-95 flex items-center justify-center ${
+                    selectedLetter === char
+                      ? 'bg-purple-600 text-white shadow-md'
+                      : 'bg-white text-slate-700 hover:bg-purple-50 border border-slate-200'
+                  }`}
+                >
+                  {char}
+                </button>
+              ))}
             </div>
 
-            {/* Opciones para sustitución o añadido institucional */}
-            <div className="flex flex-col justify-between gap-3 text-xs text-slate-300">
-              <div className="space-y-2">
-                <h4 className="font-bold text-white flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-amber-400" />
-                  ¿Deseas reemplazar esta seña?
-                </h4>
-                <p className="text-slate-400 text-[11px] leading-relaxed">
-                  El sistema incluye de fábrica este vector optimizado con trazo exterior rojo de corte y marcado azul de articulaciones. Si la UTalca o tu asociación tiene un SVG oficial, puedes cargarlo aquí:
-                </p>
+            {/* Ficha de la letra seleccionada */}
+            {currentSign && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 p-6 rounded-3xl border border-slate-200 items-center">
+                {/* Imagen recortada */}
+                <div className="flex flex-col items-center justify-center bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                  <div className="w-12 h-12 rounded-2xl bg-purple-600 text-white font-extrabold text-2xl flex items-center justify-center shadow-sm mb-3">
+                    {selectedLetter}
+                  </div>
+                  <div className="w-32 h-36 flex items-center justify-center bg-slate-50 rounded-2xl border border-slate-100 p-2 overflow-hidden shadow-inner">
+                    <div style={spriteStyle} />
+                  </div>
+                  <span className="text-base font-bold text-slate-800 mt-3">
+                    {currentSign.name}
+                  </span>
+                </div>
 
-                <label className="flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-purple-500/40 bg-purple-950/30 hover:bg-purple-950/60 cursor-pointer transition text-purple-300 hover:text-purple-200">
-                  <Upload className="w-4 h-4" />
-                  <span className="font-semibold text-xs">Cargar SVG para la letra {selectedLetter}</span>
-                  <input
-                    type="file"
-                    accept=".svg,.png,.jpg"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                </label>
-              </div>
+                {/* Explicación y personalización */}
+                <div className="flex flex-col justify-between gap-4">
+                  <div className="space-y-2">
+                    <h4 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-amber-500" />
+                      ¿Cómo se hace esta seña?
+                    </h4>
+                    <p className="text-sm text-slate-600 leading-relaxed bg-white p-4 rounded-2xl border border-slate-200">
+                      {currentSign.description}
+                    </p>
+                  </div>
 
-              <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-400 flex items-start gap-2">
-                <FolderOpen className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
-                <span>
-                  <strong>Carga masiva:</strong> También puedes colocar tus archivos directamente en la carpeta{' '}
-                  <code className="text-purple-300">/public/signs/</code> de este proyecto para usarlos permanentemente.
-                </span>
+                  {/* Carga de reemplazo opcional */}
+                  <div className="pt-2 border-t border-slate-200">
+                    <label className="flex items-center justify-center gap-2 p-3.5 rounded-2xl border-2 border-dashed border-purple-300 bg-purple-50/50 hover:bg-purple-100/60 cursor-pointer transition text-purple-900 font-bold text-sm">
+                      <Upload className="w-4 h-4" />
+                      <span>Cargar otra imagen o vector para la letra {selectedLetter}</span>
+                      <input
+                        type="file"
+                        accept=".svg,.png,.jpg"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -153,9 +174,9 @@ export const CustomSignUploader: React.FC<CustomSignUploaderProps> = ({ isOpen, 
         <div className="flex justify-end pt-2">
           <button
             onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-600/30 transition active:scale-95"
+            className="px-6 py-3 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-md transition active:scale-95"
           >
-            Listo, volver al generador
+            Volver a la plataforma
           </button>
         </div>
       </div>

@@ -1,8 +1,8 @@
 'use client';
 
 import React from 'react';
-import { SIGNS_DICTIONARY, normalizeText } from '@/lib/signsData';
-import { Sparkles, Info } from 'lucide-react';
+import { SIGNS_DICTIONARY, normalizeText, getChileanSpriteStyle } from '@/lib/signsData';
+import { Sparkles, Info, Heart } from 'lucide-react';
 
 interface SignDisplayProps {
   text: string;
@@ -14,102 +14,86 @@ export const SignDisplay: React.FC<SignDisplayProps> = ({ text, onSelectLetter }
 
   if (letters.length === 0) {
     return (
-      <div className="w-full bg-slate-900/60 border border-dashed border-slate-800 rounded-2xl p-8 text-center flex flex-col items-center justify-center gap-3">
-        <div className="w-12 h-12 rounded-full bg-purple-950/80 border border-purple-800/60 flex items-center justify-center text-purple-400">
-          <Sparkles className="w-6 h-6" />
+      <div className="w-full bg-white border-2 border-dashed border-slate-200 rounded-3xl p-10 text-center flex flex-col items-center justify-center gap-3 shadow-sm">
+        <div className="w-16 h-16 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center">
+          <Sparkles className="w-8 h-8" />
         </div>
-        <h3 className="text-base font-semibold text-slate-200">
-          Visualizador de Dactilología en Vivo
+        <h3 className="text-xl font-bold text-slate-800">
+          ¿Cómo se dice en Lengua de Señas?
         </h3>
-        <p className="text-xs text-slate-400 max-w-md">
-          Escribe cualquier palabra arriba o usa el teclado táctil para ver las señas correspondientes y el vector de corte láser resultante.
+        <p className="text-base text-slate-500 max-w-lg leading-relaxed">
+          Escribe tu nombre o cualquier palabra arriba para ver cómo se hace cada letra con las manos en el <strong>Alfabeto Manual Chileno</strong>.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="w-full flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
-          <span>Señas Generadas:</span>
-          <span className="text-xs font-normal text-purple-400">
-            ({letters.length} {letters.length === 1 ? 'seña' : 'señas'})
-          </span>
-        </h3>
-        <span className="text-[11px] text-slate-500 hidden sm:flex items-center gap-1">
-          <Info className="w-3 h-3 text-slate-400" /> Toca una seña para ver su descripción
+    <div className="w-full bg-white rounded-3xl border border-slate-200 shadow-md p-6 sm:p-8 flex flex-col gap-5">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+        <div>
+          <h3 className="text-xl sm:text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <span className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-base font-extrabold">
+              2
+            </span>
+            <span>Así se escribe en Lengua de Señas Chilena:</span>
+          </h3>
+          <p className="text-sm text-slate-500 mt-0.5">
+            Ilustraciones oficiales del Alfabeto Manual Chileno (LSCh).
+          </p>
+        </div>
+
+        <span className="px-3.5 py-1.5 rounded-full bg-purple-50 text-purple-700 text-xs font-bold border border-purple-200">
+          {letters.length} {letters.length === 1 ? 'letra' : 'letras'}
         </span>
       </div>
 
-      {/* Tira horizontal de señas con desplazamiento suave */}
-      <div className="w-full overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-purple-700 scrollbar-track-slate-900">
-        <div className="flex items-center gap-3 min-w-min py-1">
+      {/* Contenedor desplazable con las tarjetas de señas grandes y claras */}
+      <div className="w-full overflow-x-auto pb-4 pt-1 scrollbar-thin">
+        <div className="flex items-stretch gap-4 min-w-min">
           {letters.map((char, index) => {
             if (char === ' ') {
               return (
                 <div
                   key={`space-${index}`}
-                  className="w-10 h-32 rounded-xl border border-slate-800 bg-slate-900/40 flex flex-col items-center justify-center text-slate-500 text-xs font-mono select-none"
-                  title="Espacio"
+                  className="w-16 min-h-[220px] rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-400 font-bold text-xs"
                 >
-                  <span className="text-[10px] rotate-90 tracking-wider">ESPACIO</span>
+                  <span className="rotate-90 tracking-widest uppercase">Espacio</span>
                 </div>
               );
             }
 
             const sign = SIGNS_DICTIONARY[char];
-            if (!sign) return null;
+            const spriteStyle = getChileanSpriteStyle(char, 1.15);
 
             return (
               <div
                 key={`${char}-${index}`}
                 onClick={() => onSelectLetter?.(char)}
-                className="group relative flex flex-col items-center bg-slate-900 border border-slate-800 hover:border-purple-500/80 rounded-xl p-2.5 shadow-lg transition-all hover:-translate-y-1 cursor-pointer flex-shrink-0 w-24 sm:w-28 active:scale-95"
+                className="group flex flex-col items-center justify-between bg-gradient-to-b from-white to-slate-50 border-2 border-slate-200 hover:border-purple-400 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer flex-shrink-0 w-36 sm:w-40 text-center active:scale-95"
               >
-                {/* Letra badge */}
-                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-600 to-pink-600 text-white font-extrabold text-sm flex items-center justify-center shadow-md mb-2 group-hover:scale-110 transition">
+                {/* Letra badge gigante */}
+                <div className="w-12 h-12 rounded-2xl bg-purple-600 text-white font-extrabold text-2xl flex items-center justify-center shadow-md mb-2 group-hover:scale-105 transition">
                   {char}
                 </div>
 
-                {/* SVG de la seña */}
-                <div className="w-20 h-24 flex items-center justify-center bg-slate-950/60 rounded-lg p-1 border border-slate-800/80">
-                  <svg
-                    viewBox={sign.viewBox}
-                    className="w-full h-full object-contain"
-                    aria-label={sign.name}
-                  >
-                    {/* Silueta exterior (Capa corte) */}
-                    <path
-                      d={sign.outerPath}
-                      fill="#8b5cf6"
-                      fillOpacity="0.15"
-                      stroke="#a855f7"
-                      strokeWidth="2.5"
-                    />
-                    {/* Detalles interiores (Capa grabado) */}
-                    {sign.innerPaths.map((innerD, i) => (
-                      <path
-                        key={i}
-                        d={innerD}
-                        fill="none"
-                        stroke="#38bdf8"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    ))}
-                  </svg>
+                {/* Recorte de la ilustración chilena oficial */}
+                <div className="w-24 h-28 flex items-center justify-center bg-white rounded-xl border border-slate-100 p-1 shadow-inner overflow-hidden my-1">
+                  <div
+                    style={spriteStyle}
+                    className="object-contain"
+                    aria-label={`Seña para letra ${char}`}
+                  />
                 </div>
 
-                {/* Nombre de la seña */}
-                <span className="mt-2 text-[11px] font-medium text-slate-300 truncate w-full text-center">
-                  {sign.name}
-                </span>
-
-                {/* Tooltip con descripción en hover */}
-                <div className="absolute bottom-full mb-2 hidden group-hover:block z-20 w-44 p-2 bg-slate-800 text-slate-200 text-[11px] rounded-lg shadow-xl border border-slate-700 pointer-events-none text-center">
-                  {sign.description}
+                {/* Explicación en lenguaje sencillo para que cualquiera aprenda */}
+                <div className="mt-2 flex flex-col items-center">
+                  <span className="text-sm font-bold text-slate-800">
+                    {sign ? sign.name : `Letra ${char}`}
+                  </span>
+                  <p className="text-[11px] text-slate-500 leading-snug mt-1 line-clamp-2">
+                    {sign ? sign.description : ''}
+                  </p>
                 </div>
               </div>
             );

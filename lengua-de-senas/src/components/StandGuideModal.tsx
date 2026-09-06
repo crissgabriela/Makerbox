@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { X, Cpu, Flame, Sparkles, CheckCircle2 } from 'lucide-react';
+import { X, Flame, Sparkles, CheckCircle2, Heart } from 'lucide-react';
 
 interface StandGuideModalProps {
   isOpen: boolean;
@@ -12,102 +12,93 @@ export const StandGuideModal: React.FC<StandGuideModalProps> = ({ isOpen, onClos
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-      <div className="relative w-full max-w-2xl bg-slate-900 border border-purple-500/40 rounded-2xl shadow-2xl p-6 flex flex-col gap-5 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+      <div className="relative w-full max-w-2xl bg-white border border-slate-200 rounded-3xl shadow-2xl p-6 sm:p-8 flex flex-col gap-6 max-h-[90vh] overflow-y-auto">
         {/* Cabecera */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-purple-950 text-purple-400 border border-purple-800">
-              <Cpu className="w-5 h-5" />
+        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center">
+              <Flame className="w-6 h-6 text-amber-600" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">
-                Guía de Parámetros de Corte Láser para el Stand
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800">
+                Guía de Corte Láser para el Stand
               </h2>
-              <p className="text-xs text-slate-400">
-                MakerBox · Facultad de Ingeniería UTalca
+              <p className="text-sm text-slate-500">
+                Parámetros para MakerBox · Facultad de Ingeniería UTalca
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
+            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition"
           >
-            <X className="w-5 h-5" />
+            <X className="w-6 h-6" />
           </button>
         </div>
 
-        {/* Tabla de Parámetros Sugeridos (Tubos CO2 50W-80W típicos de MakerSpace) */}
-        <div className="flex flex-col gap-3">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
-            <Flame className="w-4 h-4 text-orange-400" />
-            Parámetros de Referencia (Láser CO2 60W - 80W)
-          </h3>
+        {/* Tarjetas de parámetros en lenguaje simple */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* MDF 3mm */}
+          <div className="bg-[#fcf8f2] border-2 border-[#f0dfc8] rounded-2xl p-5 flex flex-col gap-3">
+            <span className="text-base font-bold text-amber-900 flex items-center gap-1.5">
+              📦 Madera Terciada / MDF (3 mm)
+            </span>
+            <ul className="text-sm text-slate-700 space-y-2">
+              <li className="flex justify-between border-b border-amber-200/60 pb-1.5">
+                <span className="text-red-600 font-bold">🔴 Corte exterior:</span>
+                <span className="font-mono text-slate-800">Vel: 18 | Pot: 70%</span>
+              </li>
+              <li className="flex justify-between border-b border-amber-200/60 pb-1.5">
+                <span className="text-blue-600 font-bold">🔵 Marcado dedos:</span>
+                <span className="font-mono text-slate-800">Vel: 160 | Pot: 14%</span>
+              </li>
+              <li className="flex justify-between">
+                <span className="text-slate-800 font-bold">⚫ Letras grabadas:</span>
+                <span className="font-mono text-slate-800">Vel: 320 | Pot: 20%</span>
+              </li>
+            </ul>
+          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* MDF 3mm */}
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col gap-2">
-              <span className="text-xs font-bold text-amber-300">📦 Terciado / MDF (3 mm)</span>
-              <ul className="text-xs text-slate-300 space-y-1.5">
-                <li className="flex justify-between border-b border-slate-800/80 pb-1">
-                  <span className="text-red-400 font-medium">🔴 Corte exterior:</span>
-                  <span className="font-mono">Vel: 18 mm/s | Pot: 70%</span>
-                </li>
-                <li className="flex justify-between border-b border-slate-800/80 pb-1">
-                  <span className="text-blue-400 font-medium">🔵 Marcado dedos:</span>
-                  <span className="font-mono">Vel: 160 mm/s | Pot: 14%</span>
-                </li>
-                <li className="flex justify-between">
-                  <span className="text-slate-300 font-medium">⚫ Grabado texto:</span>
-                  <span className="font-mono">Vel: 320 mm/s | Pot: 20%</span>
-                </li>
-              </ul>
-            </div>
-
-            {/* Acrílico 3mm */}
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col gap-2">
-              <span className="text-xs font-bold text-cyan-300">✨ Acrílico Cristal (3 mm)</span>
-              <ul className="text-xs text-slate-300 space-y-1.5">
-                <li className="flex justify-between border-b border-slate-800/80 pb-1">
-                  <span className="text-red-400 font-medium">🔴 Corte exterior:</span>
-                  <span className="font-mono">Vel: 14 mm/s | Pot: 75%</span>
-                </li>
-                <li className="flex justify-between border-b border-slate-800/80 pb-1">
-                  <span className="text-blue-400 font-medium">🔵 Marcado dedos:</span>
-                  <span className="font-mono">Vel: 200 mm/s | Pot: 12%</span>
-                </li>
-                <li className="flex justify-between">
-                  <span className="text-slate-300 font-medium">⚫ Grabado texto:</span>
-                  <span className="font-mono">Vel: 300 mm/s | Pot: 18%</span>
-                </li>
-              </ul>
-            </div>
+          {/* Acrílico 3mm */}
+          <div className="bg-cyan-50/60 border-2 border-cyan-200 rounded-2xl p-5 flex flex-col gap-3">
+            <span className="text-base font-bold text-cyan-900 flex items-center gap-1.5">
+              ✨ Acrílico Cristal (3 mm)
+            </span>
+            <ul className="text-sm text-slate-700 space-y-2">
+              <li className="flex justify-between border-b border-cyan-200/60 pb-1.5">
+                <span className="text-red-600 font-bold">🔴 Corte exterior:</span>
+                <span className="font-mono text-slate-800">Vel: 14 | Pot: 75%</span>
+              </li>
+              <li className="flex justify-between border-b border-cyan-200/60 pb-1.5">
+                <span className="text-blue-600 font-bold">🔵 Marcado dedos:</span>
+                <span className="font-mono text-slate-800">Vel: 200 | Pot: 12%</span>
+              </li>
+              <li className="flex justify-between">
+                <span className="text-slate-800 font-bold">⚫ Letras grabadas:</span>
+                <span className="font-mono text-slate-800">Vel: 300 | Pot: 18%</span>
+              </li>
+            </ul>
           </div>
         </div>
 
-        {/* Tips para Operar el Stand en la Feria */}
-        <div className="bg-slate-950/80 border border-purple-900/40 rounded-xl p-4 flex flex-col gap-2.5 text-xs text-slate-300">
-          <h4 className="font-bold text-purple-300 flex items-center gap-1.5">
-            <Sparkles className="w-4 h-4 text-amber-400" />
-            Tips para Demostración en Vivo en la Feria:
+        {/* Consejos prácticos para la atención al público */}
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col gap-3 text-sm text-slate-700">
+          <h4 className="font-bold text-slate-800 flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-amber-500" />
+            Consejos para la atención en el Stand:
           </h4>
-          <div className="space-y-2">
-            <div className="flex items-start gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+          <div className="space-y-2.5">
+            <div className="flex items-start gap-2.5">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
               <span>
-                <strong>Tiempo estimado por pieza:</strong> En modo llavero (palabras de 5 a 8 letras), el corte toma entre <strong>40 y 60 segundos</strong>, ideal para fabricar en el momento mientras conversas con los asistentes.
+                <strong>Tiempo rápido:</strong> Cada llavero demora entre <strong>40 y 60 segundos</strong> en cortarse, lo que permite entregar recuerdos casi de inmediato a las personas que visiten el stand.
               </span>
             </div>
-            <div className="flex items-start gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2.5">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
               <span>
-                <strong>Acabado limpio en MDF:</strong> Cubre la lámina de madera con cinta de enmascarar (masking tape) antes de cortar para evitar manchas de ahumado por resina.
-              </span>
-            </div>
-            <div className="flex items-start gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-              <span>
-                <strong>Modo Kiosco:</strong> Puedes pulsar <strong>F11</strong> en el navegador para poner la plataforma en pantalla completa y abrir el teclado táctil flotante para que el público interactúe directamente con su dedo.
+                <strong>Acabado sin manchas:</strong> Colocar cinta de enmascarar (masking tape) sobre la madera evita que el humo deje marcas oscuras alrededor de las señas.
               </span>
             </div>
           </div>
@@ -117,9 +108,9 @@ export const StandGuideModal: React.FC<StandGuideModalProps> = ({ isOpen, onClos
         <div className="flex justify-end pt-2">
           <button
             onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-600/30 transition active:scale-95"
+            className="px-6 py-3 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-md transition active:scale-95"
           >
-            Entendido, volver a la plataforma
+            Volver a la plataforma
           </button>
         </div>
       </div>

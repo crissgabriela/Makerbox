@@ -10,12 +10,12 @@ import { TouchKeyboard } from '@/components/TouchKeyboard';
 import { StandGuideModal } from '@/components/StandGuideModal';
 import { CustomSignUploader } from '@/components/CustomSignUploader';
 import { LaserConfig } from '@/types';
-import { Sparkles, Maximize, Minimize, Award } from 'lucide-react';
+import { Sparkles, Maximize, Minimize, Heart, Award } from 'lucide-react';
 
 const DEFAULT_CONFIG: LaserConfig = {
   mode: 'keychain',
   targetHeightMm: 40,
-  baseBarHeightMm: 10,
+  baseBarHeightMm: 11,
   addKeychainHole: true,
   holeDiameterMm: 4.5,
   includeTextEngraving: true,
@@ -28,14 +28,14 @@ const DEFAULT_CONFIG: LaserConfig = {
 };
 
 export default function Home() {
-  const [text, setText] = useState('MAKERBOX');
+  const [text, setText] = useState('HOLA');
   const [laserConfig, setLaserConfig] = useState<LaserConfig>(DEFAULT_CONFIG);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isAlphabetOpen, setIsAlphabetOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Manejo de pantalla completa (Kiosk Mode) para la feria
+  // Manejo de pantalla completa (Modo Kiosco para pantalla táctil)
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
@@ -56,7 +56,6 @@ export default function Home() {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  // Manejo de teclado táctil
   const handleKeyPress = (char: string) => {
     setText((prev) => prev + char);
   };
@@ -74,56 +73,57 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white pb-32">
-      {/* Cabecera con logos institucionales */}
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans selection:bg-purple-200 selection:text-purple-900 pb-32">
+      {/* Cabecera institucional con logos claros */}
       <Header
         onOpenGuide={() => setIsGuideOpen(true)}
         onOpenCustomSigns={() => setIsAlphabetOpen(true)}
       />
 
-      {/* Contenedor Principal */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6">
-        {/* Banner Informativo y Conmemorativo */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-950/70 via-indigo-950/50 to-slate-900 border border-purple-500/30 p-4 sm:p-6 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex flex-col gap-1 z-10">
+      {/* Contenedor principal con diseño limpio y espacioso */}
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-6 sm:gap-8">
+        {/* Banner suave y acogedor de bienvenida */}
+        <div className="rounded-3xl bg-gradient-to-r from-purple-100 via-pink-50 to-amber-50 border border-purple-200/80 p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-xs font-semibold border border-purple-500/30 flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-amber-400" />
-                Stand MakerBox UTalca
+              <span className="px-3 py-1 rounded-full bg-purple-200 text-purple-900 text-xs font-bold flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-purple-700" />
+                Stand Demostrativo MakerBox · UTalca
               </span>
-              <span className="text-xs text-slate-400 hidden md:inline">
-                Feria de Inclusión y Accesibilidad
+              <span className="text-xs font-semibold text-slate-500 hidden md:inline">
+                Feria de Conmemoración de la Lengua de Señas
               </span>
             </div>
-            <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-white tracking-tight">
-              Generador de Lengua de Señas para Corte Láser
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 tracking-tight mt-1">
+              Tu nombre en Lengua de Señas Chilena
             </h1>
-            <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
-              Escribe cualquier palabra o nombre para convertirlo en dactilología vectorial. La plataforma une automáticamente las señas en una sola pieza continua lista para cortar en MDF o acrílico en nuestra máquina láser.
+            <p className="text-sm sm:text-base text-slate-600 max-w-2xl leading-relaxed">
+              Escribe cualquier palabra o tu nombre. La plataforma lo transforma en señas de manos y genera un diseño unificado para cortarlo con láser en madera y llevarte un lindo recuerdo del stand.
             </p>
           </div>
 
-          {/* Botón Modo Kiosco Pantalla Completa */}
+          {/* Botón para poner en Pantalla Completa en la pantalla táctil */}
           <button
             onClick={toggleFullscreen}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-slate-900/80 hover:bg-slate-800 text-purple-300 border border-purple-500/40 transition active:scale-95 shadow-md flex-shrink-0"
-            title="Pantalla Completa para Pantalla Táctil del Stand"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold bg-white hover:bg-slate-50 text-purple-800 border border-purple-200 transition active:scale-95 shadow-sm flex-shrink-0"
+            title="Pantalla Completa para Kiosco Táctil"
           >
             {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-            <span>{isFullscreen ? 'Salir de Pantalla Completa' : 'Modo Kiosco Táctil'}</span>
+            <span>{isFullscreen ? 'Salir de Pantalla Completa' : 'Modo Pantalla Completa'}</span>
           </button>
         </div>
 
-        {/* Sección de Entrada de Texto */}
+        {/* Paso 1: Entrada de texto */}
         <TextInputSection
           value={text}
           onChange={setText}
           isKeyboardOpen={isKeyboardOpen}
           onToggleKeyboard={() => setIsKeyboardOpen(!isKeyboardOpen)}
           onClear={handleClear}
+          onQuickWord={handleQuickWord}
         />
 
-        {/* Previsualización visual de las señas */}
+        {/* Paso 2: Visualización de las señas con ilustraciones chilenas */}
         <SignDisplay
           text={text}
           onSelectLetter={() => {
@@ -131,14 +131,14 @@ export default function Home() {
           }}
         />
 
-        {/* Generador y Previsualizador de Archivo Láser SVG */}
-        <LaserSvgGenerator text={text} config={laserConfig} />
-
-        {/* Controles de Configuración Física del Láser */}
+        {/* Paso 3: Opciones del recuerdo físico */}
         <LaserControls config={laserConfig} onChange={setLaserConfig} />
+
+        {/* Paso 4: Vista previa y descarga para la cortadora láser */}
+        <LaserSvgGenerator text={text} config={laserConfig} />
       </main>
 
-      {/* Teclado Virtual Flotante Táctil */}
+      {/* Teclado táctil flotante con teclas blancas grandes */}
       <TouchKeyboard
         isOpen={isKeyboardOpen}
         onClose={() => setIsKeyboardOpen(false)}
@@ -148,23 +148,23 @@ export default function Home() {
         onQuickWord={handleQuickWord}
       />
 
-      {/* Modales de Ayuda y Alfabeto */}
+      {/* Modales informativos */}
       <StandGuideModal isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
       <CustomSignUploader isOpen={isAlphabetOpen} onClose={() => setIsAlphabetOpen(false)} />
 
-      {/* Pie de página institucional */}
-      <footer className="w-full bg-slate-950 border-t border-slate-900 py-6 text-center text-xs text-slate-400 mt-12">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      {/* Pie de página suave */}
+      <footer className="w-full bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500 mt-12">
+        <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Award className="w-4 h-4 text-purple-400" />
+            <Award className="w-4 h-4 text-purple-600" />
             <span>
               <strong>MakerBox</strong> — Co Creación e Innovación · Facultad de Ingeniería, Universidad de Talca
             </span>
           </div>
-          <div className="flex items-center gap-1 text-[11px] text-slate-400">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500">
             <span>Día de las Personas Sordas y de la Lengua de Señas</span>
             <span>•</span>
-            <span className="text-purple-400 font-semibold">Listo para Vercel & LightBurn</span>
+            <span className="text-purple-700 font-bold">Stand de Impresión 3D y Corte Láser</span>
           </div>
         </div>
       </footer>

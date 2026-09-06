@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'MakerBox UTalca | Lengua de Señas a Corte Láser',
   description:
-    'Plataforma para traducir texto a dactilología de Lengua de Señas y generar archivos vectoriales SVG para corte láser en MDF y acrílico. MakerBox - Facultad de Ingeniería, Universidad de Talca.',
+    'Plataforma para traducir texto a dactilología del Alfabeto Manual Chileno y generar archivos para corte láser en el stand demostrativo de MakerBox, Universidad de Talca.',
   icons: {
-    icon: '/logos/makerbox-dark.png',
+    icon: '/logos/makerbox-color.jpg',
   },
 };
 
@@ -25,7 +25,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
-  userScalable: false, // Optimizado para pantallas táctiles de kiosco
+  userScalable: false,
 };
 
 export default function RootLayout({
@@ -38,7 +38,7 @@ export default function RootLayout({
       lang="es"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-slate-950 text-slate-100">{children}</body>
+      <body className="min-h-full flex flex-col bg-slate-50 text-slate-800">{children}</body>
     </html>
   );
 }
