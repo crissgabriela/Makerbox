@@ -150,19 +150,16 @@ export const LaserControls: React.FC<LaserControlsProps> = ({ config, onChange }
           <span className="text-xs text-slate-400">Diámetro para el aro de llavero</span>
         </div>
 
-        {/* Grabar letras normales debajo */}
-        <label className="flex items-center gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 cursor-pointer hover:bg-purple-50/40 transition">
-          <input
-            type="checkbox"
-            checked={config.includeTextEngraving}
-            onChange={(e) => updateConfig('includeTextEngraving', e.target.checked)}
-            className="w-5 h-5 rounded-md accent-purple-600 cursor-pointer"
-          />
-          <div className="flex flex-col">
-            <span className="text-sm font-bold text-slate-800">Grabar letras debajo</span>
-            <span className="text-xs text-slate-500">Texto en alfabeto latino visible</span>
+        {/* Indicador de Acabado Limpio */}
+        <div className="flex items-center gap-3 bg-purple-50/60 p-4 rounded-2xl border border-purple-200/80">
+          <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center flex-shrink-0 font-extrabold text-sm">
+            ✓
           </div>
-        </label>
+          <div className="flex flex-col">
+            <span className="text-sm font-bold text-slate-800">Resultado 100% Limpio</span>
+            <span className="text-xs text-slate-500">Solo contorno de corte y señas oficiales, sin textos adicionales</span>
+          </div>
+        </div>
       </div>
     </div>
   );

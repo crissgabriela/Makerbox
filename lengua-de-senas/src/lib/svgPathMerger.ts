@@ -152,30 +152,6 @@ function generateCapsuleMode(
     `;
   });
 
-  // 3. Letras latinas opcionales grabadas debajo de cada seña
-  const textEngraveParts: string[] = [];
-  if (config.includeTextEngraving) {
-    handElements.forEach((h) => {
-      const centerX = h.x + h.width / 2;
-      const textY = totalHeight - 2;
-      textEngraveParts.push(
-        `<text x="${centerX.toFixed(2)}" y="${textY.toFixed(2)}" 
-               font-family="'Montserrat', 'Arial', sans-serif" font-size="3.5" 
-               font-weight="bold" text-anchor="middle" fill="${config.engraveFillColor}">${h.letter}</text>`
-      );
-    });
-  }
-
-  if (config.includeBranding) {
-    const brandX = totalWidth - 6;
-    const brandY = totalHeight - 2;
-    textEngraveParts.push(
-      `<text x="${brandX.toFixed(2)}" y="${brandY.toFixed(2)}" 
-             font-family="'Montserrat', 'Arial', sans-serif" font-size="2.6" 
-             font-weight="bold" text-anchor="end" fill="${config.engraveFillColor}">UTALCA</text>`
-    );
-  }
-
   const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
      width="${totalWidth.toFixed(2)}mm" 
@@ -185,10 +161,9 @@ function generateCapsuleMode(
     <desc>Llavero Ranura CAD - Alfabeto Manual Chileno - MakerBox UTalca</desc>
   </defs>
 
-  <!-- CAPA 2: GRABADO LÁSER (Ilustraciones Oficiales Chilenas) -->
+  <!-- CAPA 2: GRABADO LÁSER (Únicamente Ilustraciones Oficiales Chilenas) -->
   <g id="capa-grabado-señas">
     ${imageEngraveParts.join('\n    ')}
-    ${textEngraveParts.join('\n    ')}
   </g>
 
   <!-- CAPA 1: CORTE EXTERIOR (Rojo #FF0000) -->
