@@ -1,8 +1,8 @@
 'use client';
 
 import React from 'react';
-import { LaserConfig, LaserCutMode } from '@/types';
-import { Sliders, KeyRound, Layers, Bookmark, Check, ShieldCheck } from 'lucide-react';
+import { LaserConfig } from '@/types';
+import { Sliders, KeyRound, Layers, Bookmark, Check } from 'lucide-react';
 
 interface LaserControlsProps {
   config: LaserConfig;

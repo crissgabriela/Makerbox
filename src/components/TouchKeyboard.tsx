@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { Delete, Space, X, Sparkles, ChevronDown, ChevronUp, Volume2, VolumeX } from 'lucide-react';
+import { Delete, Space, X, Sparkles, ChevronDown, Volume2, VolumeX } from 'lucide-react';
 
 interface TouchKeyboardProps {
   isOpen: boolean;

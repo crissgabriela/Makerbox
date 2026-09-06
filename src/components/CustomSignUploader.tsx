@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { SIGNS_DICTIONARY } from '@/lib/signsData';
-import { X, Layers, Upload, Check, FolderOpen, Sparkles, Info } from 'lucide-react';
+import { X, Layers, Upload, Check, FolderOpen, Sparkles } from 'lucide-react';
 
 interface CustomSignUploaderProps {
   isOpen: boolean;

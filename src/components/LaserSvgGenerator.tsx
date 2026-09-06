@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { LaserConfig, GeneratedLaserSvg } from '@/types';
 import { generateLaserSvg } from '@/lib/svgPathMerger';
-import { Download, Copy, Check, Eye, Ruler, Scissors, Sparkles, RefreshCw } from 'lucide-react';
+import { Download, Copy, Check, Ruler, Scissors, Sparkles } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface LaserSvgGeneratorProps {

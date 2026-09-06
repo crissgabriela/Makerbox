@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Image from 'next/image';
-import { Sparkles, HelpCircle, Layers, Cpu } from 'lucide-react';
+import { Sparkles, Layers, Cpu } from 'lucide-react';
 
 interface HeaderProps {
   onOpenGuide: () => void;

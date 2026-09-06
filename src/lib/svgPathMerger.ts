@@ -4,13 +4,19 @@ import { SIGNS_DICTIONARY, normalizeText } from './signsData';
 /**
  * Escala coordenadas de un path simple o aplica un offset en X e Y.
  */
-export function transformPath(pathD: string, scale: number, offsetX: number, offsetY: number): string {
-  // Expresión regular para separar comandos SVG y sus coordenadas numéricas
+export function transformPath(pathD: string, scale = 1, offsetX = 0, offsetY = 0): string {
+  if (scale === 1 && offsetX === 0 && offsetY === 0) return pathD;
+  let isY = false;
   return pathD.replace(/([MLHVCSQTAZmlhvcsqtaz])|(-?\d*\.?\d+(?:e[-+]?\d+)?)/g, (match, cmd, num) => {
-    if (cmd) return cmd + ' ';
+    if (cmd) {
+      isY = false;
+      return cmd + ' ';
+    }
     if (num !== undefined) {
-      // Devolvemos el número transformado contextualmente
-      return num;
+      const val = parseFloat(num);
+      const res = isY ? val * scale + offsetY : val * scale + offsetX;
+      isY = !isY;
+      return Math.round(res * 100) / 100 + ' ';
     }
     return match;
   });
@@ -77,7 +83,6 @@ function generateKeychainMode(
   const totalHeight = signHeight + baseBarHeight;
 
   const barY = signHeight; // donde comienza la barra inferior
-  const barBottomY = totalHeight;
 
   // Calculamos la posición X de cada seña
   const signPositions: { x: number; sign: SignDefinition; letter: string }[] = [];

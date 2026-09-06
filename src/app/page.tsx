@@ -10,7 +10,7 @@ import { TouchKeyboard } from '@/components/TouchKeyboard';
 import { StandGuideModal } from '@/components/StandGuideModal';
 import { CustomSignUploader } from '@/components/CustomSignUploader';
 import { LaserConfig } from '@/types';
-import { Sparkles, Maximize, Minimize, Heart, Award } from 'lucide-react';
+import { Sparkles, Maximize, Minimize, Award } from 'lucide-react';
 
 const DEFAULT_CONFIG: LaserConfig = {
   mode: 'keychain',
@@ -126,7 +126,7 @@ export default function Home() {
         {/* Previsualización visual de las señas */}
         <SignDisplay
           text={text}
-          onSelectLetter={(letter) => {
+          onSelectLetter={() => {
             setIsAlphabetOpen(true);
           }}
         />

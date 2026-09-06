@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { X, Cpu, Flame, Layers, ShieldAlert, Sparkles, CheckCircle2 } from 'lucide-react';
+import { X, Cpu, Flame, Sparkles, CheckCircle2 } from 'lucide-react';
 
 interface StandGuideModalProps {
   isOpen: boolean;
