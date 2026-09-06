@@ -10,11 +10,12 @@ export interface SignDefinition {
   wristAnchor: [number, number]; // [startX, endX] at y = height
 }
 
-export type LaserCutMode = 'keychain' | 'silhouette' | 'plaque';
+export type LaserCutMode = 'organic_contour' | 'keychain' | 'silhouette' | 'plaque';
 
 export interface LaserConfig {
   mode: LaserCutMode;
-  targetHeightMm: number; // e.g. 45 mm
+  targetHeightMm: number; // e.g. 40 mm
+  contourOffsetMm: number; // e.g. 5 mm (desfase exterior del llavero orgánico)
   baseBarHeightMm: number; // e.g. 10 mm
   addKeychainHole: boolean; // true/false
   holeDiameterMm: number; // e.g. 4 mm

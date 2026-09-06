@@ -13,8 +13,9 @@ import { LaserConfig } from '@/types';
 import { Sparkles, Maximize, Minimize, Heart, Award } from 'lucide-react';
 
 const DEFAULT_CONFIG: LaserConfig = {
-  mode: 'keychain',
+  mode: 'organic_contour',
   targetHeightMm: 40,
+  contourOffsetMm: 5,
   baseBarHeightMm: 11,
   addKeychainHole: true,
   holeDiameterMm: 4.5,
@@ -28,7 +29,7 @@ const DEFAULT_CONFIG: LaserConfig = {
 };
 
 export default function Home() {
-  const [text, setText] = useState('HOLA');
+  const [text, setText] = useState('CRISS');
   const [laserConfig, setLaserConfig] = useState<LaserConfig>(DEFAULT_CONFIG);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
