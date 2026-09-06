@@ -174,9 +174,11 @@ export async function generateLithophane3D(
   // Arreglos para Three.js BufferGeometry
   const positions = new Float32Array(totalTriangles * 9);
   const normals = new Float32Array(totalTriangles * 9);
+  const uvs = new Float32Array(totalTriangles * 6);
 
   let stlByteOffset = 84;
   let geomIndex = 0;
+  let uvIndex = 0;
 
   function addTriangle(
     p1: [number, number, number],
@@ -236,7 +238,16 @@ export async function generateLithophane3D(
     normals[geomIndex + 7] = ny_;
     normals[geomIndex + 8] = nz_;
 
+    // UVs normalizados [0, 1] en el plano XY
+    uvs[uvIndex] = (p1[0] + halfW) / config.widthMm;
+    uvs[uvIndex + 1] = (p1[1] + halfH) / config.heightMm;
+    uvs[uvIndex + 2] = (p2[0] + halfW) / config.widthMm;
+    uvs[uvIndex + 3] = (p2[1] + halfH) / config.heightMm;
+    uvs[uvIndex + 4] = (p3[0] + halfW) / config.widthMm;
+    uvs[uvIndex + 5] = (p3[1] + halfH) / config.heightMm;
+
     geomIndex += 9;
+    uvIndex += 6;
   }
 
   // Funciones de conveniencia para obtener punto frontal y punto trasero plano
@@ -332,6 +343,7 @@ export async function generateLithophane3D(
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
 
   // Estimaciones físicas de impresión 3D
   // Volumen aprox = W * H * EspesorMedio (en cm3)

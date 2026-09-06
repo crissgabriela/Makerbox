@@ -21,31 +21,31 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="w-full bg-white border-b border-slate-200 text-slate-800 sticky top-0 z-30 shadow-sm backdrop-blur-md bg-white/95">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4">
         <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
-          {/* Logos e Identidad Institucional (Duplicados de tamaño) */}
-          <div className="flex items-center gap-5 sm:gap-7 justify-center lg:justify-start">
-            {/* Logo MakerBox (Doble tamaño: h-20) */}
+          {/* Logos e Identidad Institucional (Gran tamaño destacado para Stand y Kiosco) */}
+          <div className="flex items-center gap-6 sm:gap-10 justify-center lg:justify-start py-1">
+            {/* Logo MakerBox (Doble tamaño aumentado: h-28 a h-36) */}
             <div className="flex items-center">
               <Image
                 src="/logos/makerbox-color.jpg"
                 alt="MakerBox - Co Creación e Innovación | Ingeniería UTalca"
-                width={340}
-                height={84}
-                className="object-contain h-16 sm:h-20 w-auto drop-shadow-xs"
+                width={600}
+                height={160}
+                className="object-contain h-24 sm:h-32 lg:h-36 w-auto drop-shadow-sm"
                 priority
               />
             </div>
 
-            {/* Separador vertical suave */}
-            <div className="h-14 sm:h-16 w-px bg-slate-200" />
+            {/* Separador vertical elegante */}
+            <div className="h-20 sm:h-28 w-px bg-slate-300" />
 
-            {/* Logo UTalca Facultad de Ingeniería (Doble tamaño: h-18) */}
+            {/* Logo UTalca Facultad de Ingeniería (Doble tamaño aumentado: h-22 a h-30) */}
             <div className="flex items-center">
               <Image
                 src="/logos/utalca-ingenieria.png"
                 alt="Facultad de Ingeniería - Universidad de Talca"
-                width={300}
-                height={76}
-                className="object-contain h-14 sm:h-18 w-auto drop-shadow-xs"
+                width={550}
+                height={150}
+                className="object-contain h-20 sm:h-28 lg:h-32 w-auto drop-shadow-sm"
                 priority
               />
             </div>

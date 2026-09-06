@@ -403,9 +403,11 @@ export const LithophaneSection: React.FC = () => {
               </button>
             </div>
 
-            {/* Lienzo WebGL Three.js */}
+            {/* Lienzo WebGL Three.js con simulación de luz y ampolleta trasera */}
             <Lithophane3DViewer
               geometry={result?.geometry ?? null}
+              imageSource={selectedImage}
+              config={config}
               isLoading={isGenerating}
             />
 
