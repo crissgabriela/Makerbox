@@ -20,8 +20,8 @@ export const LaserSvgGenerator: React.FC<LaserSvgGeneratorProps> = ({ text, conf
   }, [text, config]);
 
   const handleDownloadSvg = () => {
-    const cleanWord = text.trim().replace(/[^A-Za-z0-9ñÑ]/g, '') || 'recuerdo';
-    const filename = `corte-laser-${cleanWord.toLowerCase()}-${config.mode}.svg`;
+    const cleanWord = text.trim().replace(/[^A-Za-z0-9ñÑ]/g, '') || 'llavero';
+    const filename = `llavero-senas-${cleanWord.toLowerCase()}.svg`;
     const blob = new Blob([laserResult.svgString], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -61,10 +61,10 @@ export const LaserSvgGenerator: React.FC<LaserSvgGeneratorProps> = ({ text, conf
             <span className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-base font-extrabold">
               4
             </span>
-            <span>Vista previa de tu recuerdo:</span>
+            <span>Vista previa de tu llavero:</span>
           </h3>
           <p className="text-sm text-slate-500 mt-1">
-            Así quedará tu pieza física cortada en una sola unidad continua ({laserResult.widthMm} mm de ancho × {laserResult.heightMm} mm de alto).
+            Así quedará tu llavero cortado en una sola pieza continua ({laserResult.widthMm} mm de ancho × {laserResult.heightMm} mm de alto).
           </p>
         </div>
 

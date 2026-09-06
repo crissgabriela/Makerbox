@@ -43,22 +43,11 @@ export function generateLaserSvg(text: string, config: LaserConfig): GeneratedLa
     };
   }
 
-  const signHeightMm = config.targetHeightMm || 40;
+  const signHeightMm = config.targetHeightMm || 38;
   const signSpacingMm = config.signSpacingMm || 3;
 
-  if (config.mode === 'capsule') {
-    return generateCapsuleMode(letters, config, signHeightMm, signSpacingMm);
-  } else if (config.mode === 'organic_contour') {
-    return generateSmoothOrganicMode(letters, config, signHeightMm, signSpacingMm);
-  } else if (config.mode === 'keychain') {
-    const activeSigns = letters.map((c) => SIGNS_DICTIONARY[c]).filter(Boolean);
-    const signWidthMm = (signHeightMm * 100) / 130;
-    return generateKeychainMode(activeSigns, letters, config, signWidthMm, signHeightMm, signSpacingMm);
-  } else {
-    const activeSigns = letters.map((c) => SIGNS_DICTIONARY[c]).filter(Boolean);
-    const signWidthMm = (signHeightMm * 100) / 130;
-    return generatePlaqueMode(activeSigns, letters, config, signWidthMm, signHeightMm, signSpacingMm);
-  }
+  // Modo exclusivo: Llavero Ranura CAD
+  return generateCapsuleMode(letters, config, signHeightMm, signSpacingMm);
 }
 
 /**
