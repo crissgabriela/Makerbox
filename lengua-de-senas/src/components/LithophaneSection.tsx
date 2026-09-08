@@ -83,6 +83,45 @@ export const LithophaneSection: React.FC = () => {
     };
   }, [selectedImage, config]);
 
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Soporte para pegar fotos directamente con Ctrl + V (ej. desde WhatsApp Web o navegador)
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          const file = items[i].getAsFile();
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              if (typeof ev.target?.result === 'string') {
+                setSelectedImage(ev.target.result);
+                try {
+                  confetti({
+                    particleCount: 50,
+                    spread: 70,
+                    origin: { y: 0.8 },
+                    colors: ['#3b82f6', '#8b5cf6', '#10b981']
+                  });
+                } catch {
+                  // Ignorar
+                }
+              }
+            };
+            reader.readAsDataURL(file);
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -91,6 +130,31 @@ export const LithophaneSection: React.FC = () => {
     reader.onload = (ev) => {
       if (typeof ev.target?.result === 'string') {
         setSelectedImage(ev.target.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      if (typeof ev.target?.result === 'string') {
+        setSelectedImage(ev.target.result);
+        try {
+          confetti({
+            particleCount: 50,
+            spread: 70,
+            origin: { y: 0.8 },
+            colors: ['#3b82f6', '#8b5cf6', '#10b981']
+          });
+        } catch {
+          // Ignorar
+        }
       }
     };
     reader.readAsDataURL(file);
@@ -179,7 +243,17 @@ export const LithophaneSection: React.FC = () => {
             {/* Zona de subida o foto actual */}
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="relative group cursor-pointer border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-2xl p-4 bg-slate-50/70 hover:bg-blue-50/30 transition flex flex-col items-center justify-center gap-2 text-center"
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              className={`relative group cursor-pointer border-2 border-dashed rounded-2xl p-4 transition flex flex-col items-center justify-center gap-2 text-center ${
+                isDragging
+                  ? 'border-blue-600 bg-blue-100/60 ring-4 ring-blue-300/40 scale-[1.01]'
+                  : 'border-slate-300 hover:border-blue-500 bg-slate-50/70 hover:bg-blue-50/30'
+              }`}
             >
               {selectedImage ? (
                 <div className="flex flex-col items-center gap-2">
@@ -200,6 +274,14 @@ export const LithophaneSection: React.FC = () => {
                   <span className="text-xs text-slate-400">Formatos JPG, PNG o WebP</span>
                 </>
               )}
+            </div>
+
+            {/* Tip rápido para ferias */}
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50/80 border border-blue-200/60 text-[11px] text-blue-900 leading-tight">
+              <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span>
+                <strong>Atajo en el stand:</strong> Arrastra cualquier imagen aquí o presiona <strong>Ctrl + V</strong> para pegarla directo (ej. copiada desde WhatsApp Web).
+              </span>
             </div>
 
             {/* Muestras predeterminadas para pruebas en el stand */}
