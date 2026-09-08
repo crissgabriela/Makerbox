@@ -318,6 +318,42 @@ export const BrailleSection: React.FC = () => {
               </span>
             </div>
 
+            {/* Palabra Escrita en Bajorrelieve (0.4 mm profundidad, 0.8 mm trazo) */}
+            <div className="flex flex-col gap-2 p-3.5 rounded-2xl bg-cyan-50/70 border border-cyan-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">✍️</span>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-slate-800">Palabra en Bajo Relieve</span>
+                    <span className="text-[11px] text-cyan-800">Sobre el Braille para ver el significado</span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={config.includeDebossedText}
+                  onChange={(e) => updateConfig('includeDebossedText', e.target.checked)}
+                  className="w-5 h-5 accent-cyan-600 rounded-md cursor-pointer"
+                />
+              </div>
+
+              {config.includeDebossedText && (
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-cyan-200/60 text-xs">
+                  <div className="flex flex-col">
+                    <span className="text-[11px] text-slate-500">Profundidad de grabado:</span>
+                    <span className="font-mono font-bold text-cyan-700 bg-white px-2 py-0.5 rounded-md border border-cyan-300">
+                      -{config.debossDepthMm.toFixed(2)} mm
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[11px] text-slate-500">Espesor del trazo:</span>
+                    <span className="font-mono font-bold text-cyan-700 bg-white px-2 py-0.5 rounded-md border border-cyan-300">
+                      {config.debossStrokeMm.toFixed(2)} mm
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Orificio para Argolla de Llavero */}
             <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-200">
               <div className="flex items-center gap-2.5">

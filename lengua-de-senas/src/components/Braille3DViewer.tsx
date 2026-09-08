@@ -238,6 +238,10 @@ export const Braille3DViewer: React.FC<Braille3DViewerProps> = ({
               <span className="font-mono font-bold text-blue-600">1.0 mm</span>
             </div>
             <div className="flex justify-between gap-4">
+              <span className="text-slate-500">Bajorrelieve Texto:</span>
+              <span className="font-mono font-bold text-cyan-600">-0.40 mm (trazo 0.8)</span>
+            </div>
+            <div className="flex justify-between gap-4">
               <span className="text-slate-500">Relieve Braille:</span>
               <span className="font-mono font-bold text-amber-600">+0.36 mm</span>
             </div>
