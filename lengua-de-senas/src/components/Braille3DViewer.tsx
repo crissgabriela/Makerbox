@@ -38,6 +38,7 @@ export const Braille3DViewer: React.FC<Braille3DViewerProps> = ({
 
   const baseMeshRef = useRef<THREE.Mesh | null>(null);
   const dotsMeshRef = useRef<THREE.Mesh | null>(null);
+  const textMeshRef = useRef<THREE.Mesh | null>(null);
 
   const [autoRotate, setAutoRotate] = useState(false);
 
@@ -152,6 +153,13 @@ export const Braille3DViewer: React.FC<Braille3DViewerProps> = ({
       dotsMeshRef.current = null;
     }
 
+    if (textMeshRef.current) {
+      scene.remove(textMeshRef.current);
+      textMeshRef.current.geometry.dispose();
+      (textMeshRef.current.material as THREE.Material).dispose();
+      textMeshRef.current = null;
+    }
+
     // Crear material para la placa base
     const baseMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(baseColor),
@@ -174,6 +182,19 @@ export const Braille3DViewer: React.FC<Braille3DViewerProps> = ({
       const dotsMesh = new THREE.Mesh(modelResult.dotsGeometry, dotsMat);
       scene.add(dotsMesh);
       dotsMeshRef.current = dotsMesh;
+    }
+
+    // Crear material para las letras escritas (sobresalen del plano)
+    if (modelResult.textGeometry) {
+      const textMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(dotColor), // Usar color de contraste (o blanco/ámbar)
+        roughness: 0.3,
+        metalness: 0.1
+      });
+
+      const textMesh = new THREE.Mesh(modelResult.textGeometry, textMat);
+      scene.add(textMesh);
+      textMeshRef.current = textMesh;
     }
 
     // Ajustar distancia de cámara según el ancho del llavero
@@ -235,15 +256,15 @@ export const Braille3DViewer: React.FC<Braille3DViewerProps> = ({
             </div>
             <div className="flex justify-between gap-4">
               <span className="text-slate-500">Espesor Placa:</span>
-              <span className="font-mono font-bold text-blue-600">1.0 mm</span>
+              <span className="font-mono font-bold text-blue-600">0.8 mm</span>
             </div>
             <div className="flex justify-between gap-4">
-              <span className="text-slate-500">Bajorrelieve Texto:</span>
-              <span className="font-mono font-bold text-cyan-600">-0.40 mm (trazo 0.8)</span>
+              <span className="text-slate-500">Letras Escritas:</span>
+              <span className="font-mono font-bold text-cyan-600">+0.36 mm (Relieve Arial)</span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="text-slate-500">Relieve Braille:</span>
-              <span className="font-mono font-bold text-amber-600">+0.36 mm</span>
+              <span className="font-mono font-bold text-amber-600">+0.36 mm (1.2 mm día)</span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="text-slate-500">Puntos Activos:</span>

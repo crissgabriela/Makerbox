@@ -98,7 +98,7 @@ export const BrailleSection: React.FC = () => {
             Llavero Braille en Impresión 3D
           </h1>
           <p className="text-sm sm:text-base text-slate-600 max-w-2xl leading-relaxed">
-            Escribe cualquier palabra o tu nombre y la plataforma lo traduce al alfabeto Braille táctil. Genera una plaquita ergonómica de <strong>1.0 mm de espesor</strong> con puntos en relieve de <strong>0.36 mm</strong> lista para laminar e imprimir en 3D en <strong>STL</strong> o en <strong>OBJ multicolor</strong>.
+            Escribe cualquier palabra o tu nombre y la plataforma lo traduce a Braille táctil con su significado escrito en tipografía Arial. Genera una plaquita compacta de <strong>0.8 mm de espesor</strong> y <strong>18 mm de alto</strong> (tiempo de impresión reducido a solo <strong>~4 a 5 minutos</strong>) lista para laminar e imprimir en 3D en <strong>STL</strong> o en <strong>OBJ multicolor</strong>.
           </p>
         </div>
       </div>
@@ -252,10 +252,10 @@ export const BrailleSection: React.FC = () => {
               <span>Parámetros Físicos de Fabricación</span>
             </h2>
 
-            {/* Espesor de la Placa (1.0 mm exacto) */}
+            {/* Espesor de la Placa (0.8 mm exacto) */}
             <div className="flex flex-col gap-1.5">
               <div className="flex justify-between items-center text-xs">
-                <span className="font-bold text-slate-700">Espesor de la Placa:</span>
+                <span className="font-bold text-slate-700">Espesor de la Placa Base:</span>
                 <span className="font-mono font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
                   {config.plateThicknessMm.toFixed(2)} mm
                 </span>
@@ -263,14 +263,14 @@ export const BrailleSection: React.FC = () => {
               <input
                 type="range"
                 min="0.6"
-                max="2.5"
+                max="1.5"
                 step="0.1"
                 value={config.plateThicknessMm}
                 onChange={(e) => updateConfig('plateThicknessMm', parseFloat(e.target.value))}
                 className="accent-amber-500 w-full cursor-pointer"
               />
               <span className="text-[11px] text-slate-400">
-                ⭐ Valor óptimo solicitado: 1.0 mm (liviano, rápido y resistente).
+                ⭐ Valor óptimo solicitado: 0.8 mm (tiempo de impresión ultrarrápido ~4 a 5 min).
               </span>
             </div>
 
@@ -285,21 +285,21 @@ export const BrailleSection: React.FC = () => {
               <input
                 type="range"
                 min="0.25"
-                max="0.80"
+                max="0.60"
                 step="0.02"
                 value={config.dotHeightMm}
                 onChange={(e) => updateConfig('dotHeightMm', parseFloat(e.target.value))}
                 className="accent-amber-500 w-full cursor-pointer"
               />
               <span className="text-[11px] text-slate-400">
-                ⭐ Valor solicitado: 0.36 mm (sensibilidad táctil ideal sin raspar).
+                ⭐ Valor solicitado: 0.36 mm (semiesferas suaves al tacto).
               </span>
             </div>
 
             {/* Diámetro del Punto Braille */}
             <div className="flex flex-col gap-1.5">
               <div className="flex justify-between items-center text-xs">
-                <span className="font-bold text-slate-700">Diámetro del Punto:</span>
+                <span className="font-bold text-slate-700">Diámetro del Punto Braille:</span>
                 <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md">
                   {(config.dotRadiusMm * 2).toFixed(2)} mm
                 </span>
@@ -307,14 +307,10 @@ export const BrailleSection: React.FC = () => {
               <input
                 type="range"
                 min="0.4"
-                max="1.0"
+                max="0.9"
                 step="0.05"
                 value={config.dotRadiusMm}
-                onChange={(e) => {
-                  const r = parseFloat(e.target.value);
-                  updateConfig('dotRadiusMm', r);
-                  updateConfig('debossStrokeMm', Math.round(r * 2 * 100) / 100);
-                }}
+                onChange={(e) => updateConfig('dotRadiusMm', parseFloat(e.target.value))}
                 className="accent-amber-500 w-full cursor-pointer"
               />
               <span className="text-[11px] text-slate-400">
@@ -322,38 +318,56 @@ export const BrailleSection: React.FC = () => {
               </span>
             </div>
 
-            {/* Palabra Escrita en Bajorrelieve estilo Arial (0.4 mm prof, 1.2 mm trazo) */}
-            <div className="flex flex-col gap-2 p-3.5 rounded-2xl bg-cyan-50/70 border border-cyan-200">
+            {/* Configuración de Palabra Escrita (Arial / Helvetiker) */}
+            <div className="flex flex-col gap-2.5 p-3.5 rounded-2xl bg-cyan-50/70 border border-cyan-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-sm">✍️</span>
                   <div className="flex flex-col">
-                    <span className="text-xs font-bold text-slate-800">Texto en Bajo Relieve (Arial)</span>
-                    <span className="text-[11px] text-cyan-800">Sobre el Braille · Fuente redonda y trazo coherente</span>
+                    <span className="text-xs font-bold text-slate-800">Palabra Escrita (Arial)</span>
+                    <span className="text-[11px] text-cyan-800">Tipografía vectorial limpia sin errores</span>
                   </div>
                 </div>
                 <input
                   type="checkbox"
-                  checked={config.includeDebossedText}
-                  onChange={(e) => updateConfig('includeDebossedText', e.target.checked)}
+                  checked={config.includeText}
+                  onChange={(e) => updateConfig('includeText', e.target.checked)}
                   className="w-5 h-5 accent-cyan-600 rounded-md cursor-pointer"
                 />
               </div>
 
-              {config.includeDebossedText && (
-                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-cyan-200/60 text-xs">
-                  <div className="flex flex-col">
-                    <span className="text-[11px] text-slate-500">Profundidad de grabado:</span>
-                    <span className="font-mono font-bold text-cyan-700 bg-white px-2 py-0.5 rounded-md border border-cyan-300">
-                      -{config.debossDepthMm.toFixed(2)} mm
-                    </span>
+              {config.includeText && (
+                <div className="flex flex-col gap-2 pt-2 border-t border-cyan-200/60">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-[11px] text-slate-600 font-semibold">Forma de la Letra:</span>
+                    <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-cyan-200">
+                      <button
+                        type="button"
+                        onClick={() => updateConfig('textMode', 'emboss')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                          config.textMode === 'emboss'
+                            ? 'bg-cyan-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        En Relieve (+0.36 mm)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateConfig('textMode', 'deboss')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                          config.textMode === 'deboss'
+                            ? 'bg-cyan-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Bajo Relieve (-0.30 mm)
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex flex-col">
-                    <span className="text-[11px] text-slate-500">Espesor del trazo:</span>
-                    <span className="font-mono font-bold text-cyan-700 bg-white px-2 py-0.5 rounded-md border border-cyan-300">
-                      {config.debossStrokeMm.toFixed(2)} mm
-                    </span>
-                  </div>
+                  <span className="text-[10.5px] text-cyan-900 leading-tight">
+                    ⭐ Modo Relieve: las letras sobresalen de la placa para impresión limpia y cambio de color en 1 capa.
+                  </span>
                 </div>
               )}
             </div>
