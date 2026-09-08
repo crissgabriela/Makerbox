@@ -10,6 +10,7 @@ import { TouchKeyboard } from '@/components/TouchKeyboard';
 import { StandGuideModal } from '@/components/StandGuideModal';
 import { CustomSignUploader } from '@/components/CustomSignUploader';
 import { LithophaneSection } from '@/components/LithophaneSection';
+import { BrailleSection } from '@/components/BrailleSection';
 import { LaserConfig } from '@/types';
 import { Sparkles, Maximize, Minimize, Heart, Award } from 'lucide-react';
 
@@ -30,7 +31,7 @@ const DEFAULT_CONFIG: LaserConfig = {
 };
 
 export default function Home() {
-  const [activeTool, setActiveTool] = useState<'laser' | 'lithophane'>('laser');
+  const [activeTool, setActiveTool] = useState<'laser' | 'lithophane' | 'braille'>('laser');
   const [text, setText] = useState('CRISS');
   const [laserConfig, setLaserConfig] = useState<LaserConfig>(DEFAULT_CONFIG);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
@@ -144,9 +145,12 @@ export default function Home() {
             {/* Paso 4: Vista previa y descarga para la cortadora láser */}
             <LaserSvgGenerator text={text} config={laserConfig} />
           </>
-        ) : (
+        ) : activeTool === 'lithophane' ? (
           /* Herramienta 2: Litofanías 3D (Impresión 3D) */
           <LithophaneSection />
+        ) : (
+          /* Herramienta 3: Llaveros Braille 3D (Impresión 3D STL y OBJ) */
+          <BrailleSection />
         )}
       </main>
 

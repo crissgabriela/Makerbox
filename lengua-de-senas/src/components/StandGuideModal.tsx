@@ -38,45 +38,66 @@ export const StandGuideModal: React.FC<StandGuideModalProps> = ({ isOpen, onClos
         </div>
 
         {/* Tarjetas de parámetros en lenguaje simple */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
           {/* MDF 3mm */}
-          <div className="bg-[#fcf8f2] border-2 border-[#f0dfc8] rounded-2xl p-5 flex flex-col gap-3">
-            <span className="text-base font-bold text-amber-900 flex items-center gap-1.5">
-              📦 Madera Terciada / MDF (3 mm)
+          <div className="bg-[#fcf8f2] border-2 border-[#f0dfc8] rounded-2xl p-4 flex flex-col gap-2.5">
+            <span className="text-sm font-bold text-amber-900 flex items-center gap-1.5">
+              📦 Madera / MDF (3 mm)
             </span>
-            <ul className="text-sm text-slate-700 space-y-2">
-              <li className="flex justify-between border-b border-amber-200/60 pb-1.5">
-                <span className="text-red-600 font-bold">🔴 Corte exterior:</span>
+            <ul className="text-xs text-slate-700 space-y-1.5">
+              <li className="flex justify-between border-b border-amber-200/60 pb-1">
+                <span className="text-red-600 font-bold">🔴 Corte:</span>
                 <span className="font-mono text-slate-800">Vel: 18 | Pot: 70%</span>
               </li>
-              <li className="flex justify-between border-b border-amber-200/60 pb-1.5">
-                <span className="text-blue-600 font-bold">🔵 Marcado dedos:</span>
+              <li className="flex justify-between border-b border-amber-200/60 pb-1">
+                <span className="text-blue-600 font-bold">🔵 Marcado:</span>
                 <span className="font-mono text-slate-800">Vel: 160 | Pot: 14%</span>
               </li>
               <li className="flex justify-between">
-                <span className="text-slate-800 font-bold">⚫ Letras grabadas:</span>
+                <span className="text-slate-800 font-bold">⚫ Grabado:</span>
                 <span className="font-mono text-slate-800">Vel: 320 | Pot: 20%</span>
               </li>
             </ul>
           </div>
 
           {/* Acrílico 3mm */}
-          <div className="bg-cyan-50/60 border-2 border-cyan-200 rounded-2xl p-5 flex flex-col gap-3">
-            <span className="text-base font-bold text-cyan-900 flex items-center gap-1.5">
-              ✨ Acrílico Cristal (3 mm)
+          <div className="bg-cyan-50/60 border-2 border-cyan-200 rounded-2xl p-4 flex flex-col gap-2.5">
+            <span className="text-sm font-bold text-cyan-900 flex items-center gap-1.5">
+              ✨ Acrílico (3 mm)
             </span>
-            <ul className="text-sm text-slate-700 space-y-2">
-              <li className="flex justify-between border-b border-cyan-200/60 pb-1.5">
-                <span className="text-red-600 font-bold">🔴 Corte exterior:</span>
+            <ul className="text-xs text-slate-700 space-y-1.5">
+              <li className="flex justify-between border-b border-cyan-200/60 pb-1">
+                <span className="text-red-600 font-bold">🔴 Corte:</span>
                 <span className="font-mono text-slate-800">Vel: 14 | Pot: 75%</span>
               </li>
-              <li className="flex justify-between border-b border-cyan-200/60 pb-1.5">
-                <span className="text-blue-600 font-bold">🔵 Marcado dedos:</span>
+              <li className="flex justify-between border-b border-cyan-200/60 pb-1">
+                <span className="text-blue-600 font-bold">🔵 Marcado:</span>
                 <span className="font-mono text-slate-800">Vel: 200 | Pot: 12%</span>
               </li>
               <li className="flex justify-between">
-                <span className="text-slate-800 font-bold">⚫ Letras grabadas:</span>
+                <span className="text-slate-800 font-bold">⚫ Grabado:</span>
                 <span className="font-mono text-slate-800">Vel: 300 | Pot: 18%</span>
+              </li>
+            </ul>
+          </div>
+
+          {/* Impresión 3D (Braille y Litofanía) */}
+          <div className="bg-amber-50/60 border-2 border-amber-200 rounded-2xl p-4 flex flex-col gap-2.5">
+            <span className="text-sm font-bold text-amber-900 flex items-center gap-1.5">
+              🖨️ Impresión 3D (PLA)
+            </span>
+            <ul className="text-xs text-slate-700 space-y-1.5">
+              <li className="flex justify-between border-b border-amber-200/60 pb-1">
+                <span className="text-slate-800 font-bold">⠇ Braille:</span>
+                <span className="font-mono text-amber-800">1mm base · +0.36mm domos</span>
+              </li>
+              <li className="flex justify-between border-b border-amber-200/60 pb-1">
+                <span className="text-slate-800 font-bold">📏 Capa:</span>
+                <span className="font-mono text-slate-800">0.12 - 0.16 mm</span>
+              </li>
+              <li className="flex justify-between">
+                <span className="text-slate-800 font-bold">🧱 Infill:</span>
+                <span className="font-mono text-slate-800">100% sólido</span>
               </li>
             </ul>
           </div>

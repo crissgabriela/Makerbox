@@ -5,8 +5,8 @@ import Image from 'next/image';
 import { Sparkles, BookOpen, HelpCircle } from 'lucide-react';
 
 interface HeaderProps {
-  activeTool: 'laser' | 'lithophane';
-  onSelectTool: (tool: 'laser' | 'lithophane') => void;
+  activeTool: 'laser' | 'lithophane' | 'braille';
+  onSelectTool: (tool: 'laser' | 'lithophane' | 'braille') => void;
   onOpenGuide: () => void;
   onOpenCustomSigns: () => void;
 }
@@ -51,13 +51,13 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Navegación entre las 2 herramientas de Fabricación Digital */}
+          {/* Navegación entre las 3 herramientas de Fabricación Digital */}
           <div className="flex flex-wrap items-center justify-center gap-3">
             <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
               <button
                 type="button"
                 onClick={() => onSelectTool('laser')}
-                className={`flex items-center gap-2 px-5 sm:px-6 py-3 rounded-xl font-bold text-sm sm:text-base transition-all active:scale-95 ${
+                className={`flex items-center gap-2 px-4 sm:px-5 py-3 rounded-xl font-bold text-sm sm:text-base transition-all active:scale-95 ${
                   activeTool === 'laser'
                     ? 'bg-purple-600 text-white shadow-md'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
@@ -69,13 +69,25 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectTool('lithophane')}
-                className={`flex items-center gap-2 px-5 sm:px-6 py-3 rounded-xl font-bold text-sm sm:text-base transition-all active:scale-95 ${
+                className={`flex items-center gap-2 px-4 sm:px-5 py-3 rounded-xl font-bold text-sm sm:text-base transition-all active:scale-95 ${
                   activeTool === 'lithophane'
                     ? 'bg-blue-600 text-white shadow-md'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                 }`}
               >
                 <span>🖨️ Litofanía 3D</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onSelectTool('braille')}
+                className={`flex items-center gap-2 px-4 sm:px-5 py-3 rounded-xl font-bold text-sm sm:text-base transition-all active:scale-95 ${
+                  activeTool === 'braille'
+                    ? 'bg-amber-600 text-white shadow-md'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }`}
+              >
+                <span>⠇ Braille 3D</span>
               </button>
             </div>
 
