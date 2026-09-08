@@ -15,18 +15,18 @@ export interface BrailleConfig {
   dotHeightMm: number; // 0.36 mm (solicitado)
   dotRadiusMm: number; // 0.6 mm (diámetro 1.2 mm solicitado)
   addKeychainHole: boolean; // true por defecto
-  holeDiameterMm: number; // 4.0 mm
-  plateHeightMm: number; // 18.0 mm (reducido para fabricación ultra rápida)
-  plateCornerRadiusMm: number; // 3.5 mm
-  dotSpacingMm: number; // 2.2 mm entre puntos dentro de una celda
-  cellSpacingMm: number; // 5.6 mm entre celdas consecutivas
+  holeDiameterMm: number; // 3.5 mm (orificio compacto y resistente)
+  plateHeightMm: number; // 16.0 mm (solicitado: 16 mm de ancho/alto)
+  plateCornerRadiusMm: number; // 3.0 mm
+  dotSpacingMm: number; // 2.0 mm entre puntos dentro de una celda
+  cellSpacingMm: number; // 5.0 mm entre celdas consecutivas
   baseColor: string; // Color para la placa
   dotColor: string; // Color para los puntos
   includeNumberPrefix: boolean;
   includeText: boolean; // Incluir la palabra escrita sobre el braille
   textMode: TextReliefMode; // 'emboss' (+0.36mm) o 'deboss' (-0.40mm tallado)
   textHeightReliefMm: number; // 0.36 mm (igual a la altura de los puntos braille)
-  textFontSizeMm: number; // 4.0 mm de altura de letra
+  textFontSizeMm: number; // 3.6 mm de altura de letra
   textColor: string;
 }
 
@@ -36,18 +36,18 @@ export const DEFAULT_BRAILLE_CONFIG: BrailleConfig = {
   dotHeightMm: 0.36, // 0.36 mm exacto
   dotRadiusMm: 0.6, // Diámetro 1.2 mm exacto
   addKeychainHole: true,
-  holeDiameterMm: 4.0, // Orificio compacto
-  plateHeightMm: 18.0, // Altura compacta (18 mm en lugar de 28 mm)
-  plateCornerRadiusMm: 3.5,
-  dotSpacingMm: 2.2,
-  cellSpacingMm: 5.6,
+  holeDiameterMm: 3.5, // Orificio compacto para placa de 16 mm
+  plateHeightMm: 16.0, // 16.0 mm de ancho solicitado exactamente
+  plateCornerRadiusMm: 3.0,
+  dotSpacingMm: 2.0,
+  cellSpacingMm: 5.0,
   baseColor: '#1e293b',
   dotColor: '#fbbf24',
   includeNumberPrefix: true,
   includeText: true,
   textMode: 'emboss', // 'emboss' = Sobresale del plano superior de la placa
   textHeightReliefMm: 0.36, // Sobresale +0.36 mm (alineado con los puntos braille)
-  textFontSizeMm: 4.0,
+  textFontSizeMm: 3.6,
   textColor: '#ffffff'
 };
 
@@ -273,23 +273,23 @@ export function generateBraille3D(config: BrailleConfig): BrailleModelResult {
 
   const contentSpan = config.includeText ? Math.max(brailleSpan, textSpan) : brailleSpan;
 
-  // Márgenes reducidos para placa pequeña y ligera
-  const leftMargin = config.addKeychainHole ? config.holeDiameterMm + 7.5 : 5.5;
+  // Márgenes calibrados para 38 mm de largo (con palabras como CRISS) y 16 mm de ancho
+  const leftMargin = config.addKeychainHole ? config.holeDiameterMm + 7.0 : 4.5;
   const rightMargin = 5.5;
-  const totalWidth = Math.max(30, leftMargin + contentSpan + rightMargin);
-  const totalHeight = config.plateHeightMm; // 18.0 mm
+  const totalWidth = Math.max(28, leftMargin + contentSpan + rightMargin);
+  const totalHeight = config.plateHeightMm; // 16.0 mm (solicitado)
 
   const usableStartX = -totalWidth / 2 + leftMargin;
-  const holeX = -totalWidth / 2 + (config.holeDiameterMm / 2 + 3.5);
+  const holeX = -totalWidth / 2 + (config.holeDiameterMm / 2 + 2.75);
 
   const brailleStartX = usableStartX + (contentSpan - brailleSpan) / 2;
   const textStartX = usableStartX + (contentSpan - textSpan) / 2 - textBounds.min.x;
 
-  // Distribución vertical en la placa de 18 mm:
-  // Fila superior: Texto escrito (Y centro ≈ +1.5 mm)
-  // Fila inferior: Celdas Braille (Y centro ≈ -3.5 mm)
-  const textCenterY = config.includeText ? 1.5 : 0;
-  const brailleCenterY = config.includeText ? -3.5 : 0;
+  // Distribución vertical en la placa de 16 mm:
+  // Fila superior: Texto escrito (Y centro ≈ +1.6 mm)
+  // Fila inferior: Celdas Braille (Y centro ≈ -3.2 mm)
+  const textCenterY = config.includeText ? 1.6 : 0;
+  const brailleCenterY = config.includeText ? -3.2 : 0;
 
   const plateThickness = config.plateThicknessMm; // 0.8 mm
 
@@ -521,12 +521,13 @@ export function generateBraille3D(config: BrailleConfig): BrailleModelResult {
   }
   const multiPartZipBuffer = zipSync(multiPartFiles);
 
-  // Estimaciones físicas de impresión
+  // Estimaciones físicas de impresión calibradas para Ender 3 (50 mm/s, PLA)
   const totalTriangles = (combinedGeometry.getAttribute('position').count / 3) | 0;
   const plateAreaCm2 = (totalWidth * totalHeight) / 100;
   const volumeCm3 = plateAreaCm2 * (config.plateThicknessMm / 10);
-  const estimatedWeightGrams = Math.max(1, Math.round(volumeCm3 * 1.25 * 10) / 10);
-  const estimatedPrintTimeMinutes = Math.max(3, Math.round(estimatedWeightGrams * 3.0));
+  const estimatedWeightGrams = Math.max(0.6, Math.round(volumeCm3 * 1.24 * 10) / 10);
+  // En Ender 3 tarda ~3 a 4 minutos (incluyendo borde/falda)
+  const estimatedPrintTimeMinutes = Math.max(3, Math.min(5, Math.round(estimatedWeightGrams * 4.5)));
 
   return {
     cells,

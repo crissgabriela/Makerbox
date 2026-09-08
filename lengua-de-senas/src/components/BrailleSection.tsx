@@ -130,7 +130,7 @@ export const BrailleSection: React.FC = () => {
             Llavero Braille en Impresión 3D
           </h1>
           <p className="text-sm sm:text-base text-slate-600 max-w-2xl leading-relaxed">
-            Escribe cualquier palabra o tu nombre y la plataforma lo traduce a Braille táctil con su significado escrito en tipografía Arial. Genera una plaquita compacta de <strong>0.8 mm de espesor</strong> y <strong>18 mm de alto</strong> (tiempo de impresión reducido a solo <strong>~4 a 5 minutos</strong>) lista para laminar e imprimir en 3D en <strong>STL</strong> o en <strong>OBJ multicolor</strong>.
+            Escribe cualquier palabra o tu nombre y la plataforma lo traduce a Braille táctil con su significado escrito en tipografía Arial. Genera una plaquita ultracompacta de <strong>38 mm de largo</strong>, <strong>16 mm de ancho</strong> y <strong>0.8 mm de espesor</strong>, optimizada para imprimir en <strong>Ender 3</strong> en solo <strong>~3 a 4 minutos</strong> en archivo <strong>STL</strong>.
           </p>
         </div>
       </div>
@@ -268,6 +268,7 @@ export const BrailleSection: React.FC = () => {
             modelResult={modelResult}
             baseColor={config.baseColor}
             dotColor={config.dotColor}
+            textMode={config.textMode}
             onColorChange={(b, d) => {
               updateConfig('baseColor', b);
               updateConfig('dotColor', d);
@@ -428,8 +429,8 @@ export const BrailleSection: React.FC = () => {
           <div className="bg-gradient-to-br from-amber-500 via-amber-600 to-orange-600 text-white rounded-3xl p-6 shadow-md flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Download className="w-5 h-5" />
-                <h3 className="font-black text-lg">Descargas para Impresión 3D</h3>
+                <Printer className="w-5 h-5 text-amber-100" />
+                <h3 className="font-black text-lg">Descarga para Ender 3</h3>
               </div>
               {modelResult && (
                 <span className="text-xs bg-black/20 px-2.5 py-1 rounded-full font-mono">
@@ -439,130 +440,117 @@ export const BrailleSection: React.FC = () => {
             </div>
 
             <p className="text-xs text-amber-100 leading-relaxed">
-              Elige el formato de descarga ideal para tu impresora y laminador:
+              Archivo <strong>STL</strong> monocolor optimizado para <strong>Creality Ender 3</strong> ({modelResult?.widthMm || 38} × {modelResult?.heightMm || 16} mm). Carga directa en Cura, Creality Print o PrusaSlicer:
             </p>
 
-            <div className="flex flex-col gap-2.5">
-              {/* Opción 1: STL Monocolor Universal */}
-              <button
-                type="button"
-                onClick={handleDownloadStl}
-                className="w-full bg-white text-slate-900 hover:bg-amber-50 font-black text-sm py-3 px-4 rounded-2xl transition active:scale-95 shadow-sm flex items-center justify-between gap-2"
-              >
-                <div className="flex items-center gap-2.5">
-                  {downloadSuccess === 'STL' ? (
-                    <Check className="w-4 h-4 text-emerald-600" />
-                  ) : (
-                    <Download className="w-4 h-4 text-amber-600" />
-                  )}
-                  <div className="flex flex-col text-left">
-                    <span>{downloadSuccess === 'STL' ? '¡STL Descargado!' : 'Descargar STL (Monocolor)'}</span>
-                    <span className="text-[10px] text-slate-500 font-normal">
-                      {config.textMode === 'deboss' ? 'Bajo relieve tallado (-0.40 mm)' : 'Sobre relieve (+0.36 mm)'}
-                    </span>
-                  </div>
+            {/* Botón Principal: STL para Ender 3 */}
+            <button
+              type="button"
+              onClick={handleDownloadStl}
+              className="w-full bg-white text-slate-900 hover:bg-amber-50 font-black text-base py-3.5 px-4 rounded-2xl transition active:scale-95 shadow-md flex items-center justify-between gap-2 border-2 border-amber-200"
+            >
+              <div className="flex items-center gap-3">
+                {downloadSuccess === 'STL' ? (
+                  <Check className="w-5 h-5 text-emerald-600" />
+                ) : (
+                  <Download className="w-5 h-5 text-amber-600" />
+                )}
+                <div className="flex flex-col text-left">
+                  <span>{downloadSuccess === 'STL' ? '¡STL Descargado!' : 'Descargar STL para Ender 3'}</span>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    {config.textMode === 'deboss' ? 'Bajo relieve tallado (-0.40 mm)' : 'Sobre relieve (+0.36 mm)'} · {modelResult?.widthMm || 38} × {modelResult?.heightMm || 16} mm
+                  </span>
                 </div>
-                <span className="text-[11px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md">
-                  Universal
-                </span>
-              </button>
+              </div>
+              <span className="text-xs font-black bg-amber-500 text-white px-3 py-1 rounded-xl shadow-xs">
+                STL 3D
+              </span>
+            </button>
 
-              {/* Opción 2: STL Multi-Parte ZIP (Favorito para Bambu Lab AMS y OrcaSlicer) */}
-              <button
-                type="button"
-                onClick={handleDownloadMultiPartZip}
-                className="w-full bg-amber-950/40 hover:bg-amber-950/55 text-white border border-white/20 font-bold text-sm py-3 px-4 rounded-2xl transition active:scale-95 flex items-center justify-between gap-2 shadow-xs"
-                title="Descarga un ZIP con los STLs de Base, Puntos y Letras independientes listos para Bambu AMS"
-              >
-                <div className="flex items-center gap-2.5">
-                  {downloadSuccess === 'MULTI_STL' ? (
-                    <Check className="w-4 h-4 text-emerald-300" />
-                  ) : (
-                    <Layers className="w-4 h-4 text-amber-200" />
-                  )}
-                  <div className="flex flex-col text-left">
-                    <span>{downloadSuccess === 'MULTI_STL' ? '¡ZIP Multipieza Descargado!' : 'Descargar STL Multipieza (.zip)'}</span>
-                    <span className="text-[10px] text-amber-200/80 font-normal">
-                      3 partes separadas · Asignación directa en Bambu AMS
-                    </span>
-                  </div>
-                </div>
-                <span className="text-[11px] font-bold bg-emerald-500/30 text-emerald-100 border border-emerald-300/40 px-2 py-0.5 rounded-md">
-                  Recomendado AMS
-                </span>
-              </button>
-
-              {/* Opción 3: OBJ + MTL en ZIP */}
-              <button
-                type="button"
-                onClick={handleDownloadObjZip}
-                className="w-full bg-black/25 hover:bg-black/35 text-white border border-white/15 font-bold text-sm py-2.5 px-4 rounded-2xl transition active:scale-95 flex items-center justify-between gap-2"
-                title="Empaqueta OBJ y MTL con nombres coincidentes para que el laminador cargue los colores sin errores"
-              >
-                <div className="flex items-center gap-2.5">
-                  {downloadSuccess === 'OBJ_ZIP' ? (
-                    <Check className="w-4 h-4 text-emerald-300" />
-                  ) : (
-                    <Palette className="w-4 h-4 text-amber-200" />
-                  )}
-                  <div className="flex flex-col text-left">
-                    <span>{downloadSuccess === 'OBJ_ZIP' ? '¡OBJ Multicolor Descargado!' : 'Descargar OBJ Multicolor (.zip)'}</span>
-                    <span className="text-[10px] text-amber-100/70 font-normal">
-                      Incluye archivo .obj + .mtl vinculados
-                    </span>
-                  </div>
-                </div>
-                <span className="text-[10px] font-mono text-amber-200/90">
-                  .obj + .mtl
-                </span>
-              </button>
-            </div>
-
-            {/* Acordeón para descargas individuales sueltas */}
-            <div className="pt-1">
+            {/* Acordeón para opciones avanzadas / multicolor */}
+            <div className="pt-1 border-t border-white/15">
               <button
                 type="button"
                 onClick={() => setShowIndividualFiles(!showIndividualFiles)}
-                className="text-[11px] text-amber-200 hover:text-white flex items-center gap-1 font-semibold transition"
+                className="w-full py-1.5 text-xs text-amber-200 hover:text-white flex items-center justify-between font-semibold transition"
               >
-                <FolderArchive className="w-3.5 h-3.5" />
-                <span>{showIndividualFiles ? 'Ocultar archivos sueltos' : '¿Necesitas los archivos .obj o .mtl individuales?'}</span>
+                <div className="flex items-center gap-1.5">
+                  <FolderArchive className="w-3.5 h-3.5" />
+                  <span>Opciones adicionales (Multicolor / AMS / OBJ)</span>
+                </div>
                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showIndividualFiles ? 'rotate-180' : ''}`} />
               </button>
 
               {showIndividualFiles && (
-                <div className="grid grid-cols-2 gap-2 mt-2 p-2.5 bg-black/20 rounded-xl border border-white/10">
-                  <button
-                    type="button"
-                    onClick={handleDownloadObjSingle}
-                    className="py-1.5 px-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-medium text-amber-100 text-center transition"
-                  >
-                    {downloadSuccess === 'OBJ_SINGLE' ? '¡Descargado!' : 'Descargar solo .OBJ'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDownloadMtlSingle}
-                    className="py-1.5 px-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-medium text-amber-100 text-center transition"
-                  >
-                    {downloadSuccess === 'MTL_SINGLE' ? '¡Descargado!' : 'Descargar solo .MTL'}
-                  </button>
+                <div className="flex flex-col gap-2 mt-2 p-3 bg-black/20 rounded-2xl border border-white/10 text-xs">
+                  <span className="text-[11px] text-amber-200/90 leading-tight">
+                    Para impresoras con sistema multimaterial (Bambu Lab AMS o Prusa MMU):
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={handleDownloadMultiPartZip}
+                      className="p-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-left font-medium text-white flex flex-col gap-0.5 transition"
+                    >
+                      <span className="font-bold flex items-center gap-1">
+                        <Layers className="w-3 h-3 text-emerald-300" />
+                        STL Multipieza (.zip)
+                      </span>
+                      <span className="text-[10px] text-amber-100/70">
+                        Base, puntos y letras separadas
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownloadObjZip}
+                      className="p-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-left font-medium text-white flex flex-col gap-0.5 transition"
+                    >
+                      <span className="font-bold flex items-center gap-1">
+                        <Palette className="w-3 h-3 text-amber-300" />
+                        OBJ Multicolor (.zip)
+                      </span>
+                      <span className="text-[10px] text-amber-100/70">
+                        Archivo .obj + .mtl vinculados
+                      </span>
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-end gap-2 pt-1 border-t border-white/10 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={handleDownloadObjSingle}
+                      className="text-amber-200/80 hover:text-white underline"
+                    >
+                      Solo .OBJ
+                    </button>
+                    <span>·</span>
+                    <button
+                      type="button"
+                      onClick={handleDownloadMtlSingle}
+                      className="text-amber-200/80 hover:text-white underline"
+                    >
+                      Solo .MTL
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Consejos de Laminación */}
+            {/* Consejos de Laminación para Ender 3 */}
             <div className="text-[11px] text-amber-100/90 bg-black/20 p-3.5 rounded-2xl flex flex-col gap-1.5 leading-tight border border-white/10">
               <span className="font-bold flex items-center gap-1 text-white">
-                💡 Consejos para Laminar en Bambu Studio / OrcaSlicer:
+                💡 Parámetros de Laminación para Creality Ender 3 (Cura / PrusaSlicer):
               </span>
               <span>
-                • <strong>Bajo Relieve (Tallado):</strong> El plano superior está 100% abierto en Z = 0.8 mm y baja 0.40 mm hasta el piso sólido. En el laminador se apreciará el corte nítido y la última capa no tapará las letras.
+                • <strong>Dimensiones:</strong> 38 mm de largo × 16 mm de ancho × 0.8 mm de espesor (peso ultra ligero: ~0.6 g).
               </span>
               <span>
-                • <strong>Multicolor con AMS:</strong> Usa la opción <em>STL Multipieza (.zip)</em>. Arrastra los 3 archivos a Bambu Studio, pulsa <strong>Sí</strong> en <em>¿Cargar estos archivos como un solo objeto con varias partes?</em> y asigna un color a cada ranura.
+                • <strong>Altura de Capa:</strong> 0.20 mm (o 0.16 mm para que las semiesferas braille queden con tacto ultra suave).
               </span>
               <span>
-                • <strong>Error de archivo MTL:</strong> Si usas OBJ, descomprime el archivo ZIP en una carpeta antes de abrir el .obj; así el laminador encontrará el archivo .mtl gemelo en el mismo directorio.
+                • <strong>Relleno (Infill):</strong> 100% (al tener 0.8 mm son exactamente 4 capas, se imprime completamente sólida en ~3 a 4 minutos).
+              </span>
+              <span>
+                • <strong>Bajo Relieve:</strong> El plano superior en Z = 0.8 mm está abierto y desciende 0.40 mm hasta el fondo hermético; la boquilla no tapará las letras.
               </span>
             </div>
           </div>

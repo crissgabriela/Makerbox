@@ -12,6 +12,7 @@ interface Braille3DViewerProps {
   dotColor: string;
   onColorChange?: (base: string, dot: string) => void;
   isLoading?: boolean;
+  textMode?: 'emboss' | 'deboss';
 }
 
 export const COLOR_PRESETS = [
@@ -28,7 +29,8 @@ export const Braille3DViewer: React.FC<Braille3DViewerProps> = ({
   baseColor,
   dotColor,
   onColorChange,
-  isLoading = false
+  isLoading = false,
+  textMode = 'emboss'
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -249,18 +251,20 @@ export const Braille3DViewer: React.FC<Braille3DViewerProps> = ({
               <span>Dimensiones Físicas</span>
             </div>
             <div className="flex justify-between gap-4">
-              <span className="text-slate-500">Largo × Alto:</span>
+              <span className="text-slate-500">Largo × Ancho:</span>
               <span className="font-mono font-bold text-slate-800">
                 {modelResult.widthMm} × {modelResult.heightMm} mm
               </span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="text-slate-500">Espesor Placa:</span>
-              <span className="font-mono font-bold text-blue-600">0.8 mm</span>
+              <span className="font-mono font-bold text-blue-600">0.8 mm (Ender 3)</span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="text-slate-500">Letras Escritas:</span>
-              <span className="font-mono font-bold text-cyan-600">+0.36 mm (Relieve Arial)</span>
+              <span className="font-mono font-bold text-cyan-600">
+                {textMode === 'deboss' ? '-0.40 mm (Bajo Relieve)' : '+0.36 mm (Sobre Relieve)'}
+              </span>
             </div>
             <div className="flex justify-between gap-4">
               <span className="text-slate-500">Relieve Braille:</span>
