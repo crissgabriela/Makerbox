@@ -11,22 +11,73 @@ import {
   AlertCircle,
   RefreshCw,
   Printer,
-  ArrowLeft,
-  Maximize2
+  ArrowLeft
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import Link from 'next/link';
-import { ImageFramingEditor } from '@/components/ImageFramingEditor';
+
+// Función para comprimir y mantener la foto COMPLETA sin recortar en el celular
+async function processFullImage(
+  file: File,
+  maxDim = 1400,
+  quality = 0.85
+): Promise<{ dataUrl: string; originalSizeKb: number; compressedSizeKb: number }> {
+  const originalSizeKb = Math.round(file.size / 1024);
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Error al leer el archivo de imagen'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Error al decodificar la imagen'));
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        // Escalar proporcionalmente manteniendo la imagen COMPLETA
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('No se pudo inicializar lienzo canvas'));
+          return;
+        }
+
+        // Dibujar la imagen completa en alta definición
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        const compressedSizeKb = Math.round((dataUrl.length * 3) / 4 / 1024);
+
+        resolve({ dataUrl, originalSizeKb, compressedSizeKb });
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 function SubirFotoContent() {
   const searchParams = useSearchParams();
   const urlSession = searchParams.get('s') || searchParams.get('sesion') || '';
 
   const [sessionCode, setSessionCode] = useState(urlSession.toUpperCase());
-  const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [stats, setStats] = useState<{ originalKb: number; compressedKb: number } | null>(null);
-  const [isFramingOpen, setIsFramingOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -41,44 +92,32 @@ function SubirFotoContent() {
     }
   }, [urlSession]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setErrorMessage(null);
     setIsProcessing(true);
 
-    const reader = new FileReader();
-    reader.onerror = () => {
+    try {
+      // Procesa la imagen completa sin recortar
+      const result = await processFullImage(file, 1400, 0.85);
+      setPreviewUrl(result.dataUrl);
+      setStats({
+        originalKb: result.originalSizeKb,
+        compressedKb: result.compressedSizeKb
+      });
+    } catch (err) {
+      console.error('Error procesando imagen completa:', err);
+      setErrorMessage('No se pudo leer la foto. Por favor prueba con otra imagen.');
+    } finally {
       setIsProcessing(false);
-      setErrorMessage('Error al leer la foto seleccionada.');
-    };
-    reader.onload = (ev) => {
-      const dataUrl = ev.target?.result as string;
-      if (dataUrl) {
-        setRawImageSrc(dataUrl);
-        // Abrir automáticamente el editor de encuadre para que el asistente pueda ajustar
-        setIsFramingOpen(true);
-      }
-      setIsProcessing(false);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleApplyFraming = (croppedDataUrl: string) => {
-    setPreviewUrl(croppedDataUrl);
-    const sizeKb = Math.round((croppedDataUrl.length * 3) / 4 / 1024);
-    const originalKb = rawImageSrc ? Math.round((rawImageSrc.length * 3) / 4 / 1024) : sizeKb;
-    setStats({
-      originalKb,
-      compressedKb: sizeKb
-    });
-    setIsFramingOpen(false);
+    }
   };
 
   const handleSendToScreen = async () => {
     if (!sessionCode.trim()) {
-      setErrorMessage('Por favor escribe el código que aparece en la pantalla del stand.');
+      setErrorMessage('Por favor ingresa el código de la pantalla del stand.');
       return;
     }
 
@@ -123,7 +162,7 @@ function SubirFotoContent() {
       setErrorMessage(
         err instanceof Error
           ? err.message
-          : 'No se pudo enviar la foto. Verifica que el código de la pantalla sea el correcto.'
+          : 'No se pudo enviar la foto. Verifica el código de la pantalla.'
       );
     } finally {
       setIsSending(false);
@@ -132,7 +171,6 @@ function SubirFotoContent() {
 
   const handleReset = () => {
     setPreviewUrl(null);
-    setRawImageSrc(null);
     setStats(null);
     setIsSuccess(false);
     setErrorMessage(null);
@@ -175,23 +213,23 @@ function SubirFotoContent() {
 
           <div className="flex flex-col gap-2">
             <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-black tracking-wide uppercase inline-block mx-auto">
-              ¡Foto Proyectada!
+              ¡Foto Enviada Completa!
             </span>
             <h2 className="text-2xl font-black text-slate-900">
               ¡Tu foto ya está en la pantalla!
             </h2>
             <p className="text-sm text-slate-600 max-w-sm leading-relaxed">
-              Mira hacia la proyección del stand. Tu litofanía 3D se está modelando en vivo en capas translúcidas para impresión 3D.
+              Mira hacia la pantalla del stand. Tu foto completa llegó y se está encuadrando para modelar la litofanía 3D en vivo.
             </p>
           </div>
 
           {previewUrl && (
-            <div className="w-36 h-36 rounded-2xl overflow-hidden border-2 border-emerald-400 shadow-md">
+            <div className="max-h-48 rounded-2xl overflow-hidden border-2 border-emerald-400 shadow-md">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={previewUrl}
                 alt="Foto enviada"
-                className="w-full h-full object-cover"
+                className="max-h-48 w-auto object-contain bg-slate-950"
               />
             </div>
           )}
@@ -208,7 +246,7 @@ function SubirFotoContent() {
           </div>
         </div>
       ) : (
-        /* Formulario de selección y envío */
+        /* Formulario de selección y envío de foto completa */
         <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-7 shadow-xs flex flex-col gap-5">
           {/* Código de pantalla */}
           <div className="flex flex-col gap-1.5">
@@ -226,12 +264,12 @@ function SubirFotoContent() {
               />
               {sessionCode && (
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-1 rounded-lg bg-blue-600 text-white text-[10px] font-extrabold uppercase">
-                  Conectando
+                  Conectado
                 </span>
               )}
             </div>
             <p className="text-[11px] text-slate-500">
-              Este código identifica la laptop del stand donde se proyectará la foto.
+              La foto se enviará directamente a la laptop del stand para encuadrarla allí en pantalla grande.
             </p>
           </div>
 
@@ -252,18 +290,18 @@ function SubirFotoContent() {
             className="hidden"
           />
 
-          {/* Selector de Foto o Vista previa */}
+          {/* Selector de Foto o Vista previa de imagen completa */}
           {previewUrl ? (
             <div className="flex flex-col gap-3">
-              <div className="relative rounded-2xl overflow-hidden border-2 border-blue-500 shadow-md bg-slate-950 flex items-center justify-center group">
+              <div className="relative rounded-2xl overflow-hidden border-2 border-blue-500 shadow-md bg-slate-950 flex items-center justify-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={previewUrl}
-                  alt="Vista previa encuadrada"
+                  alt="Vista previa completa"
                   className="max-h-72 w-full object-contain"
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 flex items-center justify-between text-white text-xs">
-                  <span className="font-semibold">Encuadre listo para imprimir</span>
+                  <span className="font-semibold">Foto completa lista</span>
                   {stats && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/80 font-mono font-bold">
                       ⚡ {stats.compressedKb} KB
@@ -271,16 +309,6 @@ function SubirFotoContent() {
                   )}
                 </div>
               </div>
-
-              {/* Botón para reajustar encuadre o zoom */}
-              <button
-                type="button"
-                onClick={() => setIsFramingOpen(true)}
-                className="w-full py-2.5 px-3 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
-              >
-                <Maximize2 className="w-3.5 h-3.5 text-blue-600" />
-                <span>✂️ Ajustar Encuadre y Zoom</span>
-              </button>
 
               {/* Botones para cambiar foto */}
               <div className="grid grid-cols-2 gap-2">
@@ -305,7 +333,7 @@ function SubirFotoContent() {
           ) : (
             <div className="flex flex-col gap-3">
               <div className="text-center py-2">
-                <span className="text-xs font-bold text-slate-700">Elige cómo quieres subir tu foto:</span>
+                <span className="text-xs font-bold text-slate-700">Elige tu foto para el stand:</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -320,7 +348,7 @@ function SubirFotoContent() {
                     <Camera className="w-6 h-6 text-white" />
                   </div>
                   <span className="text-sm font-black">Tomar Foto Ahora</span>
-                  <span className="text-[11px] font-normal text-blue-100">Usa la cámara del celu</span>
+                  <span className="text-[11px] font-normal text-blue-100">Cámara del celular</span>
                 </button>
 
                 {/* Botón Elegir de Galería */}
@@ -334,14 +362,14 @@ function SubirFotoContent() {
                     <ImageIcon className="w-6 h-6" />
                   </div>
                   <span className="text-sm font-black">De mi Galería</span>
-                  <span className="text-[11px] font-normal text-slate-500">Selfies, mascotas, logos...</span>
+                  <span className="text-[11px] font-normal text-slate-500">Fotos, selfies, mascotas...</span>
                 </button>
               </div>
 
               {isProcessing && (
                 <div className="flex items-center justify-center gap-2 py-3 text-xs font-bold text-blue-600 animate-pulse">
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Cargando foto...</span>
+                  <span>Optimizando foto completa...</span>
                 </div>
               )}
             </div>
@@ -369,7 +397,7 @@ function SubirFotoContent() {
             {isSending ? (
               <>
                 <RefreshCw className="w-5 h-5 animate-spin" />
-                <span>Enviando a la Pantalla del Stand...</span>
+                <span>Enviando Foto Completa a la Pantalla...</span>
               </>
             ) : (
               <>
@@ -382,25 +410,13 @@ function SubirFotoContent() {
           {/* Consejos para el asistente */}
           <div className="rounded-2xl bg-slate-50 border border-slate-200/80 p-3.5 text-[11px] text-slate-600 flex flex-col gap-1">
             <span className="font-bold text-slate-700 flex items-center gap-1">
-              💡 Tip para una mejor Litofanía 3D:
+              ✨ Comodidad en el stand:
             </span>
             <span>
-              Puedes hacer zoom sobre tu rostro o mascota para que resalte con más relieve en la litofanía 3D.
+              La foto completa llega a la pantalla del stand, donde se encuadra y centra cómodamente antes de mandar a imprimir en 3D.
             </span>
           </div>
         </div>
-      )}
-
-      {/* Editor de Encuadre y Zoom */}
-      {rawImageSrc && (
-        <ImageFramingEditor
-          imageSrc={rawImageSrc}
-          isOpen={isFramingOpen}
-          onClose={() => setIsFramingOpen(false)}
-          onApply={handleApplyFraming}
-          title="Ajustar Encuadre y Zoom"
-          confirmLabel="Listo, Usar este Encuadre"
-        />
       )}
 
       {/* Pie de página con créditos */}

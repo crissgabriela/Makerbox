@@ -53,6 +53,7 @@ const PRESET_SAMPLES = [
 
 export const LithophaneSection: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<string>(PRESET_SAMPLES[0].url);
+  const [rawFullImage, setRawFullImage] = useState<string>(PRESET_SAMPLES[0].url);
   const [config, setConfig] = useState<LithophaneConfig>(DEFAULT_LITHOPHANE_CONFIG);
   const [result, setResult] = useState<LithophaneResult | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -106,7 +107,9 @@ export const LithophaneSection: React.FC = () => {
             const reader = new FileReader();
             reader.onload = (ev) => {
               if (typeof ev.target?.result === 'string') {
+                setRawFullImage(ev.target.result);
                 setSelectedImage(ev.target.result);
+                setIsFramingOpen(true);
                 try {
                   confetti({
                     particleCount: 50,
@@ -237,6 +240,7 @@ export const LithophaneSection: React.FC = () => {
 
         if (data.success && data.image && data.timestamp) {
           lastTimestampRef.current = data.timestamp;
+          setRawFullImage(data.image);
           setSelectedImage(data.image);
 
           try {
@@ -254,10 +258,13 @@ export const LithophaneSection: React.FC = () => {
             setTimeout(() => {
               setIsQrModalOpen(false);
               setReceivedSuccess(false);
-            }, 1400);
+              // Abrir inmediatamente el editor de encuadre en la laptop
+              setIsFramingOpen(true);
+            }, 1200);
           } else {
-            setNewPhotoNotification('📸 ¡Nueva foto recibida desde el celular!');
-            setTimeout(() => setNewPhotoNotification(null), 4000);
+            setNewPhotoNotification('📸 ¡Nueva foto recibida! Ajusta el encuadre para imprimir');
+            setIsFramingOpen(true);
+            setTimeout(() => setNewPhotoNotification(null), 5000);
           }
         }
       } catch (err) {
@@ -275,7 +282,9 @@ export const LithophaneSection: React.FC = () => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       if (typeof ev.target?.result === 'string') {
+        setRawFullImage(ev.target.result);
         setSelectedImage(ev.target.result);
+        setIsFramingOpen(true);
       }
     };
     reader.readAsDataURL(file);
@@ -290,7 +299,9 @@ export const LithophaneSection: React.FC = () => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       if (typeof ev.target?.result === 'string') {
+        setRawFullImage(ev.target.result);
         setSelectedImage(ev.target.result);
+        setIsFramingOpen(true);
         try {
           confetti({
             particleCount: 50,
@@ -473,7 +484,10 @@ export const LithophaneSection: React.FC = () => {
                   <button
                     key={sample.name}
                     type="button"
-                    onClick={() => setSelectedImage(sample.url)}
+                    onClick={() => {
+                      setRawFullImage(sample.url);
+                      setSelectedImage(sample.url);
+                    }}
                     className={`p-2 rounded-xl border text-left transition flex flex-col items-center gap-1.5 active:scale-95 ${
                       selectedImage === sample.url
                         ? 'border-blue-600 bg-blue-50/80 ring-2 ring-blue-300/30'
@@ -905,9 +919,9 @@ export const LithophaneSection: React.FC = () => {
       )}
 
       {/* Editor de Encuadre y Zoom para la Laptop */}
-      {selectedImage && (
+      {(rawFullImage || selectedImage) && (
         <ImageFramingEditor
-          imageSrc={selectedImage}
+          imageSrc={rawFullImage || selectedImage}
           isOpen={isFramingOpen}
           onClose={() => setIsFramingOpen(false)}
           onApply={(cropped) => setSelectedImage(cropped)}
