@@ -306,26 +306,30 @@ export const BrailleSection: React.FC = () => {
               </div>
               <input
                 type="range"
-                min="0.5"
+                min="0.4"
                 max="1.0"
                 step="0.05"
                 value={config.dotRadiusMm}
-                onChange={(e) => updateConfig('dotRadiusMm', parseFloat(e.target.value))}
+                onChange={(e) => {
+                  const r = parseFloat(e.target.value);
+                  updateConfig('dotRadiusMm', r);
+                  updateConfig('debossStrokeMm', Math.round(r * 2 * 100) / 100);
+                }}
                 className="accent-amber-500 w-full cursor-pointer"
               />
               <span className="text-[11px] text-slate-400">
-                Norma estándar ADA / Marburg: 1.5 mm de diámetro.
+                ⭐ Valor solicitado: 1.2 mm de diámetro (semiesferas pegadas a la placa).
               </span>
             </div>
 
-            {/* Palabra Escrita en Bajorrelieve (0.4 mm profundidad, 0.8 mm trazo) */}
+            {/* Palabra Escrita en Bajorrelieve estilo Arial (0.4 mm prof, 1.2 mm trazo) */}
             <div className="flex flex-col gap-2 p-3.5 rounded-2xl bg-cyan-50/70 border border-cyan-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-sm">✍️</span>
                   <div className="flex flex-col">
-                    <span className="text-xs font-bold text-slate-800">Palabra en Bajo Relieve</span>
-                    <span className="text-[11px] text-cyan-800">Sobre el Braille para ver el significado</span>
+                    <span className="text-xs font-bold text-slate-800">Texto en Bajo Relieve (Arial)</span>
+                    <span className="text-[11px] text-cyan-800">Sobre el Braille · Fuente redonda y trazo coherente</span>
                   </div>
                 </div>
                 <input

@@ -1,20 +1,18 @@
 /**
- * Definiciones vectoriales exactas de glifos latinos para grabado en bajorrelieve
- * Trazo constante: espesor = 0.8 mm (solicitado por usuario)
- * Profundidad: 0.4 mm en la placa de 1.0 mm
+ * Tipografía redondeada estilo Arial para bajo relieve en fabricación digital 3D.
+ * Espesor del trazo: 1.2 mm (exactamente igual al diámetro de los puntos Braille para coherencia estética)
+ * Altura del glifo: 6.2 mm (proporción clásica Arial Bold, S/H ≈ 0.19)
+ * Curvas redondeadas suaves generadas por parametrización trigonométrica.
  */
 
 export interface GlyphPolygon {
-  // Puntos [x, y] del contorno exterior
   contour: [number, number][];
-  // Huecos interiores opcionales (para letras como O, A, D, R, P, B, etc.)
   holes?: [number, number][][];
 }
 
-// Dimensiones de referencia de cada glifo
-export const GLYPH_WIDTH = 3.6; // mm
-export const GLYPH_HEIGHT = 5.2; // mm
-export const STROKE_WIDTH = 0.8; // mm (solicitado exactamente 0.8)
+export const STROKE_WIDTH = 1.2; // mm (idéntico al diámetro de los puntos braille de 1.2mm)
+export const GLYPH_WIDTH = 5.0; // mm
+export const GLYPH_HEIGHT = 6.2; // mm
 
 const W = GLYPH_WIDTH;
 const H = GLYPH_HEIGHT;
@@ -23,10 +21,34 @@ const CX = W / 2;
 const MY = H / 2;
 
 /**
- * Diccionario de polígonos vectoriales para cada carácter (A-Z, 0-9, caracteres españoles)
+ * Genera puntos de un arco elíptico o circular
  */
-export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
-  // --- LETRAS BÁSICAS ---
+function arc(
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  startAngle: number,
+  endAngle: number,
+  steps = 8
+): [number, number][] {
+  const pts: [number, number][] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const a = startAngle + t * (endAngle - startAngle);
+    pts.push([
+      Math.round((cx + rx * Math.cos(a)) * 1000) / 1000,
+      Math.round((cy + ry * Math.sin(a)) * 1000) / 1000
+    ]);
+  }
+  return pts;
+}
+
+/**
+ * Diccionario de glifos redondeados estilo Arial con trazo uniforme de 1.2 mm
+ */
+export const ARIAL_GLYPHS: Record<string, GlyphPolygon[]> = {
+  // --- I ---
   I: [
     {
       contour: [
@@ -38,12 +60,13 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
     }
   ],
 
+  // --- L ---
   L: [
     {
       contour: [
         [0, 0],
-        [W, 0],
-        [W, S],
+        [W - 0.4, 0],
+        [W - 0.4, S],
         [S, S],
         [S, H],
         [0, H]
@@ -51,6 +74,7 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
     }
   ],
 
+  // --- T ---
   T: [
     {
       contour: [
@@ -66,42 +90,45 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
     }
   ],
 
+  // --- E ---
   E: [
     {
       contour: [
         [0, 0],
-        [W, 0],
-        [W, S],
+        [W - 0.3, 0],
+        [W - 0.3, S],
         [S, S],
         [S, MY - S / 2],
-        [W - 0.5, MY - S / 2],
-        [W - 0.5, MY + S / 2],
+        [W - 0.8, MY - S / 2],
+        [W - 0.8, MY + S / 2],
         [S, MY + S / 2],
         [S, H - S],
-        [W, H - S],
-        [W, H],
+        [W - 0.3, H - S],
+        [W - 0.3, H],
         [0, H]
       ]
     }
   ],
 
+  // --- F ---
   F: [
     {
       contour: [
         [0, 0],
         [S, 0],
         [S, MY - S / 2],
-        [W - 0.5, MY - S / 2],
-        [W - 0.5, MY + S / 2],
+        [W - 0.8, MY - S / 2],
+        [W - 0.8, MY + S / 2],
         [S, MY + S / 2],
         [S, H - S],
-        [W, H - S],
-        [W, H],
+        [W - 0.3, H - S],
+        [W - 0.3, H],
         [0, H]
       ]
     }
   ],
 
+  // --- H ---
   H: [
     {
       contour: [
@@ -121,78 +148,167 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
     }
   ],
 
+  // --- O (Redondeada Arial) ---
+  O: [
+    {
+      // Contorno exterior redondeado
+      contour: arc(CX, MY, W / 2, H / 2, 0, Math.PI * 2, 24),
+      // Hueco interior concéntrico
+      holes: [arc(CX, MY, W / 2 - S, H / 2 - S, Math.PI * 2, 0, 20)]
+    }
+  ],
+
+  // --- C (Redondeada Arial) ---
   C: [
     {
       contour: [
-        [0, 0],
-        [W, 0],
-        [W, S],
-        [S, S],
-        [S, H - S],
-        [W, H - S],
-        [W, H],
-        [0, H]
+        // Extremo superior
+        [W - 0.2, H - S],
+        // Arco exterior desde ~45° hasta ~315°
+        ...arc(CX, MY, W / 2, H / 2, Math.PI * 0.25, Math.PI * 1.75, 20),
+        // Extremo inferior
+        [W - 0.2, S],
+        // Arco interior desde ~315° de regreso a ~45°
+        ...arc(CX, MY, W / 2 - S, H / 2 - S, Math.PI * 1.75, Math.PI * 0.25, 16)
       ]
     }
   ],
 
+  // --- U (Redondeada Arial) ---
   U: [
     {
       contour: [
-        [0, 0],
-        [W, 0],
-        [W, H],
-        [W - S, H],
-        [W - S, S],
-        [S, S],
+        [0, H],
         [S, H],
-        [0, H]
+        [S, MY],
+        // Arco interior inferior
+        ...arc(CX, MY, W / 2 - S, MY - S, Math.PI, 0, 12),
+        [W - S, H],
+        [W, H],
+        [W, MY],
+        // Arco exterior inferior
+        ...arc(CX, MY, W / 2, MY, 0, Math.PI, 14),
+        [0, MY]
       ]
     }
   ],
 
-  O: [
+  // --- D (Redondeada Arial) ---
+  D: [
     {
       contour: [
         [0, 0],
-        [W, 0],
-        [W, H],
+        [S, 0],
+        // Arco exterior derecho
+        ...arc(S, MY, W - S, H / 2, -Math.PI / 2, Math.PI / 2, 16),
         [0, H]
       ],
       holes: [
         [
           [S, S],
-          [W - S, S],
-          [W - S, H - S],
-          [S, H - S]
+          // Arco interior derecho
+          ...arc(S, MY, W - 2 * S, H / 2 - S, Math.PI / 2, -Math.PI / 2, 12)
         ]
       ]
     }
   ],
 
+  // --- P (Redondeada Arial) ---
+  P: [
+    {
+      contour: [
+        [0, 0],
+        [S, 0],
+        [S, MY - 0.2],
+        // Arco exterior superior derecho
+        ...arc(S, (H + MY) / 2, W - S, (H - MY) / 2 + 0.2, -Math.PI / 2, Math.PI / 2, 14),
+        [0, H]
+      ],
+      holes: [
+        [
+          [S, MY + S * 0.4],
+          // Arco interior
+          ...arc(S, (H + MY) / 2, W - 2 * S, (H - MY) / 2 - S * 0.6, Math.PI / 2, -Math.PI / 2, 10)
+        ]
+      ]
+    }
+  ],
+
+  // --- R (Redondeada Arial) ---
+  R: [
+    {
+      contour: [
+        [0, 0],
+        [S, 0],
+        [S, MY - 0.3],
+        [W - S - 0.2, MY - 0.3],
+        [W, 0],
+        [W - S * 0.8, 0],
+        [CX, MY - 0.3],
+        // Arco exterior
+        ...arc(S, (H + MY) / 2, W - S, (H - MY) / 2 + 0.2, -Math.PI / 2, Math.PI / 2, 14),
+        [0, H]
+      ],
+      holes: [
+        [
+          [S, MY + S * 0.4],
+          ...arc(S, (H + MY) / 2, W - 2 * S, (H - MY) / 2 - S * 0.6, Math.PI / 2, -Math.PI / 2, 10)
+        ]
+      ]
+    }
+  ],
+
+  // --- B (Redondeada Arial) ---
+  B: [
+    {
+      contour: [
+        [0, 0],
+        [S, 0],
+        // Bucle inferior
+        ...arc(S, MY / 2, W - S, MY / 2, -Math.PI / 2, Math.PI / 2, 12),
+        // Bucle superior
+        ...arc(S, MY + MY / 2, W - S - 0.2, MY / 2, -Math.PI / 2, Math.PI / 2, 12),
+        [0, H]
+      ],
+      holes: [
+        // Hueco inferior
+        [
+          [S, S * 0.6],
+          ...arc(S, MY / 2, W - 2 * S, MY / 2 - S * 0.6, Math.PI / 2, -Math.PI / 2, 8)
+        ],
+        // Hueco superior
+        [
+          [S, MY + S * 0.4],
+          ...arc(S, MY + MY / 2, W - 2 * S - 0.2, MY / 2 - S * 0.6, Math.PI / 2, -Math.PI / 2, 8)
+        ]
+      ]
+    }
+  ],
+
+  // --- A (Estilo Arial) ---
   A: [
     {
       contour: [
         [0, 0],
         [S, 0],
-        [S, MY - S / 2],
-        [W - S, MY - S / 2],
+        [S + 0.3, MY - S * 0.5],
+        [W - S - 0.3, MY - S * 0.5],
         [W - S, 0],
         [W, 0],
-        [W, H],
-        [0, H]
+        [CX + S / 2, H],
+        [CX - S / 2, H]
       ],
       holes: [
         [
-          [S, MY + S / 2],
-          [W - S, MY + S / 2],
-          [W - S, H - S],
-          [S, H - S]
+          [S + 0.5, MY + S * 0.5],
+          [W - S - 0.5, MY + S * 0.5],
+          [CX, H - S * 1.3]
         ]
       ]
     }
   ],
 
+  // --- N ---
   N: [
     {
       contour: [
@@ -210,25 +326,93 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
     }
   ],
 
+  // --- M ---
   M: [
     {
       contour: [
         [0, 0],
         [S, 0],
-        [S, H - S * 1.5],
-        [CX, MY - S / 2],
-        [W - S, H - S * 1.5],
+        [S, H - S * 1.6],
+        [CX, MY - S * 0.4],
+        [W - S, H - S * 1.6],
         [W - S, 0],
         [W, 0],
         [W, H],
         [W - S, H],
-        [CX, MY + S / 2],
+        [CX, MY + S * 0.6],
         [S, H],
         [0, H]
       ]
     }
   ],
 
+  // --- S (Curva Suave Arial) ---
+  S: [
+    {
+      contour: [
+        // Bucle inferior derecho
+        [W - 0.2, S * 1.2],
+        ...arc(CX, MY * 0.6, W / 2, MY * 0.6, Math.PI * 0.25, Math.PI * 1.5, 14),
+        // Cruce central hacia bucle superior izquierdo
+        ...arc(CX, H - MY * 0.6, W / 2, MY * 0.6, Math.PI * 0.5, Math.PI * 1.8, 14),
+        [0.2, H - S * 1.2],
+        // Retorno interior
+        ...arc(CX, H - MY * 0.6, W / 2 - S, MY * 0.6 - S * 0.5, Math.PI * 1.8, Math.PI * 0.5, 10),
+        ...arc(CX, MY * 0.6, W / 2 - S, MY * 0.6 - S * 0.5, Math.PI * 1.5, Math.PI * 0.25, 10)
+      ]
+    }
+  ],
+
+  // --- G (Curva Suave Arial) ---
+  G: [
+    {
+      contour: [
+        [W - 0.2, H - S],
+        ...arc(CX, MY, W / 2, H / 2, Math.PI * 0.25, Math.PI * 1.75, 18),
+        [W, MY - 0.2],
+        [CX, MY - 0.2],
+        [CX, MY + S * 0.6],
+        [W - S, MY + S * 0.6],
+        [W - S, S * 1.4],
+        ...arc(CX, MY, W / 2 - S, H / 2 - S, Math.PI * 1.7, Math.PI * 0.25, 14)
+      ]
+    }
+  ],
+
+  // --- J (Curva Arial) ---
+  J: [
+    {
+      contour: [
+        [0.3, S * 1.5],
+        ...arc(CX, S * 1.5, CX, S * 1.5, Math.PI, 0, 10),
+        [W, H],
+        [W - S, H],
+        [W - S, S * 1.5],
+        ...arc(CX, S * 1.5, CX - S, S * 0.7, 0, Math.PI, 8)
+      ]
+    }
+  ],
+
+  // --- K ---
+  K: [
+    {
+      contour: [
+        [0, 0],
+        [S, 0],
+        [S, MY - S * 0.4],
+        [W - S * 0.5, 0],
+        [W, 0],
+        [CX, MY],
+        [W, H],
+        [W - S * 0.5, H],
+        [S, MY + S * 0.4],
+        [S, H],
+        [0, H]
+      ]
+    }
+  ],
+
+  // --- V ---
   V: [
     {
       contour: [
@@ -236,32 +420,34 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
         [CX + S / 2, 0],
         [W, H],
         [W - S, H],
-        [CX, S],
+        [CX, S * 1.2],
         [S, H],
         [0, H]
       ]
     }
   ],
 
+  // --- W ---
   W: [
     {
       contour: [
         [0, H],
         [S, H],
-        [W * 0.3, S],
-        [CX, MY],
-        [W * 0.7, S],
+        [W * 0.3, S * 1.2],
+        [CX, MY + S * 0.2],
+        [W * 0.7, S * 1.2],
         [W - S, H],
         [W, H],
-        [W * 0.75, 0],
-        [W * 0.65, 0],
-        [CX, MY - S / 2],
-        [W * 0.35, 0],
-        [W * 0.25, 0]
+        [W * 0.78, 0],
+        [W * 0.62, 0],
+        [CX, MY - S * 0.4],
+        [W * 0.38, 0],
+        [W * 0.22, 0]
       ]
     }
   ],
 
+  // --- X ---
   X: [
     {
       contour: [
@@ -281,6 +467,7 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
     }
   ],
 
+  // --- Y ---
   Y: [
     {
       contour: [
@@ -289,7 +476,7 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
         [CX + S / 2, MY],
         [W, H],
         [W - S, H],
-        [CX, MY + S / 2],
+        [CX, MY + S * 0.4],
         [S, H],
         [0, H],
         [CX - S / 2, MY]
@@ -297,235 +484,42 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
     }
   ],
 
+  // --- Z ---
   Z: [
     {
       contour: [
         [0, 0],
         [W, 0],
         [W, S],
-        [S * 1.5, S],
+        [S * 1.6, S],
         [W, H - S],
         [W, H],
         [0, H],
         [0, H - S],
-        [W - S * 1.5, H - S],
+        [W - S * 1.6, H - S],
         [0, S]
       ]
     }
   ],
 
-  S: [
-    {
-      contour: [
-        [0, 0],
-        [W, 0],
-        [W, MY + S / 2],
-        [S, MY + S / 2],
-        [S, H - S],
-        [W, H - S],
-        [W, H],
-        [0, H],
-        [0, MY - S / 2],
-        [W - S, MY - S / 2],
-        [W - S, S],
-        [0, S]
-      ]
-    }
-  ],
-
-  P: [
-    {
-      contour: [
-        [0, 0],
-        [S, 0],
-        [S, MY],
-        [W, MY],
-        [W, H],
-        [0, H]
-      ],
-      holes: [
-        [
-          [S, MY + S],
-          [W - S, MY + S],
-          [W - S, H - S],
-          [S, H - S]
-        ]
-      ]
-    }
-  ],
-
-  R: [
-    {
-      contour: [
-        [0, 0],
-        [S, 0],
-        [S, MY],
-        [W - S, MY],
-        [W, 0],
-        [W - S, 0],
-        [CX, MY - S / 2],
-        [W, MY],
-        [W, H],
-        [0, H]
-      ],
-      holes: [
-        [
-          [S, MY + S],
-          [W - S, MY + S],
-          [W - S, H - S],
-          [S, H - S]
-        ]
-      ]
-    }
-  ],
-
-  D: [
-    {
-      contour: [
-        [0, 0],
-        [W - 0.5, 0],
-        [W, S],
-        [W, H - S],
-        [W - 0.5, H],
-        [0, H]
-      ],
-      holes: [
-        [
-          [S, S],
-          [W - S - 0.3, S],
-          [W - S, S + 0.3],
-          [W - S, H - S - 0.3],
-          [W - S - 0.3, H - S],
-          [S, H - S]
-        ]
-      ]
-    }
-  ],
-
-  B: [
-    {
-      contour: [
-        [0, 0],
-        [W, 0],
-        [W, MY - S / 4],
-        [W - 0.5, MY],
-        [W, MY + S / 4],
-        [W, H],
-        [0, H]
-      ],
-      holes: [
-        // Hueco inferior
-        [
-          [S, S],
-          [W - S, S],
-          [W - S, MY - S / 2],
-          [S, MY - S / 2]
-        ],
-        // Hueco superior
-        [
-          [S, MY + S / 2],
-          [W - S, MY + S / 2],
-          [W - S, H - S],
-          [S, H - S]
-        ]
-      ]
-    }
-  ],
-
-  G: [
-    {
-      contour: [
-        [0, 0],
-        [W, 0],
-        [W, MY],
-        [CX, MY],
-        [CX, MY - S],
-        [W - S, MY - S],
-        [W - S, S],
-        [S, S],
-        [S, H - S],
-        [W, H - S],
-        [W, H],
-        [0, H]
-      ]
-    }
-  ],
-
-  J: [
-    {
-      contour: [
-        [0, S],
-        [S, 0],
-        [W, 0],
-        [W, H],
-        [W - S, H],
-        [W - S, S],
-        [S, S],
-        [0, S * 1.5]
-      ]
-    }
-  ],
-
-  K: [
-    {
-      contour: [
-        [0, 0],
-        [S, 0],
-        [S, MY - S / 2],
-        [W - S, 0],
-        [W, 0],
-        [CX, MY],
-        [W, H],
-        [W - S, H],
-        [S, MY + S / 2],
-        [S, H],
-        [0, H]
-      ]
-    }
-  ],
-
+  // --- Q ---
   Q: [
     {
       contour: [
-        [0, 0],
-        [W - S, 0],
+        ...arc(CX, MY, W / 2, H / 2, 0, Math.PI * 2, 20),
         [W, -0.4],
-        [W - 0.3, -0.4],
-        [W - S, S / 2],
-        [0, S / 2],
-        [0, H],
-        [W, H],
-        [W, S],
-        [W - S / 2, S]
+        [W - 0.4, -0.4],
+        [W - S, S * 0.5]
       ],
-      holes: [
-        [
-          [S, S],
-          [W - S, S],
-          [W - S, H - S],
-          [S, H - S]
-        ]
-      ]
+      holes: [arc(CX, MY, W / 2 - S, H / 2 - S, Math.PI * 2, 0, 16)]
     }
   ],
 
-  // --- NÚMEROS (0-9) ---
+  // --- NÚMEROS REDONDEADOS (0-9) ---
   '0': [
     {
-      contour: [
-        [0, 0],
-        [W, 0],
-        [W, H],
-        [0, H]
-      ],
-      holes: [
-        [
-          [S, S],
-          [W - S, S],
-          [W - S, H - S],
-          [S, H - S]
-        ]
-      ]
+      contour: arc(CX, MY, W / 2, H / 2, 0, Math.PI * 2, 20),
+      holes: [arc(CX, MY, W / 2 - S, H / 2 - S, Math.PI * 2, 0, 16)]
     }
   ],
 
@@ -535,7 +529,7 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
         [CX - S / 2, 0],
         [CX + S / 2, 0],
         [CX + S / 2, H],
-        [CX - S, H - S],
+        [CX - S, H - S * 0.8],
         [CX - S, H],
         [CX - S / 2, H]
       ]
@@ -549,14 +543,11 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
         [W, 0],
         [W, S],
         [S * 1.5, S],
-        [S * 1.5, MY],
-        [W, MY],
-        [W, H],
-        [0, H],
+        [W - S * 0.5, H - MY],
+        ...arc(CX, H - MY * 0.7, W / 2, MY * 0.7, 0, Math.PI, 14),
         [0, H - S],
-        [W - S, H - S],
-        [W - S, MY + S],
-        [0, MY + S]
+        ...arc(CX, H - MY * 0.7, W / 2 - S, MY * 0.7 - S * 0.4, Math.PI, 0, 10),
+        [0, S]
       ]
     }
   ],
@@ -564,18 +555,13 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
   '3': [
     {
       contour: [
-        [0, 0],
-        [W, 0],
-        [W, H],
-        [0, H],
-        [0, H - S],
-        [W - S, H - S],
-        [W - S, MY + S / 2],
-        [S, MY + S / 2],
-        [S, MY - S / 2],
-        [W - S, MY - S / 2],
-        [W - S, S],
-        [0, S]
+        [0.4, S * 1.2],
+        ...arc(CX, MY * 0.6, W / 2, MY * 0.6, Math.PI * 0.3, Math.PI * 1.6, 12),
+        [CX - 0.4, MY],
+        ...arc(CX, H - MY * 0.6, W / 2, MY * 0.6, Math.PI * 0.4, Math.PI * 1.7, 12),
+        [0.4, H - S * 1.2],
+        ...arc(CX, H - MY * 0.6, W / 2 - S, MY * 0.6 - S * 0.5, Math.PI * 1.7, Math.PI * 0.4, 8),
+        ...arc(CX, MY * 0.6, W / 2 - S, MY * 0.6 - S * 0.5, Math.PI * 1.6, Math.PI * 0.3, 8)
       ]
     }
   ],
@@ -583,15 +569,15 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
   '4': [
     {
       contour: [
-        [CX, 0],
-        [CX + S, 0],
-        [CX + S, H],
-        [CX, H],
-        [0, MY + S],
+        [CX + 0.3, 0],
+        [CX + 0.3 + S, 0],
+        [CX + 0.3 + S, H],
+        [CX + 0.3, H],
+        [0, MY + S * 0.8],
         [0, MY],
         [W, MY],
         [W, MY + S],
-        [CX, MY + S]
+        [CX + 0.3, MY + S]
       ]
     }
   ],
@@ -599,18 +585,15 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
   '5': [
     {
       contour: [
-        [0, 0],
-        [W, 0],
-        [W, MY + S],
-        [S, MY + S],
-        [S, H - S],
-        [W, H - S],
-        [W, H],
+        [0.3, S * 1.2],
+        ...arc(CX, MY * 0.6, W / 2, MY * 0.6, Math.PI * 0.3, Math.PI * 1.6, 14),
+        [0, MY + S],
         [0, H],
-        [0, MY],
-        [W - S, MY],
-        [W - S, S],
-        [0, S]
+        [W - 0.3, H],
+        [W - 0.3, H - S],
+        [S, H - S],
+        [S, MY + S * 0.2],
+        ...arc(CX, MY * 0.6, W / 2 - S, MY * 0.6 - S * 0.5, Math.PI * 1.6, Math.PI * 0.3, 10)
       ]
     }
   ],
@@ -618,21 +601,12 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
   '6': [
     {
       contour: [
-        [0, 0],
-        [W, 0],
-        [W, MY + S / 2],
-        [S, MY + S / 2],
-        [S, H],
-        [0, H]
+        [CX, H],
+        ...arc(CX, MY, W / 2, H / 2, Math.PI * 0.5, Math.PI * 1.5, 14),
+        ...arc(CX, MY * 0.6, W / 2, MY * 0.6, -Math.PI / 2, Math.PI / 2, 10),
+        [S, H]
       ],
-      holes: [
-        [
-          [S, S],
-          [W - S, S],
-          [W - S, MY - S / 2],
-          [S, MY - S / 2]
-        ]
-      ]
+      holes: [arc(CX, MY * 0.6, W / 2 - S, MY * 0.6 - S * 0.5, Math.PI * 2, 0, 12)]
     }
   ],
 
@@ -651,25 +625,10 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
 
   '8': [
     {
-      contour: [
-        [0, 0],
-        [W, 0],
-        [W, H],
-        [0, H]
-      ],
+      contour: arc(CX, MY, W / 2, H / 2, 0, Math.PI * 2, 20),
       holes: [
-        [
-          [S, S],
-          [W - S, S],
-          [W - S, MY - S / 2],
-          [S, MY - S / 2]
-        ],
-        [
-          [S, MY + S / 2],
-          [W - S, MY + S / 2],
-          [W - S, H - S],
-          [S, H - S]
-        ]
+        arc(CX, MY * 0.55, W / 2 - S, MY * 0.55 - S * 0.5, Math.PI * 2, 0, 10),
+        arc(CX, H - MY * 0.55, W / 2 - S, MY * 0.55 - S * 0.5, Math.PI * 2, 0, 10)
       ]
     }
   ],
@@ -679,25 +638,16 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
       contour: [
         [W - S, 0],
         [W, 0],
-        [W, H],
-        [0, H],
-        [0, MY - S / 2],
-        [W - S, MY - S / 2]
+        ...arc(CX, MY, W / 2, H / 2, -Math.PI * 0.5, Math.PI * 0.5, 14),
+        [CX, 0]
       ],
-      holes: [
-        [
-          [S, MY + S / 2],
-          [W - S, MY + S / 2],
-          [W - S, H - S],
-          [S, H - S]
-        ]
-      ]
+      holes: [arc(CX, H - MY * 0.6, W / 2 - S, MY * 0.6 - S * 0.5, Math.PI * 2, 0, 12)]
     }
   ],
 
-  // --- CARACTERES ESPAÑOLES CON TILDE Y Ñ ---
+  // --- CARACTERES ESPAÑOLES (Ñ Y ACENTOS) ---
   Ñ: [
-    // Cuerpo 'N'
+    // Cuerpo N
     {
       contour: [
         [0, 0],
@@ -712,81 +662,75 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
         [0, H]
       ]
     },
-    // Tilde sobre la N
+    // Virgulilla / Tilde suave sobre la N
     {
       contour: [
         [0.4, H + 0.3],
         [W - 0.4, H + 0.3],
-        [W - 0.4, H + 0.3 + S * 0.75],
-        [0.4, H + 0.3 + S * 0.75]
+        [W - 0.4, H + 0.3 + S * 0.7],
+        [0.4, H + 0.3 + S * 0.7]
       ]
     }
   ],
 
   Á: [
-    // Cuerpo A
     {
       contour: [
         [0, 0],
         [S, 0],
-        [S, MY - S / 2],
-        [W - S, MY - S / 2],
+        [S + 0.3, MY - S * 0.5],
+        [W - S - 0.3, MY - S * 0.5],
         [W - S, 0],
         [W, 0],
-        [W, H],
-        [0, H]
+        [CX + S / 2, H],
+        [CX - S / 2, H]
       ],
       holes: [
         [
-          [S, MY + S / 2],
-          [W - S, MY + S / 2],
-          [W - S, H - S],
-          [S, H - S]
+          [S + 0.5, MY + S * 0.5],
+          [W - S - 0.5, MY + S * 0.5],
+          [CX, H - S * 1.3]
         ]
       ]
     },
-    // Acento agudo
     {
       contour: [
-        [CX - 0.4, H + 0.3],
-        [CX + 0.6, H + 1.0],
-        [CX + 0.1, H + 1.2],
+        [CX - 0.3, H + 0.3],
+        [CX + 0.8, H + 1.1],
+        [CX + 0.2, H + 1.3],
         [CX - 0.9, H + 0.5]
       ]
     }
   ],
 
   É: [
-    // Cuerpo E
     {
       contour: [
         [0, 0],
-        [W, 0],
-        [W, S],
+        [W - 0.3, 0],
+        [W - 0.3, S],
         [S, S],
         [S, MY - S / 2],
-        [W - 0.5, MY - S / 2],
-        [W - 0.5, MY + S / 2],
+        [W - 0.8, MY - S / 2],
+        [W - 0.8, MY + S / 2],
         [S, MY + S / 2],
         [S, H - S],
-        [W, H - S],
-        [W, H],
+        [W - 0.3, H - S],
+        [W - 0.3, H],
         [0, H]
       ]
     },
-    // Acento agudo
     {
       contour: [
-        [CX - 0.4, H + 0.3],
-        [CX + 0.6, H + 1.0],
-        [CX + 0.1, H + 1.2],
+        [CX - 0.3, H + 0.3],
+        [CX + 0.8, H + 1.1],
+        [CX + 0.2, H + 1.3],
         [CX - 0.9, H + 0.5]
       ]
     }
   ],
 
   Í: [
-    // Cuerpo I
     {
       contour: [
         [CX - S / 2, 0],
@@ -795,66 +739,50 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
         [CX - S / 2, H]
       ]
     },
-    // Acento agudo
     {
       contour: [
-        [CX - 0.4, H + 0.3],
-        [CX + 0.6, H + 1.0],
-        [CX + 0.1, H + 1.2],
+        [CX - 0.3, H + 0.3],
+        [CX + 0.8, H + 1.1],
+        [CX + 0.2, H + 1.3],
         [CX - 0.9, H + 0.5]
       ]
     }
   ],
 
   Ó: [
-    // Cuerpo O
     {
-      contour: [
-        [0, 0],
-        [W, 0],
-        [W, H],
-        [0, H]
-      ],
-      holes: [
-        [
-          [S, S],
-          [W - S, S],
-          [W - S, H - S],
-          [S, H - S]
-        ]
-      ]
+      contour: arc(CX, MY, W / 2, H / 2, 0, Math.PI * 2, 20),
+      holes: [arc(CX, MY, W / 2 - S, H / 2 - S, Math.PI * 2, 0, 16)]
     },
-    // Acento agudo
     {
       contour: [
-        [CX - 0.4, H + 0.3],
-        [CX + 0.6, H + 1.0],
-        [CX + 0.1, H + 1.2],
+        [CX - 0.3, H + 0.3],
+        [CX + 0.8, H + 1.1],
+        [CX + 0.2, H + 1.3],
         [CX - 0.9, H + 0.5]
       ]
     }
   ],
 
   Ú: [
-    // Cuerpo U
     {
       contour: [
-        [0, 0],
-        [W, 0],
-        [W, H],
-        [W - S, H],
-        [W - S, S],
-        [S, S],
+        [0, H],
         [S, H],
-        [0, H]
+        [S, MY],
+        ...arc(CX, MY, W / 2 - S, MY - S, Math.PI, 0, 12),
+        [W - S, H],
+        [W, H],
+        [W, MY],
+        ...arc(CX, MY, W / 2, MY, 0, Math.PI, 14),
+        [0, MY]
       ]
     },
-    // Acento agudo
     {
       contour: [
-        [CX - 0.4, H + 0.3],
-        [CX + 0.6, H + 1.0],
-        [CX + 0.1, H + 1.2],
+        [CX - 0.3, H + 0.3],
+        [CX + 0.8, H + 1.1],
+        [CX + 0.2, H + 1.3],
         [CX - 0.9, H + 0.5]
       ]
     }
@@ -863,37 +791,32 @@ export const LATIN_GLYPHS: Record<string, GlyphPolygon[]> = {
   '-': [
     {
       contour: [
-        [0.2, MY - S / 2],
-        [W - 0.2, MY - S / 2],
-        [W - 0.2, MY + S / 2],
-        [0.2, MY + S / 2]
+        [0.3, MY - S / 2],
+        [W - 0.3, MY - S / 2],
+        [W - 0.3, MY + S / 2],
+        [0.3, MY + S / 2]
       ]
     }
   ],
 
   '.': [
     {
-      contour: [
-        [CX - S / 2, 0],
-        [CX + S / 2, 0],
-        [CX + S / 2, S],
-        [CX - S / 2, S]
-      ]
+      contour: arc(CX, S / 2, S / 2, S / 2, 0, Math.PI * 2, 10)
     }
   ]
 };
 
 /**
- * Obtiene los polígonos de un carácter escalados y desplazados a la posición (x, y)
+ * Obtiene los polígonos del glifo Arial escalado y posicionado en (originX, originY)
  */
-export function getGlyphPolygonsAt(
+export function getArialGlyphAt(
   char: string,
   originX: number,
   originY: number,
   scale = 1.0
 ): { contour: [number, number][]; holes?: [number, number][][] }[] {
   const upper = char.toUpperCase();
-  const glyphs = LATIN_GLYPHS[upper];
+  const glyphs = ARIAL_GLYPHS[upper];
   if (!glyphs) return [];
 
   return glyphs.map((g) => ({
