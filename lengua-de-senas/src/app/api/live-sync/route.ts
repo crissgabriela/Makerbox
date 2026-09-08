@@ -111,7 +111,19 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Entregar imagen y marcar como consumida
+    const sinceParam = searchParams.get('since');
+    const sinceTimestamp = sinceParam ? Number(sinceParam) : 0;
+
+    // Si ya se entregó esta foto y no hay una versión más nueva enviada
+    if (sinceTimestamp > 0 && session.timestamp <= sinceTimestamp) {
+      return NextResponse.json({
+        success: false,
+        status: 'no_new_image',
+        timestamp: session.timestamp
+      });
+    }
+
+    // Entregar imagen más reciente
     session.consumed = true;
 
     return NextResponse.json({

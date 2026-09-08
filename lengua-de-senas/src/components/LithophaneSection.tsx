@@ -9,6 +9,7 @@ import {
   downloadStlFile
 } from '@/lib/lithophaneGenerator';
 import { Lithophane3DViewer } from './Lithophane3DViewer';
+import { ImageFramingEditor } from './ImageFramingEditor';
 import {
   Upload,
   Download,
@@ -137,20 +138,47 @@ export const LithophaneSection: React.FC = () => {
   const [isCopied, setIsCopied] = useState(false);
   const [receivedSuccess, setReceivedSuccess] = useState(false);
   const [isLocalhost, setIsLocalhost] = useState(false);
+  const [newPhotoNotification, setNewPhotoNotification] = useState<string | null>(null);
+  const [isFramingOpen, setIsFramingOpen] = useState(false);
+  const lastTimestampRef = useRef<number>(0);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const isLocal =
         window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       setIsLocalhost(isLocal);
+
+      // Código de sesión persistente para el stand (no cambia al cerrar el modal)
+      const stored = localStorage.getItem('makerbox_stand_session');
+      if (stored) {
+        setSessionId(stored);
+      } else {
+        const newCode = 'MK-' + Math.floor(1000 + Math.random() * 9000);
+        setSessionId(newCode);
+        localStorage.setItem('makerbox_stand_session', newCode);
+      }
     }
   }, []);
 
   const openQrModal = () => {
-    const randomCode = 'MK-' + Math.floor(1000 + Math.random() * 9000);
-    setSessionId(randomCode);
+    if (!sessionId) {
+      const newCode = 'MK-' + Math.floor(1000 + Math.random() * 9000);
+      setSessionId(newCode);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('makerbox_stand_session', newCode);
+      }
+    }
     setReceivedSuccess(false);
     setIsQrModalOpen(true);
+  };
+
+  const regenerateSessionCode = () => {
+    const newCode = 'MK-' + Math.floor(1000 + Math.random() * 9000);
+    setSessionId(newCode);
+    lastTimestampRef.current = 0;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('makerbox_stand_session', newCode);
+    }
   };
 
   const getUploadUrl = () => {
@@ -170,7 +198,7 @@ export const LithophaneSection: React.FC = () => {
 
   // Generar código QR dinámicamente
   useEffect(() => {
-    if (!isQrModalOpen || !sessionId) return;
+    if (!sessionId) return;
 
     let active = true;
     const url = getUploadUrl();
@@ -191,20 +219,26 @@ export const LithophaneSection: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [isQrModalOpen, sessionId, customHost]);
+  }, [sessionId, customHost]);
 
-  // Sondeo en vivo cada 1.4s esperando la foto enviada desde el celular
+  // Sondeo continuo (activo en modal y en segundo plano) para recibir cualquier foto nueva
   useEffect(() => {
-    if (!isQrModalOpen || !sessionId || receivedSuccess) return;
+    if (!sessionId) return;
+
+    // Más rápido (1.2s) si el modal está abierto; cada 2.5s en segundo plano
+    const pollDelay = isQrModalOpen ? 1200 : 2500;
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/live-sync?s=${sessionId}`);
+        const url = `/api/live-sync?s=${encodeURIComponent(sessionId)}&since=${lastTimestampRef.current}`;
+        const res = await fetch(url);
         if (!res.ok) return;
         const data = await res.json();
-        if (data.success && data.image) {
-          setReceivedSuccess(true);
+
+        if (data.success && data.image && data.timestamp) {
+          lastTimestampRef.current = data.timestamp;
           setSelectedImage(data.image);
+
           try {
             confetti({
               particleCount: 100,
@@ -214,18 +248,25 @@ export const LithophaneSection: React.FC = () => {
           } catch {
             // Ignorar
           }
-          setTimeout(() => {
-            setIsQrModalOpen(false);
-            setReceivedSuccess(false);
-          }, 1600);
+
+          if (isQrModalOpen) {
+            setReceivedSuccess(true);
+            setTimeout(() => {
+              setIsQrModalOpen(false);
+              setReceivedSuccess(false);
+            }, 1400);
+          } else {
+            setNewPhotoNotification('📸 ¡Nueva foto recibida desde el celular!');
+            setTimeout(() => setNewPhotoNotification(null), 4000);
+          }
         }
-      } catch {
-        // Sondeo continuo
+      } catch (err) {
+        // Silencioso ante pérdidas temporales de red
       }
-    }, 1400);
+    }, pollDelay);
 
     return () => clearInterval(interval);
-  }, [isQrModalOpen, sessionId, receivedSuccess]);
+  }, [sessionId, isQrModalOpen]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -392,6 +433,18 @@ export const LithophaneSection: React.FC = () => {
                 </>
               )}
             </div>
+
+            {/* Botón para ajustar encuadre y zoom en la laptop */}
+            {selectedImage && (
+              <button
+                type="button"
+                onClick={() => setIsFramingOpen(true)}
+                className="w-full py-2.5 px-3 rounded-2xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-98"
+              >
+                <Maximize2 className="w-3.5 h-3.5 text-blue-600" />
+                <span>✂️ Ajustar Encuadre y Zoom</span>
+              </button>
+            )}
 
             {/* Botón interactivo para escanear QR desde el celular */}
             <button
@@ -777,24 +830,36 @@ export const LithophaneSection: React.FC = () => {
                 </div>
 
                 {/* Copiar enlace directo o probar */}
-                <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={handleCopyLink}
-                    className="text-xs font-bold text-slate-600 hover:text-blue-600 flex items-center gap-1.5 transition cursor-pointer"
-                  >
-                    {isCopied ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="text-emerald-600">¡Enlace copiado!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Copiar enlace</span>
-                      </>
-                    )}
-                  </button>
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      className="text-xs font-bold text-slate-600 hover:text-blue-600 flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      {isCopied ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <span className="text-emerald-600">¡Enlace copiado!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copiar enlace</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={regenerateSessionCode}
+                      className="text-xs font-bold text-slate-500 hover:text-indigo-600 flex items-center gap-1 transition cursor-pointer"
+                      title="Generar un nuevo código de sesión para el stand"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Cambiar código</span>
+                    </button>
+                  </div>
 
                   <a
                     href={getUploadUrl()}
@@ -829,6 +894,26 @@ export const LithophaneSection: React.FC = () => {
             )}
           </div>
         </div>
+      )}
+
+      {/* Notificación Toast flotante cuando llega una foto nueva con el modal cerrado */}
+      {newPhotoNotification && (
+        <div className="fixed top-20 right-6 z-50 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-sm px-5 py-3.5 rounded-2xl shadow-xl shadow-emerald-600/30 flex items-center gap-2.5 animate-in slide-in-from-top-4 fade-in duration-300">
+          <Sparkles className="w-4 h-4 text-emerald-200 animate-spin" />
+          <span>{newPhotoNotification}</span>
+        </div>
+      )}
+
+      {/* Editor de Encuadre y Zoom para la Laptop */}
+      {selectedImage && (
+        <ImageFramingEditor
+          imageSrc={selectedImage}
+          isOpen={isFramingOpen}
+          onClose={() => setIsFramingOpen(false)}
+          onApply={(cropped) => setSelectedImage(cropped)}
+          title="Ajustar Encuadre y Zoom del Modelo"
+          confirmLabel="Aplicar a la Litofanía 3D"
+        />
       )}
     </div>
   );

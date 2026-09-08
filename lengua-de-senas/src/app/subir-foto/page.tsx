@@ -11,70 +11,22 @@ import {
   AlertCircle,
   RefreshCw,
   Printer,
-  ArrowLeft
+  ArrowLeft,
+  Maximize2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import Link from 'next/link';
-
-// Función para comprimir y redimensionar la imagen en el navegador del celular
-async function compressImage(file: File, maxDim = 1024, quality = 0.82): Promise<{ dataUrl: string; originalSizeKb: number; compressedSizeKb: number }> {
-  const originalSizeKb = Math.round(file.size / 1024);
-
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Error al leer el archivo'));
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('Error al decodificar la imagen'));
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-
-        // Calcular escala proporcional
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('No se pudo inicializar el lienzo canvas'));
-          return;
-        }
-
-        // Fondo blanco por si hay transparencias PNG
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(img, 0, 0, width, height);
-
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
-        // Estimar peso base64 en KB
-        const compressedSizeKb = Math.round((dataUrl.length * 3) / 4 / 1024);
-
-        resolve({ dataUrl, originalSizeKb, compressedSizeKb });
-      };
-      img.src = e.target?.result as string;
-    };
-    reader.readAsDataURL(file);
-  });
-}
+import { ImageFramingEditor } from '@/components/ImageFramingEditor';
 
 function SubirFotoContent() {
   const searchParams = useSearchParams();
   const urlSession = searchParams.get('s') || searchParams.get('sesion') || '';
 
   const [sessionCode, setSessionCode] = useState(urlSession.toUpperCase());
+  const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [stats, setStats] = useState<{ originalKb: number; compressedKb: number } | null>(null);
+  const [isFramingOpen, setIsFramingOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -89,26 +41,39 @@ function SubirFotoContent() {
     }
   }, [urlSession]);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setErrorMessage(null);
     setIsProcessing(true);
 
-    try {
-      const result = await compressImage(file, 1024, 0.82);
-      setPreviewUrl(result.dataUrl);
-      setStats({
-        originalKb: result.originalSizeKb,
-        compressedKb: result.compressedSizeKb
-      });
-    } catch (err) {
-      console.error('Error procesando imagen:', err);
-      setErrorMessage('No se pudo procesar la foto seleccionada. Prueba con otra imagen.');
-    } finally {
+    const reader = new FileReader();
+    reader.onerror = () => {
       setIsProcessing(false);
-    }
+      setErrorMessage('Error al leer la foto seleccionada.');
+    };
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      if (dataUrl) {
+        setRawImageSrc(dataUrl);
+        // Abrir automáticamente el editor de encuadre para que el asistente pueda ajustar
+        setIsFramingOpen(true);
+      }
+      setIsProcessing(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleApplyFraming = (croppedDataUrl: string) => {
+    setPreviewUrl(croppedDataUrl);
+    const sizeKb = Math.round((croppedDataUrl.length * 3) / 4 / 1024);
+    const originalKb = rawImageSrc ? Math.round((rawImageSrc.length * 3) / 4 / 1024) : sizeKb;
+    setStats({
+      originalKb,
+      compressedKb: sizeKb
+    });
+    setIsFramingOpen(false);
   };
 
   const handleSendToScreen = async () => {
@@ -167,6 +132,7 @@ function SubirFotoContent() {
 
   const handleReset = () => {
     setPreviewUrl(null);
+    setRawImageSrc(null);
     setStats(null);
     setIsSuccess(false);
     setErrorMessage(null);
@@ -234,10 +200,10 @@ function SubirFotoContent() {
             <button
               type="button"
               onClick={handleReset}
-              className="w-full py-3.5 px-5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-sm transition shadow-md active:scale-95 flex items-center justify-center gap-2"
+              className="w-full py-3.5 px-5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-sm transition shadow-md active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
             >
               <RefreshCw className="w-4 h-4" />
-              <span>Enviar otra foto</span>
+              <span>Enviar otra foto a la pantalla</span>
             </button>
           </div>
         </div>
@@ -293,11 +259,11 @@ function SubirFotoContent() {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={previewUrl}
-                  alt="Vista previa"
+                  alt="Vista previa encuadrada"
                   className="max-h-72 w-full object-contain"
                 />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 flex items-center justify-between text-white text-xs">
-                  <span className="font-semibold">Foto lista para enviar</span>
+                  <span className="font-semibold">Encuadre listo para imprimir</span>
                   {stats && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/80 font-mono font-bold">
                       ⚡ {stats.compressedKb} KB
@@ -306,12 +272,22 @@ function SubirFotoContent() {
                 </div>
               </div>
 
+              {/* Botón para reajustar encuadre o zoom */}
+              <button
+                type="button"
+                onClick={() => setIsFramingOpen(true)}
+                className="w-full py-2.5 px-3 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
+              >
+                <Maximize2 className="w-3.5 h-3.5 text-blue-600" />
+                <span>✂️ Ajustar Encuadre y Zoom</span>
+              </button>
+
               {/* Botones para cambiar foto */}
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => cameraInputRef.current?.click()}
-                  className="py-2.5 px-3 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                  className="py-2.5 px-3 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Camera className="w-3.5 h-3.5 text-blue-600" />
                   <span>Repetir foto</span>
@@ -319,7 +295,7 @@ function SubirFotoContent() {
                 <button
                   type="button"
                   onClick={() => galleryInputRef.current?.click()}
-                  className="py-2.5 px-3 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition flex items-center justify-center gap-1.5"
+                  className="py-2.5 px-3 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
                   <span>Elegir otra</span>
@@ -338,7 +314,7 @@ function SubirFotoContent() {
                   type="button"
                   onClick={() => cameraInputRef.current?.click()}
                   disabled={isProcessing}
-                  className="p-5 rounded-2xl border-2 border-blue-600/30 bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-extrabold flex flex-col items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95 transition hover:brightness-105"
+                  className="p-5 rounded-2xl border-2 border-blue-600/30 bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-extrabold flex flex-col items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-95 transition hover:brightness-105 cursor-pointer"
                 >
                   <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-xs">
                     <Camera className="w-6 h-6 text-white" />
@@ -352,7 +328,7 @@ function SubirFotoContent() {
                   type="button"
                   onClick={() => galleryInputRef.current?.click()}
                   disabled={isProcessing}
-                  className="p-5 rounded-2xl border-2 border-slate-200 bg-slate-50 hover:bg-white text-slate-800 font-extrabold flex flex-col items-center justify-center gap-2 shadow-xs active:scale-95 transition"
+                  className="p-5 rounded-2xl border-2 border-slate-200 bg-slate-50 hover:bg-white text-slate-800 font-extrabold flex flex-col items-center justify-center gap-2 shadow-xs active:scale-95 transition cursor-pointer"
                 >
                   <div className="w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center">
                     <ImageIcon className="w-6 h-6" />
@@ -365,7 +341,7 @@ function SubirFotoContent() {
               {isProcessing && (
                 <div className="flex items-center justify-center gap-2 py-3 text-xs font-bold text-blue-600 animate-pulse">
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Optimizando foto en el celular...</span>
+                  <span>Cargando foto...</span>
                 </div>
               )}
             </div>
@@ -384,7 +360,7 @@ function SubirFotoContent() {
             type="button"
             onClick={handleSendToScreen}
             disabled={!previewUrl || isSending || isProcessing || !sessionCode.trim()}
-            className={`w-full py-4 px-6 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-2.5 transition shadow-lg ${
+            className={`w-full py-4 px-6 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-2.5 transition shadow-lg cursor-pointer ${
               !previewUrl || isSending || isProcessing || !sessionCode.trim()
                 ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                 : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-blue-500/25 active:scale-[0.98]'
@@ -409,10 +385,22 @@ function SubirFotoContent() {
               💡 Tip para una mejor Litofanía 3D:
             </span>
             <span>
-              Las fotos con buen contraste entre luces y sombras (rostros bien iluminados, fondos claros o dibujos) se ven mucho más detalladas al verlas a contraluz.
+              Puedes hacer zoom sobre tu rostro o mascota para que resalte con más relieve en la litofanía 3D.
             </span>
           </div>
         </div>
+      )}
+
+      {/* Editor de Encuadre y Zoom */}
+      {rawImageSrc && (
+        <ImageFramingEditor
+          imageSrc={rawImageSrc}
+          isOpen={isFramingOpen}
+          onClose={() => setIsFramingOpen(false)}
+          onApply={handleApplyFraming}
+          title="Ajustar Encuadre y Zoom"
+          confirmLabel="Listo, Usar este Encuadre"
+        />
       )}
 
       {/* Pie de página con créditos */}
