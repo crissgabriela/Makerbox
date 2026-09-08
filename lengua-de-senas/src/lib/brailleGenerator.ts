@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Font } from 'three/examples/jsm/loaders/FontLoader.js';
 import { translateTextToBraille, BrailleCell } from './brailleData';
 import { HELVETIKER_BOLD } from './helvetikerBold';
+import { zipSync, strToU8 } from 'fflate';
 
 // Cargar fuente Helvetiker Bold (modelo de Helvetica / Arial para Three.js)
 const helvetikerFont = new Font(HELVETIKER_BOLD);
@@ -23,7 +24,7 @@ export interface BrailleConfig {
   dotColor: string; // Color para los puntos
   includeNumberPrefix: boolean;
   includeText: boolean; // Incluir la palabra escrita sobre el braille
-  textMode: TextReliefMode; // 'emboss' (sobresale +0.36mm, recomendado) o 'deboss' (-0.30mm)
+  textMode: TextReliefMode; // 'emboss' (+0.36mm) o 'deboss' (-0.40mm tallado)
   textHeightReliefMm: number; // 0.36 mm (igual a la altura de los puntos braille)
   textFontSizeMm: number; // 4.0 mm de altura de letra
   textColor: string;
@@ -64,8 +65,14 @@ export interface BrailleModelResult {
   estimatedPrintTimeMinutes: number;
   dotCount: number;
   stlBuffer: ArrayBuffer;
+  baseStlBuffer: ArrayBuffer;
+  dotsStlBuffer: ArrayBuffer | null;
+  textStlBuffer: ArrayBuffer | null;
   objContent: string;
   mtlContent: string;
+  objZipBuffer: Uint8Array;
+  multiPartZipBuffer: Uint8Array;
+  baseFilename: string;
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -279,7 +286,7 @@ export function generateBraille3D(config: BrailleConfig): BrailleModelResult {
   const textStartX = usableStartX + (contentSpan - textSpan) / 2 - textBounds.min.x;
 
   // Distribución vertical en la placa de 18 mm:
-  // Fila superior: Texto escrito (Y centro ≈ +3.4 mm)
+  // Fila superior: Texto escrito (Y centro ≈ +1.5 mm)
   // Fila inferior: Celdas Braille (Y centro ≈ -3.5 mm)
   const textCenterY = config.includeText ? 1.5 : 0;
   const brailleCenterY = config.includeText ? -3.5 : 0;
@@ -287,25 +294,138 @@ export function generateBraille3D(config: BrailleConfig): BrailleModelResult {
   const plateThickness = config.plateThicknessMm; // 0.8 mm
 
   // =========================================================================
-  // 1. GEOMETRÍA DE LA PLACA BASE (Espesor 0.8 mm exacto)
+  // 1. GEOMETRÍA DE LA PLACA BASE (Espesor 0.8 mm)
   // =========================================================================
-  const plateShape = createPlaqueShape(
-    totalWidth,
-    totalHeight,
-    config.plateCornerRadiusMm,
-    config.addKeychainHole,
-    config.holeDiameterMm,
-    holeX
-  );
+  const isDeboss = config.textMode === 'deboss' && config.includeText && textShapes.length > 0;
+  const debossDepth = 0.4; // 0.40 mm tallado
+  const floorThickness = Math.max(0.2, plateThickness - debossDepth); // 0.40 mm piso sólido
+  const actualDebossDepth = plateThickness - floorThickness; // 0.40 mm
 
-  const plateExtrudeSettings: THREE.ExtrudeGeometryOptions = {
-    depth: plateThickness, // 0.8 mm
-    bevelEnabled: false,
-    curveSegments: 24
-  };
+  let baseGeometry: THREE.BufferGeometry;
+  let textGeometry: THREE.BufferGeometry | null = null;
 
-  const baseGeometry = new THREE.ExtrudeGeometry(plateShape, plateExtrudeSettings);
-  baseGeometry.computeVertexNormals();
+  if (isDeboss) {
+    // -----------------------------------------------------------------------
+    // MODO BAJORRELIEVE TOPOLÓGICO:
+    // Para que la última capa del laminador NO tape las letras, la placa se divide:
+    // 1) Piso base sólido desde Z = 0 hasta Z = 0.40 mm (piso hermético de 2 capas).
+    // 2) Capa superior desde Z = 0.40 hasta Z = 0.80 mm con las letras como orificios 2D.
+    //    En Z = 0.80 mm el plano superior NO tiene caras sobre las letras (apertura 100%).
+    // 3) Islas interiores (counters) de letras como 'R', 'O', 'B', 'A', 'P', 'D', '0'
+    //    se extruyen sólidas de Z = 0.40 a 0.80 mm para mantener el cuerpo de la letra.
+    // -----------------------------------------------------------------------
+    const floorPlateShape = createPlaqueShape(
+      totalWidth,
+      totalHeight,
+      config.plateCornerRadiusMm,
+      config.addKeychainHole,
+      config.holeDiameterMm,
+      holeX
+    );
+    const floorGeo = new THREE.ExtrudeGeometry(floorPlateShape, {
+      depth: floorThickness,
+      bevelEnabled: false,
+      curveSegments: 24
+    });
+
+    const topPlateShape = createPlaqueShape(
+      totalWidth,
+      totalHeight,
+      config.plateCornerRadiusMm,
+      config.addKeychainHole,
+      config.holeDiameterMm,
+      holeX
+    );
+
+    const islandGeos: THREE.BufferGeometry[] = [];
+
+    textShapes.forEach((shape) => {
+      // Contorno exterior de la letra -> Agregado como hueco a la placa superior
+      const outerHole = new THREE.Path();
+      const pts = shape.getPoints(12);
+      pts.forEach((pt, i) => {
+        const tx = pt.x + textStartX;
+        const ty = pt.y + textCenterY;
+        if (i === 0) outerHole.moveTo(tx, ty);
+        else outerHole.lineTo(tx, ty);
+      });
+      outerHole.closePath();
+      topPlateShape.holes.push(outerHole);
+
+      // Islas interiores de la letra (e.g. la isla central de la O, R, B, etc.)
+      if (shape.holes && shape.holes.length > 0) {
+        shape.holes.forEach((innerHole) => {
+          const islandShape = new THREE.Shape();
+          const innerPts = innerHole.getPoints(12);
+          innerPts.forEach((ipt, i) => {
+            const tx = ipt.x + textStartX;
+            const ty = ipt.y + textCenterY;
+            if (i === 0) islandShape.moveTo(tx, ty);
+            else islandShape.lineTo(tx, ty);
+          });
+          islandShape.closePath();
+          const islandGeo = new THREE.ExtrudeGeometry(islandShape, {
+            depth: actualDebossDepth,
+            bevelEnabled: false,
+            curveSegments: 12
+          });
+          islandGeo.translate(0, 0, floorThickness);
+          islandGeos.push(islandGeo);
+        });
+      }
+    });
+
+    const topGeo = new THREE.ExtrudeGeometry(topPlateShape, {
+      depth: actualDebossDepth,
+      bevelEnabled: false,
+      curveSegments: 24
+    });
+    topGeo.translate(0, 0, floorThickness);
+
+    baseGeometry = mergeBufferGeometries([floorGeo, topGeo, ...islandGeos]);
+    baseGeometry.computeVertexNormals();
+
+    // Malla de texto para visor 3D y piezas inlay multicolor (0.20 mm dentro del hueco de 0.40 mm)
+    const textExtrudeSettings: THREE.ExtrudeGeometryOptions = {
+      depth: 0.2, // Altura dentro de la cavidad para permitir visión nítida de bajo relieve
+      bevelEnabled: false,
+      curveSegments: 12
+    };
+    textGeometry = new THREE.ExtrudeGeometry(textShapes, textExtrudeSettings);
+    textGeometry.translate(textStartX, textCenterY, floorThickness);
+    textGeometry.computeVertexNormals();
+  } else {
+    // MODO ALTORRELIEVE O PLACA NORMAL
+    const plateShape = createPlaqueShape(
+      totalWidth,
+      totalHeight,
+      config.plateCornerRadiusMm,
+      config.addKeychainHole,
+      config.holeDiameterMm,
+      holeX
+    );
+
+    const plateExtrudeSettings: THREE.ExtrudeGeometryOptions = {
+      depth: plateThickness, // 0.8 mm
+      bevelEnabled: false,
+      curveSegments: 24
+    };
+
+    baseGeometry = new THREE.ExtrudeGeometry(plateShape, plateExtrudeSettings);
+    baseGeometry.computeVertexNormals();
+
+    if (config.includeText && textShapes.length > 0) {
+      // MODO ALTORRELIEVE: Las letras sobresalen +0.36 mm del plano superior (Z = 0.8 mm hasta 1.16 mm)
+      const textExtrudeSettings: THREE.ExtrudeGeometryOptions = {
+        depth: config.textHeightReliefMm, // 0.36 mm
+        bevelEnabled: false,
+        curveSegments: 12
+      };
+      textGeometry = new THREE.ExtrudeGeometry(textShapes, textExtrudeSettings);
+      textGeometry.translate(textStartX, textCenterY, plateThickness);
+      textGeometry.computeVertexNormals();
+    }
+  }
 
   // =========================================================================
   // 2. GEOMETRÍA DE LOS PUNTOS BRAILLE (Día 1.2 mm, Alt 0.36 mm)
@@ -330,7 +450,7 @@ export function generateBraille3D(config: BrailleConfig): BrailleModelResult {
 
   const dotGeometries: THREE.BufferGeometry[] = [];
   dotCenters.forEach(([dx, dy]) => {
-    // Semiesferas fusionadas sobre el plano Z = 0.8 mm
+    // Semiesferas fusionadas sobre el plano superior Z = 0.8 mm
     const dome = createSeamlessDome(dx, dy, dotRadius, dotHeight, plateThickness, 16, 4);
     dotGeometries.push(dome);
   });
@@ -342,56 +462,39 @@ export function generateBraille3D(config: BrailleConfig): BrailleModelResult {
   }
 
   // =========================================================================
-  // 3. GEOMETRÍA DE LAS LETRAS ESCRITAS (Fuente Helvetiker/Arial)
-  // =========================================================================
-  let textGeometry: THREE.BufferGeometry | null = null;
-
-  if (config.includeText && textShapes.length > 0) {
-    if (config.textMode === 'emboss') {
-      // MODO ALTORRELIEVE: Las letras sobresalen +0.36 mm del plano superior (Z = 0.8 mm hasta 1.16 mm)
-      const textExtrudeSettings: THREE.ExtrudeGeometryOptions = {
-        depth: config.textHeightReliefMm, // 0.36 mm
-        bevelEnabled: false,
-        curveSegments: 12
-      };
-      textGeometry = new THREE.ExtrudeGeometry(textShapes, textExtrudeSettings);
-      textGeometry.translate(textStartX, textCenterY, plateThickness);
-      textGeometry.computeVertexNormals();
-    } else {
-      // MODO BAJORRELIEVE: Hendidura de 0.30 mm
-      const debossDepth = 0.3;
-      const textExtrudeSettings: THREE.ExtrudeGeometryOptions = {
-        depth: debossDepth,
-        bevelEnabled: false,
-        curveSegments: 12
-      };
-      textGeometry = new THREE.ExtrudeGeometry(textShapes, textExtrudeSettings);
-      textGeometry.translate(textStartX, textCenterY, plateThickness - debossDepth);
-      textGeometry.computeVertexNormals();
-    }
-  }
-
-  // =========================================================================
-  // 4. COMBINACIÓN DE MALLAS PARA STL CERRADO UNIVERSAL
+  // 3. COMBINACIÓN DE MALLAS PARA STL CERRADO UNIVERSAL (Monocolor)
   // =========================================================================
   const allMeshes: THREE.BufferGeometry[] = [baseGeometry.clone()];
   if (dotsGeometry) {
     allMeshes.push(dotsGeometry.clone());
   }
-  if (textGeometry) {
+  // En modo relieve ('emboss'), las letras sobresalen y se suman al sólido.
+  // En modo bajo relieve ('deboss'), las letras ya están talladas como huecos en baseGeometry;
+  // NO se agrega el sólido para que el archivo STL resultante conserve las hendiduras abiertas.
+  if (textGeometry && config.textMode === 'emboss') {
     allMeshes.push(textGeometry.clone());
   }
 
   const combinedGeometry = mergeBufferGeometries(allMeshes);
   combinedGeometry.computeVertexNormals();
 
-  // Exportaciones
+  // Nombre base limpio para coincidencia exacta entre archivos .obj, .mtl y .stl
+  const cleanName = (config.text.trim() || 'Llavero').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]/g, '_');
+  const baseFilename = `Llavero_Braille_${cleanName}`;
+
+  // Exportaciones STL
   const baseRgb = hexToRgb(config.baseColor);
   const dotRgb = hexToRgb(config.dotColor);
   const textRgb = hexToRgb(config.textColor);
 
   const stlBuffer = exportBufferGeometryToBinaryStl(combinedGeometry);
+  const baseStlBuffer = exportBufferGeometryToBinaryStl(baseGeometry);
+  const dotsStlBuffer = dotsGeometry ? exportBufferGeometryToBinaryStl(dotsGeometry) : null;
+  const textStlBuffer = textGeometry ? exportBufferGeometryToBinaryStl(textGeometry) : null;
+
+  // Exportación OBJ y MTL con nombre vinculado (mtllib Llavero_Braille_xxx.mtl)
   const { objContent, mtlContent } = exportToObjWithColors(
+    baseFilename,
     baseGeometry,
     dotsGeometry,
     textGeometry,
@@ -400,13 +503,29 @@ export function generateBraille3D(config: BrailleConfig): BrailleModelResult {
     textRgb
   );
 
+  // 1. Paquete ZIP OBJ + MTL (garantiza que ambos archivos estén siempre juntos)
+  const objZipBuffer = zipSync({
+    [`${baseFilename}.obj`]: strToU8(objContent),
+    [`${baseFilename}.mtl`]: strToU8(mtlContent)
+  });
+
+  // 2. Paquete ZIP STL Multi-Parte (el flujo nativo preferido para Bambu Lab AMS y OrcaSlicer)
+  const multiPartFiles: Record<string, Uint8Array> = {
+    [`1_Base_Placa_${cleanName}.stl`]: new Uint8Array(baseStlBuffer)
+  };
+  if (dotsStlBuffer) {
+    multiPartFiles[`2_Puntos_Braille_${cleanName}.stl`] = new Uint8Array(dotsStlBuffer);
+  }
+  if (textStlBuffer) {
+    multiPartFiles[`3_Letras_Texto_${cleanName}.stl`] = new Uint8Array(textStlBuffer);
+  }
+  const multiPartZipBuffer = zipSync(multiPartFiles);
+
   // Estimaciones físicas de impresión
   const totalTriangles = (combinedGeometry.getAttribute('position').count / 3) | 0;
   const plateAreaCm2 = (totalWidth * totalHeight) / 100;
   const volumeCm3 = plateAreaCm2 * (config.plateThicknessMm / 10);
-  // Reducción drástica de peso y tiempo
   const estimatedWeightGrams = Math.max(1, Math.round(volumeCm3 * 1.25 * 10) / 10);
-  // Aprox. 1 gramo demora 2.5 min en una impresora moderna (Bambu / Prusa)
   const estimatedPrintTimeMinutes = Math.max(3, Math.round(estimatedWeightGrams * 3.0));
 
   return {
@@ -423,8 +542,14 @@ export function generateBraille3D(config: BrailleConfig): BrailleModelResult {
     estimatedPrintTimeMinutes,
     dotCount: dotCenters.length,
     stlBuffer,
+    baseStlBuffer,
+    dotsStlBuffer,
+    textStlBuffer,
     objContent,
-    mtlContent
+    mtlContent,
+    objZipBuffer,
+    multiPartZipBuffer,
+    baseFilename
   };
 }
 
@@ -509,6 +634,7 @@ function exportBufferGeometryToBinaryStl(geometry: THREE.BufferGeometry): ArrayB
 }
 
 function exportToObjWithColors(
+  baseFilename: string,
   baseGeo: THREE.BufferGeometry,
   dotsGeo: THREE.BufferGeometry | null,
   textGeo: THREE.BufferGeometry | null,
@@ -517,7 +643,7 @@ function exportToObjWithColors(
   textRgb: [number, number, number]
 ): { objContent: string; mtlContent: string } {
   let obj = '# MakerBox UTalca - Llavero Braille 3D Compacto\n';
-  obj += 'mtllib material.mtl\n\n';
+  obj += `mtllib ${baseFilename}.mtl\n\n`;
 
   let currentVertexIndex = 1;
 
@@ -576,7 +702,7 @@ function exportToObjWithColors(
     currentVertexIndex += dotsVertCount;
   }
 
-  // 3. Letras escritas (Relieve)
+  // 3. Letras escritas (Relieve o Inlay)
   if (textGeo) {
     const textNonIndexed = textGeo.index ? textGeo.toNonIndexed() : textGeo;
     const textPos = textNonIndexed.getAttribute('position');
@@ -609,14 +735,16 @@ function exportToObjWithColors(
   mtl += `Kd ${baseRgb[0].toFixed(3)} ${baseRgb[1].toFixed(3)} ${baseRgb[2].toFixed(3)}\n`;
   mtl += 'Ks 0.1 0.1 0.1\n';
   mtl += 'Ns 10.0\n';
-  mtl += 'd 1.0\n\n';
+  mtl += 'd 1.0\n';
+  mtl += 'illum 2\n\n';
 
   mtl += 'newmtl Material_Puntos\n';
   mtl += 'Ka 0.2 0.2 0.2\n';
   mtl += `Kd ${dotRgb[0].toFixed(3)} ${dotRgb[1].toFixed(3)} ${dotRgb[2].toFixed(3)}\n`;
   mtl += 'Ks 0.3 0.3 0.3\n';
   mtl += 'Ns 20.0\n';
-  mtl += 'd 1.0\n\n';
+  mtl += 'd 1.0\n';
+  mtl += 'illum 2\n\n';
 
   mtl += 'newmtl Material_Texto\n';
   mtl += 'Ka 0.2 0.2 0.2\n';
@@ -624,6 +752,7 @@ function exportToObjWithColors(
   mtl += 'Ks 0.2 0.2 0.2\n';
   mtl += 'Ns 15.0\n';
   mtl += 'd 1.0\n';
+  mtl += 'illum 2\n';
 
   return { objContent: obj, mtlContent: mtl };
 }
@@ -658,6 +787,18 @@ export function downloadMtl(content: string, filename: string) {
   const a = document.createElement('a');
   a.href = url;
   a.download = filename.endsWith('.mtl') ? filename : `${filename}.mtl`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export function downloadZip(buffer: Uint8Array, filename: string) {
+  const blob = new Blob([buffer as any], { type: 'application/zip' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename.endsWith('.zip') ? filename : `${filename}.zip`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

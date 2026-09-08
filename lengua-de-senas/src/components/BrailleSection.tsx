@@ -7,7 +7,8 @@ import {
   generateBraille3D,
   downloadStl,
   downloadObj,
-  downloadMtl
+  downloadMtl,
+  downloadZip
 } from '@/lib/brailleGenerator';
 import { Braille3DViewer } from './Braille3DViewer';
 import {
@@ -21,7 +22,9 @@ import {
   RotateCcw,
   Palette,
   Hash,
-  CircleDot
+  CircleDot,
+  FolderArchive,
+  ChevronDown
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -30,6 +33,7 @@ const QUICK_WORDS = ['CRISS', 'MAKERBOX', 'UTALCA', 'TALCA', 'HOLA', 'INCLUSIÓN
 export const BrailleSection: React.FC = () => {
   const [config, setConfig] = useState<BrailleConfig>(DEFAULT_BRAILLE_CONFIG);
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
+  const [showIndividualFiles, setShowIndividualFiles] = useState(false);
 
   const updateConfig = <K extends keyof BrailleConfig>(key: K, value: BrailleConfig[K]) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
@@ -45,10 +49,10 @@ export const BrailleSection: React.FC = () => {
     }
   }, [config]);
 
+  // 1. Descarga STL Monocolor
   const handleDownloadStl = () => {
     if (!modelResult) return;
-    const cleanName = (config.text.trim() || 'Llavero').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]/g, '_');
-    downloadStl(modelResult.stlBuffer, `Llavero_Braille_${cleanName}.stl`);
+    downloadStl(modelResult.stlBuffer, `${modelResult.baseFilename}.stl`);
 
     confetti({
       particleCount: 50,
@@ -61,23 +65,51 @@ export const BrailleSection: React.FC = () => {
     setTimeout(() => setDownloadSuccess(null), 3500);
   };
 
-  const handleDownloadObj = () => {
+  // 2. Descarga STL Multi-Parte ZIP (Recomendado Bambu AMS)
+  const handleDownloadMultiPartZip = () => {
     if (!modelResult) return;
-    const cleanName = (config.text.trim() || 'Llavero').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]/g, '_');
-    // Descargar OBJ
-    downloadObj(modelResult.objContent, `Llavero_Braille_${cleanName}.obj`);
-    // Descargar MTL acompañante
-    downloadMtl(modelResult.mtlContent, `material.mtl`);
+    downloadZip(modelResult.multiPartZipBuffer, `${modelResult.baseFilename}_Multipieza_Bambu_AMS.zip`);
 
     confetti({
-      particleCount: 70,
+      particleCount: 75,
+      spread: 70,
+      origin: { y: 0.8 },
+      colors: ['#10b981', '#06b6d4', '#3b82f6', '#f59e0b']
+    });
+
+    setDownloadSuccess('MULTI_STL');
+    setTimeout(() => setDownloadSuccess(null), 3500);
+  };
+
+  // 3. Descarga OBJ + MTL en ZIP (Evita error de archivo MTL inexistente)
+  const handleDownloadObjZip = () => {
+    if (!modelResult) return;
+    downloadZip(modelResult.objZipBuffer, `${modelResult.baseFilename}_Multicolor_OBJ.zip`);
+
+    confetti({
+      particleCount: 75,
       spread: 70,
       origin: { y: 0.8 },
       colors: ['#ec4899', '#8b5cf6', '#3b82f6', '#f59e0b']
     });
 
-    setDownloadSuccess('OBJ');
+    setDownloadSuccess('OBJ_ZIP');
     setTimeout(() => setDownloadSuccess(null), 3500);
+  };
+
+  // Descargas individuales si el usuario las requiere
+  const handleDownloadObjSingle = () => {
+    if (!modelResult) return;
+    downloadObj(modelResult.objContent, `${modelResult.baseFilename}.obj`);
+    setDownloadSuccess('OBJ_SINGLE');
+    setTimeout(() => setDownloadSuccess(null), 3000);
+  };
+
+  const handleDownloadMtlSingle = () => {
+    if (!modelResult) return;
+    downloadMtl(modelResult.mtlContent, `${modelResult.baseFilename}.mtl`);
+    setDownloadSuccess('MTL_SINGLE');
+    setTimeout(() => setDownloadSuccess(null), 3000);
   };
 
   return (
@@ -361,12 +393,14 @@ export const BrailleSection: React.FC = () => {
                             : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
-                        Bajo Relieve (-0.30 mm)
+                        Bajo Relieve (-0.40 mm tallado)
                       </button>
                     </div>
                   </div>
                   <span className="text-[10.5px] text-cyan-900 leading-tight">
-                    ⭐ Modo Relieve: las letras sobresalen de la placa para impresión limpia y cambio de color en 1 capa.
+                    {config.textMode === 'emboss'
+                      ? '⭐ Modo Sobre Relieve: Las letras sobresalen +0.36 mm del plano superior para impresión directa o cambio de color en altura.'
+                      : '✂️ Modo Bajo Relieve: Letras talladas -0.40 mm con plano superior 100% abierto y piso sólido (el laminador no tapa las letras).'}
                   </span>
                 </div>
               )}
@@ -378,7 +412,7 @@ export const BrailleSection: React.FC = () => {
                 <CircleDot className="w-4 h-4 text-amber-600" />
                 <div className="flex flex-col">
                   <span className="text-xs font-bold text-slate-800">Orificio de Llavero</span>
-                  <span className="text-[11px] text-slate-500">Diámetro 4.5 mm (extremo izquierdo)</span>
+                  <span className="text-[11px] text-slate-500">Diámetro 4.0 mm (extremo izquierdo)</span>
                 </div>
               </div>
               <input
@@ -405,62 +439,130 @@ export const BrailleSection: React.FC = () => {
             </div>
 
             <p className="text-xs text-amber-100 leading-relaxed">
-              Descarga el modelo en el formato que mejor se adapte a tu impresora:
+              Elige el formato de descarga ideal para tu impresora y laminador:
             </p>
 
             <div className="flex flex-col gap-2.5">
-              {/* Opción 1: STL Universal */}
+              {/* Opción 1: STL Monocolor Universal */}
               <button
                 type="button"
                 onClick={handleDownloadStl}
-                className="w-full bg-white text-slate-900 hover:bg-amber-50 font-black text-sm py-3.5 px-4 rounded-2xl transition active:scale-95 shadow-sm flex items-center justify-center gap-2"
+                className="w-full bg-white text-slate-900 hover:bg-amber-50 font-black text-sm py-3 px-4 rounded-2xl transition active:scale-95 shadow-sm flex items-center justify-between gap-2"
               >
-                {downloadSuccess === 'STL' ? (
-                  <>
+                <div className="flex items-center gap-2.5">
+                  {downloadSuccess === 'STL' ? (
                     <Check className="w-4 h-4 text-emerald-600" />
-                    <span className="text-emerald-700">¡Archivo STL Descargado!</span>
-                  </>
-                ) : (
-                  <>
+                  ) : (
                     <Download className="w-4 h-4 text-amber-600" />
-                    <span>Descargar STL (Universal 3D)</span>
-                  </>
-                )}
+                  )}
+                  <div className="flex flex-col text-left">
+                    <span>{downloadSuccess === 'STL' ? '¡STL Descargado!' : 'Descargar STL (Monocolor)'}</span>
+                    <span className="text-[10px] text-slate-500 font-normal">
+                      {config.textMode === 'deboss' ? 'Bajo relieve tallado (-0.40 mm)' : 'Sobre relieve (+0.36 mm)'}
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[11px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-md">
+                  Universal
+                </span>
               </button>
 
-              {/* Opción 2: OBJ con Color / Multicolor */}
+              {/* Opción 2: STL Multi-Parte ZIP (Favorito para Bambu Lab AMS y OrcaSlicer) */}
               <button
                 type="button"
-                onClick={handleDownloadObj}
-                className="w-full bg-slate-900/30 hover:bg-slate-900/40 text-white border border-white/25 font-bold text-sm py-3 px-4 rounded-2xl transition active:scale-95 flex items-center justify-center gap-2"
-                title="Incluye Vertex Colors y grupos Base_Placa y Puntos_Braille con archivo MTL"
+                onClick={handleDownloadMultiPartZip}
+                className="w-full bg-amber-950/40 hover:bg-amber-950/55 text-white border border-white/20 font-bold text-sm py-3 px-4 rounded-2xl transition active:scale-95 flex items-center justify-between gap-2 shadow-xs"
+                title="Descarga un ZIP con los STLs de Base, Puntos y Letras independientes listos para Bambu AMS"
               >
-                {downloadSuccess === 'OBJ' ? (
-                  <>
+                <div className="flex items-center gap-2.5">
+                  {downloadSuccess === 'MULTI_STL' ? (
                     <Check className="w-4 h-4 text-emerald-300" />
-                    <span>¡OBJ Multicolor Descargado!</span>
-                  </>
-                ) : (
-                  <>
+                  ) : (
+                    <Layers className="w-4 h-4 text-amber-200" />
+                  )}
+                  <div className="flex flex-col text-left">
+                    <span>{downloadSuccess === 'MULTI_STL' ? '¡ZIP Multipieza Descargado!' : 'Descargar STL Multipieza (.zip)'}</span>
+                    <span className="text-[10px] text-amber-200/80 font-normal">
+                      3 partes separadas · Asignación directa en Bambu AMS
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[11px] font-bold bg-emerald-500/30 text-emerald-100 border border-emerald-300/40 px-2 py-0.5 rounded-md">
+                  Recomendado AMS
+                </span>
+              </button>
+
+              {/* Opción 3: OBJ + MTL en ZIP */}
+              <button
+                type="button"
+                onClick={handleDownloadObjZip}
+                className="w-full bg-black/25 hover:bg-black/35 text-white border border-white/15 font-bold text-sm py-2.5 px-4 rounded-2xl transition active:scale-95 flex items-center justify-between gap-2"
+                title="Empaqueta OBJ y MTL con nombres coincidentes para que el laminador cargue los colores sin errores"
+              >
+                <div className="flex items-center gap-2.5">
+                  {downloadSuccess === 'OBJ_ZIP' ? (
+                    <Check className="w-4 h-4 text-emerald-300" />
+                  ) : (
                     <Palette className="w-4 h-4 text-amber-200" />
-                    <span>Descargar OBJ con Color (Bambu/Prusa)</span>
-                  </>
-                )}
+                  )}
+                  <div className="flex flex-col text-left">
+                    <span>{downloadSuccess === 'OBJ_ZIP' ? '¡OBJ Multicolor Descargado!' : 'Descargar OBJ Multicolor (.zip)'}</span>
+                    <span className="text-[10px] text-amber-100/70 font-normal">
+                      Incluye archivo .obj + .mtl vinculados
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono text-amber-200/90">
+                  .obj + .mtl
+                </span>
               </button>
             </div>
 
-            <div className="text-[11px] text-amber-100/90 bg-black/15 p-3 rounded-xl flex flex-col gap-1 leading-tight">
-              <span className="font-bold flex items-center gap-1">
-                💡 Consejo de Laminación en el Stand:
+            {/* Acordeón para descargas individuales sueltas */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowIndividualFiles(!showIndividualFiles)}
+                className="text-[11px] text-amber-200 hover:text-white flex items-center gap-1 font-semibold transition"
+              >
+                <FolderArchive className="w-3.5 h-3.5" />
+                <span>{showIndividualFiles ? 'Ocultar archivos sueltos' : '¿Necesitas los archivos .obj o .mtl individuales?'}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showIndividualFiles ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showIndividualFiles && (
+                <div className="grid grid-cols-2 gap-2 mt-2 p-2.5 bg-black/20 rounded-xl border border-white/10">
+                  <button
+                    type="button"
+                    onClick={handleDownloadObjSingle}
+                    className="py-1.5 px-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-medium text-amber-100 text-center transition"
+                  >
+                    {downloadSuccess === 'OBJ_SINGLE' ? '¡Descargado!' : 'Descargar solo .OBJ'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadMtlSingle}
+                    className="py-1.5 px-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-medium text-amber-100 text-center transition"
+                  >
+                    {downloadSuccess === 'MTL_SINGLE' ? '¡Descargado!' : 'Descargar solo .MTL'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Consejos de Laminación */}
+            <div className="text-[11px] text-amber-100/90 bg-black/20 p-3.5 rounded-2xl flex flex-col gap-1.5 leading-tight border border-white/10">
+              <span className="font-bold flex items-center gap-1 text-white">
+                💡 Consejos para Laminar en Bambu Studio / OrcaSlicer:
               </span>
               <span>
-                • <strong>Altura de capa:</strong> 0.12 mm o 0.16 mm para que los domos de 0.36 mm queden suaves y táctiles.
+                • <strong>Bajo Relieve (Tallado):</strong> El plano superior está 100% abierto en Z = 0.8 mm y baja 0.40 mm hasta el piso sólido. En el laminador se apreciará el corte nítido y la última capa no tapará las letras.
               </span>
               <span>
-                • <strong>Relleno (Infill):</strong> 100% (al tener 1 mm de espesor, se imprime sólido en solo 6 a 8 capas).
+                • <strong>Multicolor con AMS:</strong> Usa la opción <em>STL Multipieza (.zip)</em>. Arrastra los 3 archivos a Bambu Studio, pulsa <strong>Sí</strong> en <em>¿Cargar estos archivos como un solo objeto con varias partes?</em> y asigna un color a cada ranura.
               </span>
               <span>
-                • <strong>Multicolor (AMS / MMU):</strong> Al abrir el archivo OBJ en Bambu Studio o PrusaSlicer, selecciona el grupo de puntos y asígnale el segundo filamento para un contraste visual y táctil perfecto.
+                • <strong>Error de archivo MTL:</strong> Si usas OBJ, descomprime el archivo ZIP en una carpeta antes de abrir el .obj; así el laminador encontrará el archivo .mtl gemelo en el mismo directorio.
               </span>
             </div>
           </div>
