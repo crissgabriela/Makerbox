@@ -20,9 +20,16 @@ import {
   Printer,
   Maximize2,
   RefreshCw,
-  Layers
+  Layers,
+  QrCode,
+  Smartphone,
+  X,
+  Copy,
+  CheckCircle2,
+  ExternalLink
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import QRCode from 'qrcode';
 
 // Imágenes de muestra predefinidas para pruebas instantáneas en el stand
 const PRESET_SAMPLES = [
@@ -122,6 +129,104 @@ export const LithophaneSection: React.FC = () => {
     return () => window.removeEventListener('paste', handlePaste);
   }, []);
 
+  // Estados para sincronización en vivo por Código QR desde celular
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [sessionId, setSessionId] = useState<string>('');
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
+  const [customHost, setCustomHost] = useState<string>('');
+  const [isCopied, setIsCopied] = useState(false);
+  const [receivedSuccess, setReceivedSuccess] = useState(false);
+  const [isLocalhost, setIsLocalhost] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const isLocal =
+        window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      setIsLocalhost(isLocal);
+    }
+  }, []);
+
+  const openQrModal = () => {
+    const randomCode = 'MK-' + Math.floor(1000 + Math.random() * 9000);
+    setSessionId(randomCode);
+    setReceivedSuccess(false);
+    setIsQrModalOpen(true);
+  };
+
+  const getUploadUrl = () => {
+    const origin =
+      customHost.trim() || (typeof window !== 'undefined' ? window.location.origin : '');
+    return `${origin}/subir-foto?s=${sessionId}`;
+  };
+
+  const handleCopyLink = () => {
+    const url = getUploadUrl();
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    }
+  };
+
+  // Generar código QR dinámicamente
+  useEffect(() => {
+    if (!isQrModalOpen || !sessionId) return;
+
+    let active = true;
+    const url = getUploadUrl();
+
+    QRCode.toDataURL(url, {
+      width: 320,
+      margin: 1.5,
+      color: {
+        dark: '#0f172a',
+        light: '#ffffff'
+      }
+    })
+      .then((dataUrl) => {
+        if (active) setQrCodeDataUrl(dataUrl);
+      })
+      .catch((err) => console.error('Error generando código QR:', err));
+
+    return () => {
+      active = false;
+    };
+  }, [isQrModalOpen, sessionId, customHost]);
+
+  // Sondeo en vivo cada 1.4s esperando la foto enviada desde el celular
+  useEffect(() => {
+    if (!isQrModalOpen || !sessionId || receivedSuccess) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/live-sync?s=${sessionId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.success && data.image) {
+          setReceivedSuccess(true);
+          setSelectedImage(data.image);
+          try {
+            confetti({
+              particleCount: 100,
+              spread: 90,
+              origin: { y: 0.6 }
+            });
+          } catch {
+            // Ignorar
+          }
+          setTimeout(() => {
+            setIsQrModalOpen(false);
+            setReceivedSuccess(false);
+          }, 1600);
+        }
+      } catch {
+        // Sondeo continuo
+      }
+    }, 1400);
+
+    return () => clearInterval(interval);
+  }, [isQrModalOpen, sessionId, receivedSuccess]);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -207,14 +312,26 @@ export const LithophaneSection: React.FC = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm shadow-md shadow-blue-200 transition active:scale-95 flex items-center gap-2 flex-shrink-0"
-        >
-          <Upload className="w-4 h-4" />
-          <span>Subir Mi Foto</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5 flex-shrink-0">
+          <button
+            type="button"
+            onClick={openQrModal}
+            className="px-5 py-3 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-black text-sm shadow-md shadow-indigo-200 transition active:scale-95 flex items-center gap-2"
+          >
+            <Smartphone className="w-4 h-4 text-white" />
+            <QrCode className="w-4 h-4 text-white" />
+            <span>Subir desde el Celular (QR)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="px-4 py-3 rounded-2xl bg-white hover:bg-slate-100 text-slate-800 font-bold text-sm border border-slate-300 transition active:scale-95 flex items-center gap-2"
+          >
+            <Upload className="w-4 h-4 text-slate-600" />
+            <span>Desde la Laptop</span>
+          </button>
+        </div>
       </div>
 
       {/* Grid de 2 columnas: Controles a la izquierda y Visor 3D a la derecha */}
@@ -275,6 +392,17 @@ export const LithophaneSection: React.FC = () => {
                 </>
               )}
             </div>
+
+            {/* Botón interactivo para escanear QR desde el celular */}
+            <button
+              type="button"
+              onClick={openQrModal}
+              className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-extrabold text-xs sm:text-sm shadow-md shadow-indigo-100 transition active:scale-[0.98] flex items-center justify-center gap-2 group"
+            >
+              <Smartphone className="w-4 h-4 text-blue-200 group-hover:scale-110 transition-transform" />
+              <QrCode className="w-4 h-4 text-indigo-200 group-hover:scale-110 transition-transform" />
+              <span>📱 Escanear QR para subir foto desde tu celular</span>
+            </button>
 
             {/* Tip rápido para ferias */}
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50/80 border border-blue-200/60 text-[11px] text-blue-900 leading-tight">
@@ -540,6 +668,168 @@ export const LithophaneSection: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Modal Interactivo de Sincronización QR */}
+      {isQrModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full p-6 sm:p-7 flex flex-col gap-5 relative animate-in zoom-in-95 duration-200">
+            {/* Botón cerrar */}
+            <button
+              type="button"
+              onClick={() => setIsQrModalOpen(false)}
+              className="absolute top-5 right-5 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {/* Cabecera del Modal */}
+            <div className="flex flex-col gap-1 pr-8">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+                  <Smartphone className="w-3.5 h-3.5" />
+                </span>
+                <span className="text-xs font-black uppercase tracking-wider text-blue-700">
+                  Conexión Móvil en Vivo
+                </span>
+              </div>
+              <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                Sube tu foto desde el celular
+              </h3>
+              <p className="text-xs text-slate-500">
+                Apunta con la cámara de tu celular a este código para abrir la página y proyectar tu foto aquí.
+              </p>
+            </div>
+
+            {/* Estado: Recibido con éxito */}
+            {receivedSuccess ? (
+              <div className="py-8 flex flex-col items-center justify-center gap-3 text-center">
+                <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center ring-8 ring-emerald-50 animate-bounce">
+                  <CheckCircle2 className="w-8 h-8" />
+                </div>
+                <h4 className="text-lg font-black text-slate-900">¡Foto recibida del celular!</h4>
+                <p className="text-xs text-slate-500 max-w-xs">
+                  Procesando relieve y generando tu Litofanía 3D en pantalla ahora mismo...
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Visualizador del Código QR */}
+                <div className="flex flex-col items-center justify-center gap-3">
+                  <div className="relative p-3 bg-white rounded-2xl border-2 border-slate-200 shadow-md flex items-center justify-center">
+                    {qrCodeDataUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={qrCodeDataUrl}
+                        alt="Código QR para subir foto"
+                        className="w-56 h-56 sm:w-60 sm:h-60 rounded-xl"
+                      />
+                    ) : (
+                      <div className="w-56 h-56 flex items-center justify-center text-slate-400 text-xs font-semibold">
+                        Generando QR...
+                      </div>
+                    )}
+
+                    {/* Logo MakerBox al centro del QR */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="w-10 h-10 rounded-xl bg-white/95 border-2 border-blue-600 shadow-md flex items-center justify-center text-blue-700 font-black text-xs">
+                        MB
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Indicador de estado y código de sesión */}
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                    </span>
+                    <span className="text-xs font-bold text-slate-700">
+                      Esperando foto · Sesión{' '}
+                      <span className="font-mono text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-md border border-blue-200 font-black">
+                        {sessionId}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Pasos explicativos rápidos */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 flex flex-col gap-1.5 text-xs text-slate-600">
+                  <div className="flex items-start gap-2">
+                    <span className="w-4 h-4 rounded-full bg-blue-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                      1
+                    </span>
+                    <span>Abre la cámara de tu teléfono y enfoca el código QR.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="w-4 h-4 rounded-full bg-blue-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                      2
+                    </span>
+                    <span>Toca el enlace para abrir MakerBox Móvil en tu celular.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="w-4 h-4 rounded-full bg-blue-600 text-white font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                      3
+                    </span>
+                    <span>
+                      Elige o sácate una foto y presiona <strong>&quot;Enviar a la Pantalla&quot;</strong>.
+                    </span>
+                  </div>
+                </div>
+
+                {/* Copiar enlace directo o probar */}
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="text-xs font-bold text-slate-600 hover:text-blue-600 flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    {isCopied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-emerald-600">¡Enlace copiado!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copiar enlace</span>
+                      </>
+                    )}
+                  </button>
+
+                  <a
+                    href={getUploadUrl()}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
+                  >
+                    <span>Abrir en otra pestaña</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+
+                {/* Ayuda para pruebas en Localhost */}
+                {isLocalhost && (
+                  <div className="rounded-2xl bg-amber-50 border border-amber-200/80 p-3 text-[11px] text-amber-900 flex flex-col gap-1">
+                    <span className="font-bold flex items-center gap-1">
+                      ⚠️ Nota para pruebas locales (localhost):
+                    </span>
+                    <p className="text-amber-800 leading-tight">
+                      Tu celular no puede abrir &quot;localhost&quot;. Si tu laptop y celular están en la misma red Wi-Fi o zona móvil, ingresa la IP local de tu laptop (ej: <code className="bg-amber-100 px-1 rounded">http://192.168.1.50:3000</code>) o tu URL pública:
+                    </p>
+                    <input
+                      type="text"
+                      placeholder="http://192.168.x.x:3000 o https://tu-dominio.vercel.app"
+                      value={customHost}
+                      onChange={(e) => setCustomHost(e.target.value)}
+                      className="mt-1 w-full text-xs px-2.5 py-1.5 rounded-lg border border-amber-300 bg-white font-mono text-slate-800 outline-none"
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
