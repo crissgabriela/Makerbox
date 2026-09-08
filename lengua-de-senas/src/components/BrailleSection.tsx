@@ -114,23 +114,23 @@ export const BrailleSection: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-6 sm:gap-8 w-full">
-      {/* Banner de Bienvenida e Introducción */}
-      <div className="rounded-3xl bg-gradient-to-r from-amber-100 via-orange-50 to-purple-50 border border-amber-200/80 p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex flex-col gap-1.5">
+      {/* Banner de Bienvenida e Introducción (altura compacta) */}
+      <div className="rounded-2xl bg-gradient-to-r from-amber-100 via-orange-50 to-purple-50 border border-amber-200/80 px-5 py-3.5 sm:px-6 sm:py-4 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+        <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <span className="px-3 py-1 rounded-full bg-amber-200 text-amber-900 text-xs font-bold flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+            <span className="px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[11px] font-extrabold flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-amber-700" />
               Herramienta 3 · Fabricación Digital Accesible
             </span>
             <span className="text-xs font-semibold text-slate-500 hidden md:inline">
               MakerBox · Facultad de Ingeniería UTalca
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 tracking-tight mt-1">
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-0.5">
             Llavero Braille en Impresión 3D
           </h1>
-          <p className="text-sm sm:text-base text-slate-600 max-w-2xl leading-relaxed">
-            Escribe cualquier palabra o tu nombre y la plataforma lo traduce a Braille táctil con su significado escrito en tipografía Arial. Genera una plaquita ultracompacta de <strong>38 mm de largo</strong>, <strong>16 mm de ancho</strong> y <strong>0.8 mm de espesor</strong>, optimizada para imprimir en <strong>Ender 3</strong> en solo <strong>~3 a 4 minutos</strong> en archivo <strong>STL</strong>.
+          <p className="text-xs sm:text-sm text-slate-600 max-w-2xl leading-snug">
+            Escribe cualquier palabra o tu nombre y la plataforma lo traduce a Braille táctil con su significado escrito en tipografía Arial. Plaquita ultracompacta de <strong>38 × 16 × 0.8 mm</strong> optimizada para Ender 3 en ~3 a 4 min en STL.
           </p>
         </div>
       </div>

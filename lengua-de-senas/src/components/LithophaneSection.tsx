@@ -344,44 +344,44 @@ export const LithophaneSection: React.FC = () => {
 
   return (
     <div className="w-full flex flex-col gap-6 sm:gap-8">
-      {/* Banner explicativo de la herramienta */}
-      <div className="rounded-3xl bg-gradient-to-r from-blue-100 via-indigo-50 to-purple-50 border border-blue-200/80 p-6 sm:p-8 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex flex-col gap-1.5">
+      {/* Banner explicativo de la herramienta (altura compacta) */}
+      <div className="rounded-2xl bg-gradient-to-r from-blue-100 via-indigo-50 to-purple-50 border border-blue-200/80 px-5 py-3.5 sm:px-6 sm:py-4 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+        <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <span className="px-3 py-1 rounded-full bg-blue-200 text-blue-900 text-xs font-bold flex items-center gap-1.5">
-              <Printer className="w-3.5 h-3.5 text-blue-700" />
+            <span className="px-2.5 py-0.5 rounded-full bg-blue-200 text-blue-900 text-[11px] font-extrabold flex items-center gap-1">
+              <Printer className="w-3 h-3 text-blue-700" />
               MakerBox · Impresión 3D
             </span>
             <span className="text-xs font-semibold text-slate-500 hidden md:inline">
               Transformador de Fotos a Modelos STL
             </span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-0.5">
             Generador de Litofanías 3D
           </h2>
-          <p className="text-sm sm:text-base text-slate-600 max-w-2xl leading-relaxed">
+          <p className="text-xs sm:text-sm text-slate-600 max-w-2xl leading-snug">
             Sube una fotografía. La plataforma la convertirá en un modelo 3D con relieve según la luminosidad (zonas claras más delgadas y zonas oscuras más gruesas) para imprimir en filamento blanco y verla a contraluz.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
           <button
             type="button"
             onClick={openQrModal}
-            className="px-5 py-3 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-black text-sm shadow-md shadow-indigo-200 transition active:scale-95 flex items-center gap-2"
+            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-extrabold text-xs sm:text-sm shadow-sm shadow-indigo-200 transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
           >
             <Smartphone className="w-4 h-4 text-white" />
             <QrCode className="w-4 h-4 text-white" />
-            <span>Subir desde el Celular (QR)</span>
+            <span>Subir desde Celular (QR)</span>
           </button>
 
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="px-4 py-3 rounded-2xl bg-white hover:bg-slate-100 text-slate-800 font-bold text-sm border border-slate-300 transition active:scale-95 flex items-center gap-2"
+            className="px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs sm:text-sm border border-slate-300 transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
           >
             <Upload className="w-4 h-4 text-slate-600" />
-            <span>Desde la Laptop</span>
+            <span>Desde Laptop</span>
           </button>
         </div>
       </div>
