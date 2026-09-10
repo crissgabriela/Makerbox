@@ -31,32 +31,33 @@ export function generateLaserSvg(text: string, config: LaserConfig): GeneratedLa
 
   if (letters.length === 0) {
     return {
-      svgString: `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="40mm" viewBox="0 0 100 40">
-        <rect width="100" height="40" rx="20" ry="20" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2"/>
-        <circle cx="15" cy="20" r="2.2" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2"/>
-        <text x="55" y="22" font-family="Arial, sans-serif" font-size="5" text-anchor="middle" fill="#666">Escribe una palabra para generar el llavero</text>
+      svgString: `<svg xmlns="http://www.w3.org/2000/svg" width="60mm" height="25mm" viewBox="0 0 60 25">
+        <rect width="60" height="25" rx="12.5" ry="12.5" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2"/>
+        <circle cx="7.5" cy="12.5" r="2.25" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2"/>
+        <text x="35" y="14" font-family="Arial, sans-serif" font-size="3.5" text-anchor="middle" fill="#666">Escribe una palabra</text>
       </svg>`,
-      widthMm: 100,
-      heightMm: 40,
+      widthMm: 60,
+      heightMm: 25,
       signCount: 0,
-      estimatedCutLengthMm: 280
+      estimatedCutLengthMm: 160
     };
   }
 
-  const signHeightMm = config.targetHeightMm || 38;
-  const signSpacingMm = config.signSpacingMm || 3;
+  const signHeightMm = 15; // Altura fija de las manos: 15 mm
+  const signSpacingMm = config.signSpacingMm || 2.5;
 
-  // Modo exclusivo: Llavero Ranura CAD
+  // Modo exclusivo: Llavero Ranura CAD (25 mm ancho fijo, manos 15 mm centradas con 5 mm de margen)
   return generateCapsuleMode(letters, config, signHeightMm, signSpacingMm);
 }
 
 /**
  * MODO 1: Llavero Ranura / Cápsula (Modelo CAD Oficial del Usuario)
- * Idéntico al modelo CAD mostrado en las imágenes:
- * - Silueta exterior tipo cápsula (stadium) perfectamente redondeada en ambos extremos.
- * - Orificio de corte para argolla a la izquierda.
- * - Grabado de las ilustraciones reales recortadas del Alfabeto Manual Chileno oficial.
- * - Imposible que se traslape con los dedos; corte rápido, limpio y resistente.
+ * Especificaciones de diseño:
+ * - Ancho (altura vertical del perfil) fijo en 25 mm.
+ * - Manos con altura fija de 15 mm, centradas verticalmente.
+ * - Margen de 5 mm por encima y 5 mm por debajo de las figuras (5 + 15 + 5 = 25 mm).
+ * - Largo del llavero se ajusta de forma 100% dinámica al largo de la palabra.
+ * - Orificio de argolla centrado verticalmente a 12.5 mm con pared estructural segura de >5 mm.
  */
 function generateCapsuleMode(
   letters: string[],
@@ -64,21 +65,21 @@ function generateCapsuleMode(
   signHeightMm: number,
   spacingMm: number
 ): GeneratedLaserSvg {
-  // Altura total del llavero
-  const totalHeight = Math.max(signHeightMm + 10, 36);
-  const endRadius = totalHeight / 2; // radio de las semicircunferencias izquierda y derecha
+  // Ancho fijo del llavero: 25 mm
+  const totalHeight = 25;
+  const endRadius = totalHeight / 2; // 12.5 mm (radio de las semicircunferencias)
 
-  // Dimensiones de cada seña ilustrada
-  const handHeight = signHeightMm * 0.76;
-  const handMarginY = (totalHeight - handHeight) / 2;
+  // Dimensiones fijas de cada figura de mano: 15 mm centradas con 5 mm superior e inferior
+  const handHeight = 15;
+  const handMarginY = 5; // 5 mm sobre y 5 mm bajo: 5 + 15 + 5 = 25 mm
 
-  // Ubicación del orificio para la argolla (en el centro del radio izquierdo)
+  // Ubicación del orificio para la argolla (centrado verticalmente a 12.5 mm)
   const holeRadius = (config.holeDiameterMm || 4.5) / 2;
-  const holeCenterX = Math.max(endRadius * 0.55, 9);
-  const holeCenterY = totalHeight / 2;
+  const holeCenterX = 7.5;
+  const holeCenterY = 12.5;
 
-  // Inicio de las señas dejando espacio seguro después del orificio
-  const startSignsX = holeCenterX + holeRadius + 7;
+  // Inicio de las señas dejando espacio seguro y estético después del orificio de argolla
+  const startSignsX = holeCenterX + holeRadius + 4.25; // ~14.0 mm
 
   // Calculamos la posición y tamaño exacto de cada mano usando los assets oficiales
   const handElements: { x: number; y: number; width: number; height: number; letter: string; dataUrl: string }[] = [];
@@ -101,14 +102,15 @@ function generateCapsuleMode(
     currentX += handWidth + spacingMm;
   });
 
-  // Ancho total ajustado para que el radio derecho envuelva armoniosamente la última seña
+  // Largo total ajustado dinámicamente al largo de la palabra
+  // Dejamos un margen seguro de 7.5 mm tras la última mano para que la semicircunferencia no roce los dedos
   const lastHand = handElements[handElements.length - 1];
   const lastHandRight = lastHand ? lastHand.x + lastHand.width : startSignsX + 30;
-  const totalWidth = lastHandRight + endRadius * 0.65;
+  const totalWidth = lastHandRight + 7.5;
 
   // 1. Capa de CORTE (Rojo #FF0000): Cápsula perfecta (Ranura) y Orificio
   // Curva de la cápsula:
-  // - Semicírculo izquierdo centrado en (endRadius, endRadius)
+  // - Semicírculo izquierdo centrado en (endRadius, endRadius) = (12.5, 12.5)
   // - Línea superior recta de endRadius a totalWidth - endRadius
   // - Semicírculo derecho centrado en (totalWidth - endRadius, endRadius)
   // - Línea inferior recta de totalWidth - endRadius a endRadius

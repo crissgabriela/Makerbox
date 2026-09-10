@@ -16,14 +16,14 @@ import { Sparkles, Maximize, Minimize, Heart, Award } from 'lucide-react';
 
 const DEFAULT_CONFIG: LaserConfig = {
   mode: 'capsule',
-  targetHeightMm: 38,
+  targetHeightMm: 25,
   contourOffsetMm: 5,
   baseBarHeightMm: 11,
   addKeychainHole: true,
   holeDiameterMm: 4.5,
   includeTextEngraving: false,
   includeBranding: false,
-  signSpacingMm: 3,
+  signSpacingMm: 2.5,
   materialThicknessMm: 3,
   cutStrokeColor: '#FF0000',
   engraveStrokeColor: '#0000FF',

@@ -64,7 +64,7 @@ export const LaserSvgGenerator: React.FC<LaserSvgGeneratorProps> = ({ text, conf
             <span>Vista previa de tu llavero:</span>
           </h3>
           <p className="text-sm text-slate-500 mt-1">
-            Así quedará tu llavero cortado en una sola pieza continua ({laserResult.widthMm} mm de ancho × {laserResult.heightMm} mm de alto).
+            Así quedará tu llavero cortado en una sola pieza continua (<strong className="text-purple-700">{laserResult.widthMm} mm de largo</strong> × <strong className="text-purple-700">{laserResult.heightMm} mm de ancho fijo</strong>).
           </p>
         </div>
 

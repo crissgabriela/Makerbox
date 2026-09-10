@@ -37,57 +37,63 @@ export const LaserControls: React.FC<LaserControlsProps> = ({ config, onChange }
 
       {/* Controles de medida y personalización del llavero */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Altura del llavero */}
-        <div className="flex flex-col gap-2 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-800">Altura del llavero:</span>
-            <span className="text-sm font-extrabold text-purple-700">{config.targetHeightMm} mm</span>
+        {/* Medidas oficiales estandarizadas */}
+        <div className="flex flex-col justify-between gap-2 bg-purple-50/50 p-4 rounded-2xl border border-purple-200">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold text-slate-800">Perfil del llavero:</span>
+              <span className="text-xs font-black px-2 py-0.5 rounded-md bg-purple-200 text-purple-900">
+                25 mm FIJO
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 mt-1">
+              • Altura manos: <strong className="text-purple-800">15 mm</strong> centradas<br />
+              • Márgenes: <strong className="text-purple-800">5 mm</strong> sobre y bajo la figura<br />
+              • Largo: <strong className="text-purple-800">Dinámico</strong> al texto
+            </p>
           </div>
-          <input
-            type="range"
-            min={30}
-            max={60}
-            step={1}
-            value={config.targetHeightMm}
-            onChange={(e) => updateConfig('targetHeightMm', Number(e.target.value))}
-            className="w-full accent-purple-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
-          />
-          <span className="text-xs text-slate-400">Recomendado para llavero: 36 - 42 mm</span>
+          <span className="text-[11px] font-semibold text-purple-700 bg-white/80 px-2.5 py-1 rounded-lg border border-purple-200/60 text-center">
+            Norma Oficial MakerBox Stand
+          </span>
         </div>
 
         {/* Diámetro del orificio de argolla */}
-        <div className="flex flex-col gap-2 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-800">Agujero para argolla:</span>
-            <span className="text-sm font-extrabold text-purple-700">{config.holeDiameterMm || 4.5} mm</span>
+        <div className="flex flex-col justify-between gap-2 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold text-slate-800">Agujero para argolla:</span>
+              <span className="text-sm font-extrabold text-purple-700">{config.holeDiameterMm || 4.5} mm</span>
+            </div>
+            <input
+              type="range"
+              min={3}
+              max={6}
+              step={0.5}
+              value={config.holeDiameterMm || 4.5}
+              onChange={(e) => updateConfig('holeDiameterMm', Number(e.target.value))}
+              className="w-full accent-purple-600 cursor-pointer h-2 bg-slate-200 rounded-lg mt-2"
+            />
           </div>
-          <input
-            type="range"
-            min={3}
-            max={6}
-            step={0.5}
-            value={config.holeDiameterMm || 4.5}
-            onChange={(e) => updateConfig('holeDiameterMm', Number(e.target.value))}
-            className="w-full accent-purple-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
-          />
-          <span className="text-xs text-slate-400">Diámetro para el aro de llavero</span>
+          <span className="text-xs text-slate-400">Centrado a 12.5 mm con pared de &gt;5 mm</span>
         </div>
 
         {/* Espaciado entre señas */}
-        <div className="flex flex-col gap-2 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-800">Espaciado entre señas:</span>
-            <span className="text-sm font-extrabold text-purple-700">{config.signSpacingMm || 3} mm</span>
+        <div className="flex flex-col justify-between gap-2 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold text-slate-800">Espaciado entre señas:</span>
+              <span className="text-sm font-extrabold text-purple-700">{config.signSpacingMm || 2.5} mm</span>
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={6}
+              step={0.5}
+              value={config.signSpacingMm || 2.5}
+              onChange={(e) => updateConfig('signSpacingMm', Number(e.target.value))}
+              className="w-full accent-purple-600 cursor-pointer h-2 bg-slate-200 rounded-lg mt-2"
+            />
           </div>
-          <input
-            type="range"
-            min={1}
-            max={8}
-            step={0.5}
-            value={config.signSpacingMm || 3}
-            onChange={(e) => updateConfig('signSpacingMm', Number(e.target.value))}
-            className="w-full accent-purple-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
-          />
           <span className="text-xs text-slate-400">Separación horizontal entre manos</span>
         </div>
       </div>
