@@ -1,5 +1,6 @@
 import { GeneratedLaserSvg, LaserConfig, SignDefinition } from '@/types';
 import { SIGNS_DICTIONARY, normalizeText } from './signsData';
+import { CHILEAN_VECTOR_SIGNS } from './chileanVectorsData';
 import { CHILEAN_LETTER_ASSETS } from './chileanImagesData';
 
 /**
@@ -43,10 +44,10 @@ export function generateLaserSvg(text: string, config: LaserConfig): GeneratedLa
     };
   }
 
-  const signHeightMm = 15; // Altura fija de las manos: 15 mm
+  const signHeightMm = 15; // Altura máxima de las manos: 15 mm
   const signSpacingMm = config.signSpacingMm || 2.5;
 
-  // Modo exclusivo: Llavero Ranura CAD (25 mm ancho fijo, manos 15 mm centradas con 5 mm de margen)
+  // Modo exclusivo: Llavero Ranura CAD (25 mm ancho fijo, manos vectoriales proporcionales centradas con >=5 mm de margen)
   return generateCapsuleMode(letters, config, signHeightMm, signSpacingMm);
 }
 
@@ -54,9 +55,9 @@ export function generateLaserSvg(text: string, config: LaserConfig): GeneratedLa
  * MODO 1: Llavero Ranura / Cápsula (Modelo CAD Oficial del Usuario)
  * Especificaciones de diseño:
  * - Ancho (altura vertical del perfil) fijo en 25 mm.
- * - Manos con altura fija de 15 mm, centradas verticalmente.
- * - Margen de 5 mm por encima y 5 mm por debajo de las figuras (5 + 15 + 5 = 25 mm).
- * - Largo del llavero se ajusta de forma 100% dinámica al largo de la palabra.
+ * - Manos vectoriales con escala anatómica unificada (máximo 14.5 mm de alto, centradas verticalmente a 12.5 mm).
+ * - Margen de al menos 5 mm por encima y 5 mm por debajo de las figuras.
+ * - Largo del llavero se ajusta de forma 100% dinámica al ancho real proporcional de cada mano.
  * - Orificio de argolla centrado verticalmente a 12.5 mm con pared estructural segura de >5 mm.
  */
 function generateCapsuleMode(
@@ -69,51 +70,59 @@ function generateCapsuleMode(
   const totalHeight = 25;
   const endRadius = totalHeight / 2; // 12.5 mm (radio de las semicircunferencias)
 
-  // Dimensiones fijas de cada figura de mano: 15 mm centradas con 5 mm superior e inferior
-  const handHeight = 15;
-  const handMarginY = 5; // 5 mm sobre y 5 mm bajo: 5 + 15 + 5 = 25 mm
-
   // Ubicación del orificio para la argolla (centrado verticalmente a 12.5 mm)
   const holeRadius = (config.holeDiameterMm || 4.5) / 2;
   const holeCenterX = 7.5;
   const holeCenterY = 12.5;
 
   // Inicio de las señas dejando espacio seguro y estético después del orificio de argolla
-  const startSignsX = holeCenterX + holeRadius + 4.25; // ~14.0 mm
+  const startSignsX = holeCenterX + holeRadius + 4.5; // ~14.25 mm
 
-  // Calculamos la posición y tamaño exacto de cada mano usando los assets oficiales
-  const handElements: { x: number; y: number; width: number; height: number; letter: string; dataUrl: string }[] = [];
+  // Calculamos la posición y tamaño exacto de cada mano usando los vectores oficiales con proporción anatómica
+  const handElements: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    letter: string;
+    pathD: string;
+    scale: number;
+  }[] = [];
+
   let currentX = startSignsX;
 
   letters.forEach((char) => {
-    const asset = CHILEAN_LETTER_ASSETS[char];
-    if (!asset) return;
+    const sign = CHILEAN_VECTOR_SIGNS[char];
+    if (!sign) return;
 
-    const handWidth = handHeight * asset.aspectRatio;
+    // Escala del vector: vectorWidth = origWidth * 4.
+    // El tamaño deseado en milímetros es sign.widthMm.
+    const scaleFactor = sign.widthMm / sign.vectorWidth;
+
+    // Centrado vertical respecto al eje Y = 12.5 mm:
+    // handY deja un margen perfectamente simétrico superior e inferior
+    const handY = (totalHeight - sign.heightMm) / 2;
+
     handElements.push({
       x: currentX,
-      y: handMarginY,
-      width: handWidth,
-      height: handHeight,
+      y: handY,
+      width: sign.widthMm,
+      height: sign.heightMm,
       letter: char,
-      dataUrl: asset.dataUrl
+      pathD: sign.pathD,
+      scale: scaleFactor
     });
 
-    currentX += handWidth + spacingMm;
+    currentX += sign.widthMm + spacingMm;
   });
 
-  // Largo total ajustado dinámicamente al largo de la palabra
+  // Largo total ajustado dinámicamente al largo acumulado de la palabra
   // Dejamos un margen seguro de 7.5 mm tras la última mano para que la semicircunferencia no roce los dedos
   const lastHand = handElements[handElements.length - 1];
   const lastHandRight = lastHand ? lastHand.x + lastHand.width : startSignsX + 30;
   const totalWidth = lastHandRight + 7.5;
 
   // 1. Capa de CORTE (Rojo #FF0000): Cápsula perfecta (Ranura) y Orificio
-  // Curva de la cápsula:
-  // - Semicírculo izquierdo centrado en (endRadius, endRadius) = (12.5, 12.5)
-  // - Línea superior recta de endRadius a totalWidth - endRadius
-  // - Semicírculo derecho centrado en (totalWidth - endRadius, endRadius)
-  // - Línea inferior recta de totalWidth - endRadius a endRadius
   const capLeftX = endRadius;
   const capRightX = Math.max(totalWidth - endRadius, capLeftX + 1);
 
@@ -132,29 +141,28 @@ function generateCapsuleMode(
             fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2" id="keychain-hole" />
   `;
 
-  // 2. Capa de GRABADO RASTER (Imágenes oficiales de alta definición sin fondo)
-  const imageEngraveParts: string[] = handElements.map((h) => {
+  // 2. Capa de GRABADO LÁSER VECTORIAL (Curvas Bézier oficiales limpias y proporcionales)
+  const vectorEngraveParts: string[] = handElements.map((h, idx) => {
     return `
-      <!-- Seña Oficial Chilena: Letra ${h.letter} -->
-      <image href="${h.dataUrl}" 
-             x="${h.x.toFixed(2)}" y="${h.y.toFixed(2)}" 
-             width="${h.width.toFixed(2)}" height="${h.height.toFixed(2)}" 
-             preserveAspectRatio="xMidYMid meet" />
+      <!-- Seña Oficial Chilena: Letra ${h.letter} (${h.width.toFixed(2)} × ${h.height.toFixed(2)} mm) -->
+      <g id="sign-${h.letter}-${idx}" transform="translate(${h.x.toFixed(3)}, ${h.y.toFixed(3)}) scale(${h.scale.toFixed(6)})">
+        <path d="${h.pathD}" fill="${config.engraveFillColor || '#000000'}" fill-rule="evenodd" stroke="none" />
+      </g>
     `;
   });
 
   const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+<svg xmlns="http://www.w3.org/2000/svg"
      width="${totalWidth.toFixed(2)}mm" 
      height="${totalHeight.toFixed(2)}mm" 
      viewBox="0 0 ${totalWidth.toFixed(2)} ${totalHeight.toFixed(2)}">
   <defs>
-    <desc>Llavero Ranura CAD - Alfabeto Manual Chileno - MakerBox UTalca</desc>
+    <desc>Llavero Ranura CAD Vectorial - Alfabeto Manual Chileno - MakerBox UTalca</desc>
   </defs>
 
-  <!-- CAPA 2: GRABADO LÁSER (Únicamente Ilustraciones Oficiales Chilenas) -->
+  <!-- CAPA 2: GRABADO LÁSER VECTORIAL (Vectores Puros en Escala Anatómica Proporcional) -->
   <g id="capa-grabado-señas">
-    ${imageEngraveParts.join('\n    ')}
+    ${vectorEngraveParts.join('\n    ')}
   </g>
 
   <!-- CAPA 1: CORTE EXTERIOR (Rojo #FF0000) -->

@@ -6,37 +6,37 @@ import { SignDefinition } from '@/types';
  * Imagen base: 452 x 678 px, dividida en 6 columnas y 5 filas.
  */
 export const CHILEAN_SPRITE_OFFSETS: Record<string, { x: number; y: number; width: number; height: number }> = {
-  A: { x: 4, y: 96, width: 68, height: 95 },
-  B: { x: 77, y: 96, width: 68, height: 95 },
-  C: { x: 152, y: 96, width: 68, height: 95 },
-  D: { x: 304, y: 96, width: 68, height: 95 },
-  E: { x: 378, y: 96, width: 70, height: 95 },
+  A: { x: 15, y: 90, width: 60, height: 72 },
+  B: { x: 80, y: 84, width: 68, height: 78 },
+  C: { x: 150, y: 90, width: 75, height: 72 },
+  D: { x: 302, y: 88, width: 68, height: 74 },
+  E: { x: 376, y: 88, width: 72, height: 74 },
 
-  F: { x: 4, y: 200, width: 68, height: 95 },
-  G: { x: 77, y: 200, width: 68, height: 95 },
-  H: { x: 152, y: 200, width: 68, height: 95 },
-  I: { x: 228, y: 200, width: 68, height: 95 },
-  J: { x: 304, y: 200, width: 68, height: 95 },
-  K: { x: 378, y: 200, width: 70, height: 95 },
+  F: { x: 15, y: 195, width: 65, height: 75 },
+  G: { x: 80, y: 195, width: 68, height: 75 },
+  H: { x: 152, y: 200, width: 75, height: 70 },
+  I: { x: 228, y: 195, width: 68, height: 75 },
+  J: { x: 304, y: 195, width: 72, height: 75 },
+  K: { x: 376, y: 195, width: 72, height: 75 },
 
-  L: { x: 4, y: 304, width: 68, height: 95 },
-  M: { x: 152, y: 304, width: 68, height: 95 },
-  N: { x: 228, y: 304, width: 68, height: 95 },
-  Ñ: { x: 304, y: 304, width: 68, height: 95 },
-  O: { x: 378, y: 304, width: 70, height: 95 },
+  L: { x: 15, y: 300, width: 65, height: 75 },
+  M: { x: 152, y: 300, width: 72, height: 75 },
+  N: { x: 228, y: 300, width: 72, height: 75 },
+  Ñ: { x: 304, y: 295, width: 72, height: 80 },
+  O: { x: 378, y: 300, width: 72, height: 75 },
 
-  P: { x: 4, y: 408, width: 68, height: 95 },
-  Q: { x: 77, y: 408, width: 68, height: 95 },
-  R: { x: 152, y: 408, width: 68, height: 95 },
-  S: { x: 304, y: 408, width: 68, height: 95 },
-  T: { x: 378, y: 408, width: 70, height: 95 },
+  P: { x: 15, y: 405, width: 65, height: 75 },
+  Q: { x: 80, y: 400, width: 70, height: 75 },
+  R: { x: 152, y: 400, width: 72, height: 75 },
+  S: { x: 304, y: 395, width: 72, height: 80 },
+  T: { x: 378, y: 395, width: 72, height: 80 },
 
-  U: { x: 4, y: 512, width: 68, height: 95 },
-  V: { x: 77, y: 512, width: 68, height: 95 },
-  W: { x: 152, y: 512, width: 68, height: 95 },
-  X: { x: 228, y: 512, width: 68, height: 95 },
-  Y: { x: 304, y: 512, width: 68, height: 95 },
-  Z: { x: 378, y: 512, width: 70, height: 95 }
+  U: { x: 15, y: 505, width: 65, height: 80 },
+  V: { x: 80, y: 505, width: 68, height: 80 },
+  W: { x: 152, y: 505, width: 72, height: 80 },
+  X: { x: 228, y: 505, width: 72, height: 80 },
+  Y: { x: 304, y: 505, width: 72, height: 80 },
+  Z: { x: 378, y: 505, width: 72, height: 80 }
 };
 
 /**
