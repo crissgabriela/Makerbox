@@ -151,11 +151,19 @@ function generateCapsuleMode(
     `;
   });
 
+  // Margen de seguridad (1.0 mm) para que el trazo perimetral (stroke-width 0.2mm) nunca sea recortado por el viewBox
+  const pad = 1.0;
+  const vbMinX = -pad;
+  const vbMinY = -pad;
+  const vbWidth = totalWidth + pad * 2;
+  const vbHeight = totalHeight + pad * 2;
+
   const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
-     width="${totalWidth.toFixed(2)}mm" 
-     height="${totalHeight.toFixed(2)}mm" 
-     viewBox="0 0 ${totalWidth.toFixed(2)} ${totalHeight.toFixed(2)}">
+     width="${vbWidth.toFixed(2)}mm" 
+     height="${vbHeight.toFixed(2)}mm" 
+     viewBox="${vbMinX.toFixed(2)} ${vbMinY.toFixed(2)} ${vbWidth.toFixed(2)} ${vbHeight.toFixed(2)}"
+     style="overflow: visible;">
   <defs>
     <desc>Llavero Ranura CAD Vectorial - Alfabeto Manual Chileno - MakerBox UTalca</desc>
   </defs>
@@ -167,7 +175,7 @@ function generateCapsuleMode(
 
   <!-- CAPA 1: CORTE EXTERIOR (Rojo #FF0000) -->
   <g id="capa-corte-exterior">
-    <path d="${capsulePathD}" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2" id="keychain-capsule-cut" />
+    <path d="${capsulePathD}" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2" stroke-linecap="round" stroke-linejoin="round" id="keychain-capsule-cut" />
     ${holeSvg}
   </g>
 </svg>`;

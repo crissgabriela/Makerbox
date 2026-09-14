@@ -649,6 +649,46 @@ export const LithophaneSection: React.FC = () => {
                 </div>
               </label>
             </div>
+
+            {/* Selector de Resolución / Calidad 3D (mm/píxel) */}
+            <div className="flex flex-col gap-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-800">Resolución de Detalle 3D:</span>
+                <span className="font-extrabold text-blue-700">
+                  {config.resolution >= 450
+                    ? '0.2 mm/px (Ultra Detalle)'
+                    : config.resolution >= 220
+                    ? '0.4 mm/px (Alta Calidad)'
+                    : '0.7 mm/px (Rápida Stand)'}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: '0.7 mm/px', desc: 'Rápida (140)', res: 140 },
+                  { label: '0.4 mm/px', desc: 'Alta (250)', res: 250 },
+                  { label: '0.2 mm/px', desc: 'Ultra (500)', res: 500 }
+                ].map((item) => (
+                  <button
+                    key={item.res}
+                    type="button"
+                    onClick={() => updateConfig('resolution', item.res)}
+                    className={`px-2 py-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center transition ${
+                      config.resolution === item.res
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{item.label}</span>
+                    <span className={`text-[10px] ${config.resolution === item.res ? 'text-blue-100' : 'text-slate-400'}`}>
+                      {item.desc}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <span className="text-[11px] text-slate-400">
+                0.2 mm/px genera máxima definición fotográfica (~1M de triángulos). 0.7 mm/px es ideal para vista previa rápida en el stand.
+              </span>
+            </div>
           </div>
         </div>
 
