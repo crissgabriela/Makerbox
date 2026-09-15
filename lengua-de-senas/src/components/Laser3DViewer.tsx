@@ -3,20 +3,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { RotateCw, RefreshCw, Sparkles, Sun } from 'lucide-react';
+import { RotateCw, RefreshCw, Sparkles } from 'lucide-react';
 import { GeneratedLaserSvg } from '@/types';
 
 interface Laser3DViewerProps {
   laserResult: GeneratedLaserSvg;
   isLoading?: boolean;
 }
-
-export const WOOD_FINISHES = [
-  { name: 'MDF / Trupan Natural', color: '#d7ab76', burnColor: '#362113' },
-  { name: 'Contrachapado Abedul', color: '#eed7aa', burnColor: '#442614' },
-  { name: 'Nogal Cálido', color: '#8c5936', burnColor: '#1d0f07' },
-  { name: 'Acrílico Blanco', color: '#f1f5f9', burnColor: '#334155' }
-];
 
 export const Laser3DViewer: React.FC<Laser3DViewerProps> = ({ laserResult, isLoading = false }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -27,7 +20,6 @@ export const Laser3DViewer: React.FC<Laser3DViewerProps> = ({ laserResult, isLoa
 
   const meshGroupRef = useRef<THREE.Group | null>(null);
 
-  const [selectedFinish, setSelectedFinish] = useState(WOOD_FINISHES[0]);
   const [autoRotate, setAutoRotate] = useState(false);
 
   // Inicializar Three.js
@@ -179,7 +171,7 @@ export const Laser3DViewer: React.FC<Laser3DViewerProps> = ({ laserResult, isLoa
 
     // Material de madera para la base
     const baseMaterial = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(selectedFinish.color),
+      color: new THREE.Color(0xd7ab76),
       roughness: 0.65,
       metalness: 0.05
     });
@@ -213,7 +205,7 @@ export const Laser3DViewer: React.FC<Laser3DViewerProps> = ({ laserResult, isLoa
       const img = new window.Image();
       const svgForTexture = laserResult.svgString
         .replace(/stroke="#[A-Fa-f0-9]+"/g, 'stroke="none"')
-        .replace(/fill="#[A-Fa-f0-9]+"/g, 'fill="' + selectedFinish.burnColor + '"');
+        .replace(/fill="#[A-Fa-f0-9]+"/g, 'fill="#362113"');
 
       const svgBlob = new Blob([svgForTexture], { type: 'image/svg+xml;charset=utf-8' });
       const url = URL.createObjectURL(svgBlob);
@@ -256,7 +248,7 @@ export const Laser3DViewer: React.FC<Laser3DViewerProps> = ({ laserResult, isLoa
       controlsRef.current.target.set(0, 0, 0);
       controlsRef.current.update();
     }
-  }, [laserResult, selectedFinish]);
+  }, [laserResult]);
 
   const handleResetCamera = (view: 'iso' | 'top' | 'front') => {
     if (!cameraRef.current || !controlsRef.current || !laserResult) return;
@@ -332,27 +324,6 @@ export const Laser3DViewer: React.FC<Laser3DViewerProps> = ({ laserResult, isLoa
           >
             Frente
           </button>
-        </div>
-      </div>
-
-      {/* Selector de material / acabado para la feria */}
-      <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
-        <div className="flex items-center gap-1.5">
-          <Sun className="w-3.5 h-3.5 text-amber-500" />
-          <span className="font-bold text-slate-700">Material de corte:</span>
-        </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {WOOD_FINISHES.map((finish) => (
-            <button
-              key={finish.name}
-              type="button"
-              onClick={() => setSelectedFinish(finish)}
-              className={'flex items-center gap-1.5 px-2.5 py-1 rounded-xl font-bold transition border cursor-pointer ' + (selectedFinish.name === finish.name ? 'bg-white border-purple-600 text-purple-900 shadow-xs ring-1 ring-purple-400' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100')}
-            >
-              <span className="w-3 h-3 rounded-full border border-slate-300" style={{ backgroundColor: finish.color }} />
-              <span>{finish.name}</span>
-            </button>
-          ))}
         </div>
       </div>
     </div>

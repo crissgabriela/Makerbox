@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { LaserConfig, GeneratedLaserSvg } from '@/types';
 import { generateLaserSvg } from '@/lib/svgPathMerger';
 import { Laser3DViewer } from './Laser3DViewer';
-import { Download, Sparkles, Box, Eye, LayoutGrid } from 'lucide-react';
+import { Download, Sparkles, Box, Eye } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface LaserSvgGeneratorProps {
@@ -13,9 +13,6 @@ interface LaserSvgGeneratorProps {
 }
 
 export const LaserSvgGenerator: React.FC<LaserSvgGeneratorProps> = ({ text, config }) => {
-  const [viewMode, setViewMode] = useState<'2d' | '3d' | 'split'>('split');
-  const [previewMode2D, setPreviewMode2D] = useState<'mdf' | 'laser'>('mdf');
-
   const laserResult: GeneratedLaserSvg = useMemo(() => {
     return generateLaserSvg(text, config);
   }, [text, config]);
@@ -70,108 +67,47 @@ export const LaserSvgGenerator: React.FC<LaserSvgGeneratorProps> = ({ text, conf
         </button>
       </div>
 
-      {/* Selector de modo de visualización: 2D, 3D o Ambas Vistas */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl border border-slate-200">
-          <button
-            type="button"
-            onClick={() => setViewMode('2d')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-              viewMode === '2d' ? 'bg-white text-purple-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Eye className="w-3.5 h-3.5 text-purple-600" />
-            <span>Vista en 2D</span>
-          </button>
+      {/* Ambas vistas en paralelo por defecto (2D a la izquierda y 3D a la derecha) */}
+      <div className="w-full grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        {/* Visualizador 2D: Líneas Técnicas Láser (Rojo y Negro) */}
+        <div className="flex flex-col gap-2.5">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-700 px-1 flex-wrap gap-2">
+            <span className="flex items-center gap-1.5">
+              <Eye className="w-4 h-4 text-purple-600" />
+              <span>Vista 2D: Líneas Láser (Corte y Grabado)</span>
+            </span>
+            <div className="flex items-center gap-3 text-[11px] font-semibold text-slate-600">
+              <span className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-600" />
+                Corte (#FF0000)
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-black" />
+                Grabado (#000000)
+              </span>
+            </div>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setViewMode('3d')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-              viewMode === '3d' ? 'bg-white text-purple-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Box className="w-3.5 h-3.5 text-purple-600" />
-            <span>Vista 3D</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setViewMode('split')}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer hidden sm:flex ${
-              viewMode === 'split' ? 'bg-white text-purple-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <LayoutGrid className="w-3.5 h-3.5 text-purple-600" />
-            <span>Ambas Vistas (2D y 3D)</span>
-          </button>
+          <div className="w-full min-h-[320px] sm:min-h-[380px] rounded-3xl border-2 border-slate-200 bg-slate-50 p-6 flex items-center justify-center overflow-x-auto shadow-inner">
+            <div
+              className="max-w-full flex items-center justify-center drop-shadow-sm"
+              dangerouslySetInnerHTML={{ __html: laserResult.svgString }}
+            />
+          </div>
         </div>
 
-        {/* Sub-selector para 2D si está en modo 2D o split */}
-        {(viewMode === '2d' || viewMode === 'split') && (
-          <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl text-xs">
-            <button
-              type="button"
-              onClick={() => setPreviewMode2D('mdf')}
-              className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
-                previewMode2D === 'mdf' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Madera Real (MDF)
-            </button>
-            <button
-              type="button"
-              onClick={() => setPreviewMode2D('laser')}
-              className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
-                previewMode2D === 'laser' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Líneas Láser (Rojo / Negro)
-            </button>
+        {/* Visualizador 3D: Simulador en Madera Real */}
+        <div className="flex flex-col gap-2.5">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-700 px-1">
+            <span className="flex items-center gap-1.5">
+              <Box className="w-4 h-4 text-purple-600" />
+              <span>Vista 3D: Simulador en Madera Real (3 mm)</span>
+            </span>
+            <span className="text-[11px] text-purple-600 font-semibold">Arrastra con el dedo o mouse</span>
           </div>
-        )}
-      </div>
 
-      {/* Contenedor de visualizadores */}
-      <div className={`w-full ${viewMode === 'split' ? 'grid grid-cols-1 lg:grid-cols-2 gap-5 items-start' : 'flex flex-col'}`}>
-        {/* Visualizador 2D (Corte Láser Plano) */}
-        {(viewMode === '2d' || viewMode === 'split') && (
-          <div className="flex flex-col gap-2.5">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-700 px-1">
-              <span className="flex items-center gap-1.5">
-                <Eye className="w-4 h-4 text-purple-600" />
-                <span>Vista Técnica 2D (Corte y Grabado Láser)</span>
-              </span>
-              <span className="text-[11px] text-slate-400 font-normal">Escala Vectorial SVG</span>
-            </div>
-
-            <div
-              className={`w-full min-h-[320px] sm:min-h-[380px] rounded-3xl border-2 p-6 flex items-center justify-center overflow-x-auto transition-colors shadow-inner ${
-                previewMode2D === 'mdf' ? 'bg-[#f7eedf] border-[#e8d5bf]' : 'bg-slate-50 border-slate-200'
-              }`}
-            >
-              <div
-                className="max-w-full flex items-center justify-center drop-shadow-sm"
-                dangerouslySetInnerHTML={{ __html: laserResult.svgString }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Visualizador 3D Interactivo (Three.js WebGL) */}
-        {(viewMode === '3d' || viewMode === 'split') && (
-          <div className="flex flex-col gap-2.5">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-700 px-1">
-              <span className="flex items-center gap-1.5">
-                <Box className="w-4 h-4 text-purple-600" />
-                <span>Vista 3D Interactiva (Simulador en Madera)</span>
-              </span>
-              <span className="text-[11px] text-purple-600 font-semibold">Arrastra con el dedo o mouse</span>
-            </div>
-
-            <Laser3DViewer laserResult={laserResult} />
-          </div>
-        )}
+          <Laser3DViewer laserResult={laserResult} />
+        </div>
       </div>
 
       {/* Nota informativa para el stand */}

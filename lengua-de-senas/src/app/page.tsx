@@ -32,7 +32,7 @@ const DEFAULT_CONFIG: LaserConfig = {
 
 export default function Home() {
   const [activeTool, setActiveTool] = useState<'laser' | 'lithophane' | 'braille'>('laser');
-  const [text, setText] = useState('CRISS');
+  const [text, setText] = useState('');
   const [laserConfig, setLaserConfig] = useState<LaserConfig>(DEFAULT_CONFIG);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
