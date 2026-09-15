@@ -33,31 +33,27 @@ export const SignDisplay: React.FC<SignDisplayProps> = ({ text, onSelectLetter }
     <div className="w-full bg-white rounded-3xl border border-slate-200 shadow-md p-6 sm:p-8 flex flex-col gap-5">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
         <div>
-          <h3 className="text-xl sm:text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <span className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-base font-extrabold">
+          <h3 className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2">
+            <span className="w-7 h-7 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-sm font-extrabold">
               2
             </span>
             <span>Así se escribe en Lengua de Señas Chilena:</span>
           </h3>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="text-xs text-slate-500 mt-0.5">
             Ilustraciones oficiales del Alfabeto Manual Chileno (LSCh).
           </p>
         </div>
-
-        <span className="px-3.5 py-1.5 rounded-full bg-purple-50 text-purple-700 text-xs font-bold border border-purple-200">
-          {letters.length} {letters.length === 1 ? 'letra' : 'letras'}
-        </span>
       </div>
 
-      {/* Contenedor desplazable con las tarjetas de señas grandes y claras */}
-      <div className="w-full overflow-x-auto pb-4 pt-1 scrollbar-thin">
-        <div className="flex items-stretch gap-4 min-w-min">
+      {/* Contenedor desplazable con las tarjetas de señas compactas y claras */}
+      <div className="w-full overflow-x-auto pb-2 pt-0.5 scrollbar-thin">
+        <div className="flex items-stretch gap-3 min-w-min">
           {letters.map((char, index) => {
             if (char === ' ') {
               return (
                 <div
                   key={`space-${index}`}
-                  className="w-16 min-h-[220px] rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-400 font-bold text-xs"
+                  className="w-12 min-h-[140px] rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-400 font-bold text-[10px]"
                 >
                   <span className="rotate-90 tracking-widest uppercase">Espacio</span>
                 </div>
@@ -66,35 +62,36 @@ export const SignDisplay: React.FC<SignDisplayProps> = ({ text, onSelectLetter }
 
             const sign = SIGNS_DICTIONARY[char];
             const imageFileName = char === 'Ñ' ? 'N_TILDE.png' : `${char}.png`;
+            const badgeLabel = char === 'SYM_HEART1' ? '♥' : char === 'SYM_HEART2' ? '♡' : char === 'SYM_HEART3' ? '★' : char;
 
             return (
               <div
                 key={`${char}-${index}`}
                 onClick={() => onSelectLetter?.(char)}
-                className="group flex flex-col items-center justify-between bg-gradient-to-b from-white to-slate-50 border-2 border-slate-200 hover:border-purple-400 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer flex-shrink-0 w-36 sm:w-40 text-center active:scale-95"
+                className="group flex flex-col items-center justify-between bg-gradient-to-b from-white to-slate-50 border-2 border-slate-200 hover:border-purple-400 rounded-2xl p-2.5 sm:p-3 shadow-xs hover:shadow-md transition-all cursor-pointer flex-shrink-0 w-28 sm:w-32 text-center active:scale-95"
               >
-                {/* Letra badge gigante */}
-                <div className="w-12 h-12 rounded-2xl bg-purple-600 text-white font-extrabold text-2xl flex items-center justify-center shadow-md mb-2 group-hover:scale-105 transition">
-                  {char}
+                {/* Letra badge estilizado */}
+                <div className="w-8 h-8 rounded-xl bg-purple-600 text-white font-black text-sm flex items-center justify-center shadow-xs mb-1.5 group-hover:scale-105 transition">
+                  {badgeLabel}
                 </div>
 
                 {/* Ilustración chilena oficial en alta resolución y transparente */}
-                <div className="w-24 h-28 flex items-center justify-center bg-white rounded-xl border border-slate-100 p-2 shadow-inner overflow-hidden my-1">
+                <div className="w-20 h-20 flex items-center justify-center bg-white rounded-xl border border-slate-100 p-1 shadow-inner overflow-hidden my-0.5">
                   <Image
                     src={`/signs/letters/${imageFileName}`}
-                    alt={`Seña oficial para letra ${char}`}
-                    width={80}
-                    height={100}
-                    className="object-contain max-h-24 w-auto drop-shadow-sm"
+                    alt={`Seña oficial para letra ${badgeLabel}`}
+                    width={70}
+                    height={70}
+                    className="object-contain max-h-18 w-auto drop-shadow-xs"
                   />
                 </div>
 
                 {/* Explicación en lenguaje sencillo para que cualquiera aprenda */}
-                <div className="mt-2 flex flex-col items-center">
-                  <span className="text-sm font-bold text-slate-800">
-                    {sign ? sign.name : `Letra ${char}`}
+                <div className="mt-1 flex flex-col items-center">
+                  <span className="text-xs font-bold text-slate-800 line-clamp-1">
+                    {sign ? sign.name : `Letra ${badgeLabel}`}
                   </span>
-                  <p className="text-[11px] text-slate-500 leading-snug mt-1 line-clamp-2">
+                  <p className="text-[10px] text-slate-500 leading-snug mt-0.5 line-clamp-2">
                     {sign ? sign.description : ''}
                   </p>
                 </div>

@@ -524,22 +524,68 @@ export const SIGNS_DICTIONARY: Record<string, SignDefinition> = {
       'M 68 24 L 88 24 L 72 44 L 92 44',
       'M 28 66 C 40 64 54 68 58 80'
     ]
+  },
+  SYM_HEART1: {
+    letter: '♥',
+    name: 'Corazón con Dedos',
+    description: 'Dedos índice y pulgar cruzados formando un corazón con la mano.',
+    viewBox: '0 0 100 130',
+    width: 100,
+    height: 130,
+    wristAnchor: [28, 72],
+    outerPath: '',
+    innerPaths: []
+  },
+  SYM_HEART2: {
+    letter: '♡',
+    name: 'Manos en Corazón',
+    description: 'Ambas manos unidas por los pulgares y dedos curvados formando un corazón.',
+    viewBox: '0 0 100 130',
+    width: 100,
+    height: 130,
+    wristAnchor: [28, 72],
+    outerPath: '',
+    innerPaths: []
+  },
+  SYM_HEART3: {
+    letter: '★',
+    name: 'Manos y Corazón',
+    description: 'Manos formando corazón acompañadas del símbolo de amor en la parte superior.',
+    viewBox: '0 0 100 130',
+    width: 100,
+    height: 130,
+    wristAnchor: [28, 72],
+    outerPath: '',
+    innerPaths: []
   }
 };
 
 /**
- * Normaliza una cadena de texto a letras admitidas por el catálogo.
- * Transforma tildes (Á -> A, etc.) y mantiene la Ñ intacta.
+ * Normaliza una cadena de texto a letras y símbolos admitidos por el catálogo.
+ * Transforma tildes (Á -> A, etc.), mantiene la Ñ y reconoce los 3 símbolos de amor/manos.
  */
 export function normalizeText(text: string): string[] {
-  return text
-    .toUpperCase()
+  const tokens: string[] = [];
+  const normalizedStr = text
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, (match, offset, str) => {
-      if (str[offset - 1] === 'N') return match;
+      if (str[offset - 1] === 'N' || str[offset - 1] === 'n') return match;
       return '';
     })
-    .normalize('NFC')
-    .split('')
-    .filter((char) => (char >= 'A' && char <= 'Z') || char === 'Ñ' || char === ' ');
+    .normalize('NFC');
+
+  for (const char of normalizedStr) {
+    const upper = char.toUpperCase();
+    if ((upper >= 'A' && upper <= 'Z') || upper === 'Ñ' || upper === ' ') {
+      tokens.push(upper);
+    } else if (char === '🫰' || char === '♥') {
+      tokens.push('SYM_HEART1');
+    } else if (char === '🫶' || char === '♡') {
+      tokens.push('SYM_HEART2');
+    } else if (char === '💖' || char === '★' || char === '❤️') {
+      tokens.push('SYM_HEART3');
+    }
+  }
+  return tokens;
 }
+

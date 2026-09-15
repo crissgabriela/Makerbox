@@ -96,14 +96,11 @@ export default function Home() {
                 <div className="flex items-center gap-2">
                   <span className="px-2.5 py-0.5 rounded-full bg-purple-200 text-purple-900 text-[11px] font-extrabold flex items-center gap-1">
                     <Sparkles className="w-3 h-3 text-purple-700" />
-                    Stand Demostrativo MakerBox · UTalca
-                  </span>
-                  <span className="text-xs font-semibold text-slate-500 hidden md:inline">
                     Feria de Conmemoración de la Lengua de Señas
                   </span>
                 </div>
                 <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-0.5">
-                  Tu nombre en Lengua de Señas Chilena
+                  Corta tu llavero en Lengua de Señas Chilena
                 </h1>
                 <p className="text-xs sm:text-sm text-slate-600 max-w-2xl leading-snug">
                   Escribe cualquier palabra o tu nombre. La plataforma lo transforma en señas de manos y genera un diseño unificado para cortarlo con láser en madera y llevarte un recuerdo del stand.
