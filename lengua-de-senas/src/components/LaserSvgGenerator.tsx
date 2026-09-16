@@ -106,7 +106,7 @@ export const LaserSvgGenerator: React.FC<LaserSvgGeneratorProps> = ({ text, conf
             <span className="text-[11px] text-purple-600 font-semibold">Arrastra con el dedo o mouse</span>
           </div>
 
-          <Laser3DViewer laserResult={laserResult} />
+          <Laser3DViewer laserResult={laserResult} holeDiameterMm={config.holeDiameterMm} />
         </div>
       </div>
 

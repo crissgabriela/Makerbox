@@ -8,10 +8,15 @@ import { GeneratedLaserSvg } from '@/types';
 
 interface Laser3DViewerProps {
   laserResult: GeneratedLaserSvg;
+  holeDiameterMm?: number;
   isLoading?: boolean;
 }
 
-export const Laser3DViewer: React.FC<Laser3DViewerProps> = ({ laserResult, isLoading = false }) => {
+export const Laser3DViewer: React.FC<Laser3DViewerProps> = ({
+  laserResult,
+  holeDiameterMm = 4.5,
+  isLoading = false
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -138,7 +143,7 @@ export const Laser3DViewer: React.FC<Laser3DViewerProps> = ({ laserResult, isLoa
 
     const holeCenterX = 7.5;
     const holeCenterY = 12.5;
-    const holeRadius = 2.25; // 4.5 mm diameter / 2
+    const holeRadius = (holeDiameterMm || 4.5) / 2;
 
     // 1. Crear forma 2D de la cápsula con orificio
     const shape = new THREE.Shape();
@@ -179,17 +184,33 @@ export const Laser3DViewer: React.FC<Laser3DViewerProps> = ({ laserResult, isLoa
     const baseMesh = new THREE.Mesh(baseGeometry, baseMaterial);
     group.add(baseMesh);
 
-    // 2. Anillo metálico de llavero (argolla cromada pasando por el orificio)
-    const ringTorusGeo = new THREE.TorusGeometry(6.5, 0.75, 16, 36);
-    const ringMaterial = new THREE.MeshStandardMaterial({
-      color: 0xd1d5db,
-      metalness: 0.9,
-      roughness: 0.18
-    });
-    const ringMesh = new THREE.Mesh(ringTorusGeo, ringMaterial);
+    // 2. Anillo metálico de llavero (argolla concéntrica pasando limpiamente por el orificio)
+    // El centro del orificio en el espacio centrado está en:
+    // x = holeCenterX - totalWidth / 2
+    // y = 0
+    // z = 0
     const holeRelX = holeCenterX - totalWidth / 2;
-    ringMesh.position.set(holeRelX - 2.5, 0, 0);
-    ringMesh.rotation.y = Math.PI / 4;
+
+    // Radio de la argolla: 9.0 mm (rodea los 7.5 mm de distancia al borde exterior con más de 6 mm de holgura en aire)
+    const ringRadius = 9.0;
+    // Espesor del alambre: proporcional al orificio, asegurando holgura limpia
+    const tubeRadius = Math.min(Math.max(holeRadius * 0.38, 0.75), 1.0);
+
+    const ringTorusGeo = new THREE.TorusGeometry(ringRadius, tubeRadius, 24, 64);
+    const ringMaterial = new THREE.MeshStandardMaterial({
+      color: 0xd4d8df,
+      metalness: 0.94,
+      roughness: 0.14
+    });
+
+    const ringMesh = new THREE.Mesh(ringTorusGeo, ringMaterial);
+    // Orientamos el toroide en el plano XZ (plano vertical respecto a la placa)
+    ringMesh.rotation.x = Math.PI / 2;
+    // Al desplazar el centro del toroide en (holeRelX - ringRadius, 0, 0),
+    // el punto del alambre en x = +ringRadius queda exactamente en (holeRelX, 0, 0),
+    // haciendo que la sección transversal del alambre sea 100% concéntrica con el círculo de corte del orificio.
+    ringMesh.position.set(holeRelX - ringRadius, 0, 0);
+
     group.add(ringMesh);
 
     // 3. Crear textura grabada con los trazos láser en la cara superior
@@ -248,7 +269,7 @@ export const Laser3DViewer: React.FC<Laser3DViewerProps> = ({ laserResult, isLoa
       controlsRef.current.target.set(0, 0, 0);
       controlsRef.current.update();
     }
-  }, [laserResult]);
+  }, [laserResult, holeDiameterMm]);
 
   const handleResetCamera = (view: 'iso' | 'top' | 'front') => {
     if (!cameraRef.current || !controlsRef.current || !laserResult) return;
