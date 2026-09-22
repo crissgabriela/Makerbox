@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader.js';
 import { Box, RotateCcw, AlertTriangle, Check, Layers, Eye } from 'lucide-react';
 
 interface ModelViewer3DProps {
@@ -12,7 +13,7 @@ interface ModelViewer3DProps {
   fileUrl?: string;
   previewColor?: string;
   onDimensionsCalculated?: (dimensions: { x: number; y: number; z: number }) => void;
-  maxBedSizeMm?: number; // Por defecto 256mm (Bambu / Prusa estándar)
+  maxBedSizeMm?: number; // Por defecto 256mm (Bambu Lab / Prusa estándar)
   className?: string;
 }
 
@@ -49,7 +50,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
   const [dimensions, setDimensions] = useState<{ x: number; y: number; z: number } | null>(null);
   const [selectedColor, setSelectedColor] = useState(previewColor);
 
-  // Inicialización de Three.js
+  // Inicialización del Canvas Three.js
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -62,8 +63,8 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     sceneRef.current = scene;
 
     // Cámara
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 2000);
-    camera.position.set(200, 200, 250);
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 3000);
+    camera.position.set(180, 180, 220);
     cameraRef.current = camera;
 
     // Renderer
@@ -79,12 +80,12 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.maxDistance = 1000;
+    controls.maxDistance = 1500;
     controls.minDistance = 20;
     controlsRef.current = controls;
 
-    // Iluminación de estudio
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+    // Iluminación
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
     scene.add(ambientLight);
 
     const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -92,16 +93,16 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     dirLight1.castShadow = true;
     scene.add(dirLight1);
 
-    const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+    const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.6);
     dirLight2.position.set(-200, -100, -200);
     scene.add(dirLight2);
 
     // Cama de impresión MakerBox (Cuadrícula 256x256 mm)
-    const gridHelper = new THREE.GridHelper(maxBedSizeMm, 16, 0x9333ea, 0xcbd5e1);
+    const gridHelper = new THREE.GridHelper(maxBedSizeMm, 16, 0x46247a, 0xcbd5e1);
     gridHelper.position.y = 0;
     scene.add(gridHelper);
 
-    // Bucle de renderizado
+    // Bucle de animación
     let animationFrameId: number;
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
@@ -110,7 +111,6 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     };
     animate();
 
-    // Redimensionamiento
     const handleResize = () => {
       if (!containerRef.current || !cameraRef.current || !rendererRef.current) return;
       const w = containerRef.current.clientWidth;
@@ -131,6 +131,66 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     };
   }, [maxBedSizeMm]);
 
+  // Manejo común para posicionar y dimensionar cualquier Object3D cargado
+  const processObject = (object: THREE.Object3D) => {
+    if (!sceneRef.current || !cameraRef.current || !controlsRef.current) return;
+
+    if (meshRef.current) {
+      sceneRef.current.remove(meshRef.current);
+    }
+
+    // Calcular cotas
+    const box = new THREE.Box3().setFromObject(object);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+
+    // Centrar en X y Z, y posar exactamente en Y = 0 (sobre la cama)
+    object.position.x -= center.x;
+    object.position.z -= center.z;
+    object.position.y -= box.min.y;
+
+    const calculatedDims = {
+      x: Math.round(size.x * 10) / 10,
+      y: Math.round(size.y * 10) / 10,
+      z: Math.round(size.z * 10) / 10
+    };
+    setDimensions(calculatedDims);
+    if (onDimensionsCalculated) {
+      onDimensionsCalculated(calculatedDims);
+    }
+
+    // Aplicar material estilizado a todas las mallas
+    const colorHex = COLOR_MAP[selectedColor] || 0x64748b;
+    object.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.material = new THREE.MeshStandardMaterial({
+          color: colorHex,
+          roughness: 0.35,
+          metalness: 0.1,
+          transparent: selectedColor === 'Transparente',
+          opacity: selectedColor === 'Transparente' ? 0.65 : 1.0
+        });
+      }
+    });
+
+    sceneRef.current.add(object);
+    meshRef.current = object;
+
+    // Ajustar cámara
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const camDist = Math.max(maxDim * 2.2, 120);
+    cameraRef.current.position.set(camDist * 0.8, camDist * 0.7, camDist);
+    controlsRef.current.target.set(0, size.y / 2, 0);
+    controlsRef.current.update();
+
+    setIsLoading(false);
+  };
+
   // Carga del modelo (vía File o vía URL)
   useEffect(() => {
     if (!file && !fileUrl) {
@@ -145,70 +205,16 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
     setIsLoading(true);
     setError(null);
 
-    const processGeometry = (geometry: THREE.BufferGeometry) => {
-      if (!sceneRef.current || !cameraRef.current || !controlsRef.current) return;
-
-      // Remover objeto anterior
-      if (meshRef.current) {
-        sceneRef.current.remove(meshRef.current);
-      }
-
-      geometry.computeVertexNormals();
-      geometry.center();
-
-      // Calcular cotas / Bounding box
-      geometry.computeBoundingBox();
-      const box = geometry.boundingBox!;
-      const size = new THREE.Vector3();
-      box.getSize(size);
-
-      // Alinear modelo justo sobre la cama de impresión (Y = 0)
-      geometry.translate(0, size.y / 2, 0);
-
-      const calculatedDims = {
-        x: Math.round(size.x * 10) / 10,
-        y: Math.round(size.y * 10) / 10,
-        z: Math.round(size.z * 10) / 10
-      };
-      setDimensions(calculatedDims);
-      if (onDimensionsCalculated) {
-        onDimensionsCalculated(calculatedDims);
-      }
-
-      // Material elegante PBR
-      const colorHex = COLOR_MAP[selectedColor] || 0x64748b;
-      const material = new THREE.MeshStandardMaterial({
-        color: colorHex,
-        roughness: 0.35,
-        metalness: 0.1,
-        transparent: selectedColor === 'Transparente',
-        opacity: selectedColor === 'Transparente' ? 0.65 : 1.0
-      });
-
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      sceneRef.current.add(mesh);
-      meshRef.current = mesh;
-
-      // Ajustar cámara para encuadre óptimo
-      const maxDim = Math.max(size.x, size.y, size.z);
-      const camDist = Math.max(maxDim * 2.2, 120);
-      cameraRef.current.position.set(camDist * 0.8, camDist * 0.7, camDist);
-      controlsRef.current.target.set(0, size.y / 2, 0);
-      controlsRef.current.update();
-
-      setIsLoading(false);
-    };
-
     const loadSTL = (arrayBuffer: ArrayBuffer) => {
       try {
         const loader = new STLLoader();
         const geometry = loader.parse(arrayBuffer);
-        processGeometry(geometry);
+        geometry.computeVertexNormals();
+        const mesh = new THREE.Mesh(geometry);
+        processObject(mesh);
       } catch (err: unknown) {
         console.error('Error parseando STL:', err);
-        setError('No se pudo leer la geometría del archivo STL. Verifica que el archivo no esté dañado.');
+        setError('No se pudo leer la geometría del archivo STL.');
         setIsLoading(false);
       }
     };
@@ -217,24 +223,22 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       try {
         const loader = new OBJLoader();
         const obj = loader.parse(text);
-
-        // Extraer geometrías del OBJ
-        const geometries: THREE.BufferGeometry[] = [];
-        obj.traverse((child) => {
-          if ((child as THREE.Mesh).isMesh) {
-            geometries.push((child as THREE.Mesh).geometry);
-          }
-        });
-
-        if (geometries.length > 0) {
-          processGeometry(geometries[0]);
-        } else {
-          setError('El archivo OBJ no contiene mallas geométricas válidas.');
-          setIsLoading(false);
-        }
+        processObject(obj);
       } catch (err: unknown) {
         console.error('Error parseando OBJ:', err);
-        setError('Error al procesar el archivo OBJ.');
+        setError('No se pudo leer la geometría del archivo OBJ.');
+        setIsLoading(false);
+      }
+    };
+
+    const load3MF = (arrayBuffer: ArrayBuffer) => {
+      try {
+        const loader = new ThreeMFLoader();
+        const group = loader.parse(arrayBuffer);
+        processObject(group);
+      } catch (err: unknown) {
+        console.error('Error parseando 3MF:', err);
+        setError('No se pudo leer la geometría del archivo 3MF.');
         setIsLoading(false);
       }
     };
@@ -258,39 +262,54 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         };
         reader.readAsText(file);
       } else if (fileName.endsWith('.3mf')) {
-        // Soporte informativo para 3MF (formato ZIP complejo)
-        setIsLoading(false);
-        setDimensions({ x: 50, y: 50, z: 50 }); // Estimado simbólico
-        if (onDimensionsCalculated) {
-          onDimensionsCalculated({ x: 50, y: 50, z: 50 });
-        }
+        reader.onload = (e) => {
+          if (e.target?.result instanceof ArrayBuffer) {
+            load3MF(e.target.result);
+          }
+        };
+        reader.readAsArrayBuffer(file);
       } else {
-        setError('Formato no previsualizable en 3D. El archivo se enviará correctamente a MakerBox.');
+        setError('Formato no previsualizable en 3D (.stl, .obj, .3mf).');
         setIsLoading(false);
       }
     } else if (fileUrl) {
+      const lowerUrl = fileUrl.toLowerCase();
       fetch(fileUrl)
         .then((res) => res.arrayBuffer())
-        .then((buf) => loadSTL(buf))
+        .then((buf) => {
+          if (lowerUrl.includes('.3mf')) {
+            load3MF(buf);
+          } else if (lowerUrl.includes('.obj')) {
+            const text = new TextDecoder().decode(buf);
+            loadOBJ(text);
+          } else {
+            loadSTL(buf);
+          }
+        })
         .catch(() => {
           setError('No se pudo descargar el modelo 3D para previsualización.');
           setIsLoading(false);
         });
     }
-  }, [file, fileUrl, selectedColor, onDimensionsCalculated]);
+  }, [file, fileUrl, selectedColor]);
 
-  // Actualización de color reactiva
+  // Actualización reactiva de color
   useEffect(() => {
-    if (meshRef.current && (meshRef.current as THREE.Mesh).isMesh) {
-      const mesh = meshRef.current as THREE.Mesh;
+    if (meshRef.current) {
       const colorHex = COLOR_MAP[selectedColor] || 0x64748b;
-      (mesh.material as THREE.MeshStandardMaterial).color.setHex(colorHex);
-      (mesh.material as THREE.MeshStandardMaterial).transparent = selectedColor === 'Transparente';
-      (mesh.material as THREE.MeshStandardMaterial).opacity = selectedColor === 'Transparente' ? 0.65 : 1.0;
+      meshRef.current.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          if (mesh.material && (mesh.material as THREE.MeshStandardMaterial).color) {
+            (mesh.material as THREE.MeshStandardMaterial).color.setHex(colorHex);
+            (mesh.material as THREE.MeshStandardMaterial).transparent = selectedColor === 'Transparente';
+            (mesh.material as THREE.MeshStandardMaterial).opacity = selectedColor === 'Transparente' ? 0.65 : 1.0;
+          }
+        }
+      });
     }
   }, [selectedColor]);
 
-  // Reset de cámara
   const handleResetCamera = () => {
     if (!cameraRef.current || !controlsRef.current || !dimensions) return;
     const maxDim = Math.max(dimensions.x, dimensions.y, dimensions.z);
@@ -328,7 +347,7 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         </div>
       )}
 
-      {/* Barra superior de herramientas sobre el canvas */}
+      {/* Barra de herramientas sobre el canvas */}
       <div className="absolute top-3 right-3 flex items-center gap-2 z-10">
         <button
           type="button"
@@ -344,7 +363,6 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
       {/* Barra de estado inferior con cotas del modelo */}
       <div className="bg-white/95 border-t border-slate-200 px-4 py-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
         
-        {/* Cotas en Milímetros */}
         {dimensions ? (
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-1.5 font-bold text-slate-700">
@@ -378,11 +396,11 @@ export const ModelViewer3D: React.FC<ModelViewer3DProps> = ({
         ) : (
           <div className="text-slate-500 flex items-center gap-1.5">
             <Eye className="w-4 h-4" />
-            <span>Carga un archivo .STL u .OBJ para inspeccionar cotas y geometría.</span>
+            <span>Carga un archivo .STL, .OBJ o .3MF para inspeccionar cotas y geometría.</span>
           </div>
         )}
 
-        {/* Selector rápido de color para previsualización */}
+        {/* Selector de color */}
         <div className="flex items-center gap-1.5 self-end sm:self-auto">
           <span className="text-slate-500 font-semibold text-[11px] hidden md:inline">Color vista:</span>
           {['Blanco', 'Gris', 'Negro', 'Rojo', 'Azul', 'Naranja'].map((c) => (

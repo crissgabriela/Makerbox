@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Solicitud3D, EstadoSolicitud, Material3D } from '@/types';
+import { Solicitud3D, EstadoSolicitud, Material3D, CARRERAS_Y_UNIDADES } from '@/types';
 import { StatusBadge } from './StatusBadge';
 import { ModelViewer3D } from './ModelViewer3D';
 import { QuickContactModal } from './QuickContactModal';
@@ -25,7 +25,9 @@ import {
   X,
   Printer,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  Info,
+  GraduationCap
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
@@ -38,6 +40,7 @@ export const AdminDashboard: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState<string>('todos');
   const [filterMaterial, setFilterMaterial] = useState<string>('todos');
+  const [filterCarrera, setFilterCarrera] = useState<string>('todos');
 
   // Modales
   const [inspectingItem, setInspectingItem] = useState<Solicitud3D | null>(null);
@@ -69,8 +72,7 @@ export const AdminDashboard: React.FC = () => {
   // Manejo de autenticación por PIN
   const handleVerifyPin = (e: React.FormEvent) => {
     e.preventDefault();
-    // Default PIN: 1234 o 2026
-    if (pinInput.trim() === '1234' || pinInput.trim() === '2026' || pinInput.trim() === 'makerbox') {
+    if (pinInput.trim() === '1234' || pinInput.trim() === '2026' || pinInput.trim().toLowerCase() === 'makerbox') {
       setIsAuthenticated(true);
       setPinError(false);
     } else {
@@ -130,12 +132,14 @@ export const AdminDashboard: React.FC = () => {
       s.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.correo.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.archivoNombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (s.carrera && s.carrera.toLowerCase().includes(searchTerm.toLowerCase()));
+      (s.carrera && s.carrera.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (s.observaciones && s.observaciones.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesEstado = filterEstado === 'todos' || s.estado === filterEstado;
     const matchesMaterial = filterMaterial === 'todos' || s.material === filterMaterial;
+    const matchesCarrera = filterCarrera === 'todos' || s.carrera === filterCarrera;
 
-    return matchesSearch && matchesEstado && matchesMaterial;
+    return matchesSearch && matchesEstado && matchesMaterial && matchesCarrera;
   });
 
   // Métricas
@@ -152,7 +156,7 @@ export const AdminDashboard: React.FC = () => {
         <div className="w-16 h-16 rounded-2xl bg-purple-100 border border-purple-200 flex items-center justify-center mb-4 text-purple-700">
           <Lock className="w-8 h-8" />
         </div>
-        <h2 className="text-xl font-black text-slate-800 mb-1">Acceso Encargados MakerBox</h2>
+        <h2 className="text-xl font-black text-slate-800 mb-1">Acceso Equipo Makerbox</h2>
         <p className="text-xs text-slate-500 mb-6">
           Ingresa el PIN de seguridad del laboratorio para acceder a la gestión de solicitudes 3D.
         </p>
@@ -198,11 +202,11 @@ export const AdminDashboard: React.FC = () => {
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
             <h1 className="text-lg sm:text-xl font-black text-slate-800">
-              Panel de Control de Impresión 3D
+              Panel de Control • Equipo Makerbox
             </h1>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Gestión de trabajos, colas de máquinas y avisos a usuarios de MakerBox UTalca.
+            Gestión de solicitudes, colas de máquinas y avisos a usuarios de la Facultad de Ingeniería UTalca.
           </p>
         </div>
 
@@ -285,7 +289,7 @@ export const AdminDashboard: React.FC = () => {
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
           <input
             type="text"
-            placeholder="Buscar por código, nombre o archivo..."
+            placeholder="Buscar por código, nombre, carrera u observaciones..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-600 bg-slate-50/50"
@@ -293,8 +297,26 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         {/* Filtros Dropdowns */}
-        <div className="flex items-center gap-2 w-full md:w-auto flex-wrap sm:flex-nowrap">
-          <div className="flex items-center gap-1.5 text-xs text-slate-600 w-full sm:w-auto">
+        <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+          
+          {/* Filtro Carrera / Unidad */}
+          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+            <GraduationCap className="w-3.5 h-3.5 text-purple-600" />
+            <span>Carrera:</span>
+            <select
+              value={filterCarrera}
+              onChange={(e) => setFilterCarrera(e.target.value)}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold bg-white focus:outline-none focus:ring-1 focus:ring-purple-500 max-w-xs truncate"
+            >
+              <option value="todos">Todas las Carreras / Unidades</option>
+              {CARRERAS_Y_UNIDADES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Filtro Estado */}
+          <div className="flex items-center gap-1.5 text-xs text-slate-600">
             <Filter className="w-3.5 h-3.5" />
             <span>Estado:</span>
             <select
@@ -313,7 +335,8 @@ export const AdminDashboard: React.FC = () => {
             </select>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-slate-600 w-full sm:w-auto">
+          {/* Filtro Material */}
+          <div className="flex items-center gap-1.5 text-xs text-slate-600">
             <span>Material:</span>
             <select
               value={filterMaterial}
@@ -327,6 +350,7 @@ export const AdminDashboard: React.FC = () => {
               <option value="Resina UV">Resina UV</option>
             </select>
           </div>
+
         </div>
 
       </div>
@@ -338,8 +362,8 @@ export const AdminDashboard: React.FC = () => {
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-extrabold uppercase tracking-wider text-[11px]">
                 <th className="px-4 py-3.5">Código / Fecha</th>
-                <th className="px-4 py-3.5">Solicitante</th>
-                <th className="px-4 py-3.5">Archivo 3D</th>
+                <th className="px-4 py-3.5">Solicitante & Carrera</th>
+                <th className="px-4 py-3.5">Archivo 3D & Observaciones</th>
                 <th className="px-4 py-3.5">Material & Color</th>
                 <th className="px-4 py-3.5">Estado</th>
                 <th className="px-4 py-3.5">Máquina / Notas</th>
@@ -358,7 +382,7 @@ export const AdminDashboard: React.FC = () => {
                   <tr key={s.id} className="hover:bg-slate-50/70 transition">
                     
                     {/* Código e ID */}
-                    <td className="px-4 py-3.5 whitespace-nowrap">
+                    <td className="px-4 py-3.5 whitespace-nowrap align-top">
                       <div className="font-mono font-extrabold text-purple-950 text-xs">{s.id}</div>
                       <div className="text-[10px] text-slate-400 mt-0.5">
                         {new Date(s.createdAt).toLocaleDateString('es-CL', {
@@ -370,32 +394,51 @@ export const AdminDashboard: React.FC = () => {
                       </div>
                     </td>
 
-                    {/* Solicitante */}
-                    <td className="px-4 py-3.5">
+                    {/* Solicitante y Carrera */}
+                    <td className="px-4 py-3.5 align-top">
                       <div className="font-bold text-slate-800">{s.nombre}</div>
                       <div className="text-[11px] text-slate-500 truncate max-w-xs">{s.correo}</div>
-                      <div className="text-[10px] text-purple-700 font-semibold">{s.carrera || s.tipoUsuario}</div>
+                      <div className="text-[11px] text-slate-500">{s.telefono}</div>
+                      <div className="text-[10px] text-purple-800 font-extrabold mt-1 inline-block bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200">
+                        {s.carrera || s.tipoUsuario}
+                      </div>
                     </td>
 
-                    {/* Archivo 3D */}
-                    <td className="px-4 py-3.5">
-                      <div className="font-semibold text-slate-800 flex items-center gap-1 max-w-xs truncate">
+                    {/* Archivo 3D y OBSERVACIONES DEL SOLICITANTE */}
+                    <td className="px-4 py-3.5 align-top max-w-sm">
+                      <div className="font-semibold text-slate-800 flex items-center gap-1 truncate">
                         <Box className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate">{s.archivoNombre}</span>
+                        <span className="truncate font-bold">{s.archivoNombre}</span>
                       </div>
-                      <div className="text-[10px] text-slate-400">
-                        {s.archivoTamanoMb} MB • {s.dimensionesMm ? `${s.dimensionesMm.x}×${s.dimensionesMm.y}×${s.dimensionesMm.z}mm` : 'Cotas N/D'}
+                      <div className="text-[10px] text-slate-400 mt-0.5">
+                        {s.archivoTamanoMb} MB • {s.dimensionesMm ? `${s.dimensionesMm.x}×${s.dimensionesMm.y}×${s.dimensionesMm.z} mm` : 'Cotas N/D'}
                       </div>
+
+                      {/* BLOQUE DESTACADO DE OBSERVACIONES DEL SOLICITANTE */}
+                      {s.observaciones ? (
+                        <div className="mt-2 p-2 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-950 text-[11px] leading-snug">
+                          <span className="font-black text-amber-900 flex items-center gap-1">
+                            <Info className="w-3 h-3 text-amber-700 inline shrink-0" />
+                            Observaciones del Solicitante:
+                          </span>
+                          <p className="mt-0.5 whitespace-pre-wrap font-medium text-slate-700">
+                            {s.observaciones}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="text-[10px] text-slate-400 italic mt-1">Sin observaciones adicionales</div>
+                      )}
                     </td>
 
                     {/* Material & Color */}
-                    <td className="px-4 py-3.5 whitespace-nowrap">
+                    <td className="px-4 py-3.5 whitespace-nowrap align-top">
                       <div className="font-bold text-slate-700">{s.material}</div>
                       <div className="text-[11px] text-slate-500">{s.color} • {s.relleno}</div>
+                      <div className="text-[10px] text-slate-400">{s.calidad}</div>
                     </td>
 
                     {/* Selector de Estado */}
-                    <td className="px-4 py-3.5 whitespace-nowrap">
+                    <td className="px-4 py-3.5 whitespace-nowrap align-top">
                       <div className="flex flex-col gap-1.5">
                         <StatusBadge estado={s.estado} size="sm" />
                         <select
@@ -414,8 +457,8 @@ export const AdminDashboard: React.FC = () => {
                       </div>
                     </td>
 
-                    {/* Máquina asignada y Notas */}
-                    <td className="px-4 py-3.5">
+                    {/* Máquina asignada y Notas Staff */}
+                    <td className="px-4 py-3.5 align-top">
                       <div className="text-[11px] font-semibold text-slate-700">
                         {s.impresoraAsignada ? (
                           <span className="inline-flex items-center gap-1 text-slate-800">
@@ -430,14 +473,14 @@ export const AdminDashboard: React.FC = () => {
                         {s.gramosEstimados ? `${s.gramosEstimados}g` : '0g'} • {s.tiempoEstimadoHoras ? `${s.tiempoEstimadoHoras}h` : '0h'}
                       </div>
                       {s.notasStaff && (
-                        <div className="text-[10px] text-purple-900 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 mt-1 max-w-xs truncate">
-                          {s.notasStaff}
+                        <div className="text-[10px] text-purple-900 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 mt-1 max-w-xs">
+                          <strong>Staff:</strong> {s.notasStaff}
                         </div>
                       )}
                     </td>
 
                     {/* Acciones */}
-                    <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                    <td className="px-4 py-3.5 text-right whitespace-nowrap align-top">
                       <div className="flex items-center justify-end gap-1.5">
                         
                         {/* Ver 3D */}
@@ -450,12 +493,12 @@ export const AdminDashboard: React.FC = () => {
                           <Eye className="w-4 h-4" />
                         </button>
 
-                        {/* Descargar Archivo */}
+                        {/* Descarga Real del Archivo Binario */}
                         <a
-                          href={s.archivoUrl}
+                          href={`/api/files/${s.id}`}
                           download={s.archivoNombre}
                           className="p-1.5 rounded-lg hover:bg-slate-100 text-sky-700 hover:text-sky-900 transition cursor-pointer border border-transparent hover:border-slate-200"
-                          title="Descargar archivo para Slicer"
+                          title="Descargar archivo físico para Slicer"
                         >
                           <Download className="w-4 h-4" />
                         </a>
@@ -500,7 +543,7 @@ export const AdminDashboard: React.FC = () => {
                 <Box className="w-5 h-5 text-purple-400" />
                 <div>
                   <h3 className="font-bold text-sm">Inspección 3D: {inspectingItem.archivoNombre}</h3>
-                  <p className="text-[11px] text-slate-400">Solicitud {inspectingItem.id} • {inspectingItem.nombre}</p>
+                  <p className="text-[11px] text-slate-400">Solicitud {inspectingItem.id} • {inspectingItem.nombre} ({inspectingItem.carrera})</p>
                 </div>
               </div>
               <button
@@ -513,22 +556,30 @@ export const AdminDashboard: React.FC = () => {
 
             <div className="p-6 flex flex-col gap-4">
               <ModelViewer3D
-                fileUrl={inspectingItem.archivoUrl}
+                fileUrl={`/api/files/${inspectingItem.id}`}
                 previewColor={inspectingItem.color}
                 className="h-96"
               />
 
-              <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+              {/* Observaciones en el Modal */}
+              {inspectingItem.observaciones && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-950">
+                  <span className="font-black text-amber-900">Observaciones del solicitante:</span>
+                  <p className="mt-1 font-medium">{inspectingItem.observaciones}</p>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-200">
                 <div className="text-xs text-slate-500">
                   Material pedido: <span className="font-bold text-slate-800">{inspectingItem.material}</span> ({inspectingItem.color}) • Relleno: <span className="font-bold text-slate-800">{inspectingItem.relleno}</span>
                 </div>
                 <a
-                  href={inspectingItem.archivoUrl}
+                  href={`/api/files/${inspectingItem.id}`}
                   download={inspectingItem.archivoNombre}
-                  className="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold flex items-center gap-2 transition"
+                  className="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold flex items-center gap-2 transition cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
-                  <span>Descargar Archivo para Slicer</span>
+                  <span>Descargar Archivo Real para Slicer</span>
                 </a>
               </div>
             </div>
@@ -608,7 +659,7 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Notas Internas Staff:</label>
+                <label className="font-bold text-slate-700 block mb-1">Notas Internas Staff MakerBox:</label>
                 <textarea
                   rows={3}
                   value={editingItem.notasStaff || ''}

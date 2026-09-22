@@ -26,6 +26,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Local storage
+storage/uploads/
+**/storage/uploads/
+
 # OS files
 .DS_Store
 Thumbs.db

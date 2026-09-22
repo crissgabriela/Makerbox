@@ -3,7 +3,7 @@
 import React, { useState, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import QRCode from 'qrcode';
-import { Solicitud3D, Material3D, TipoUsuario } from '@/types';
+import { Solicitud3D, Material3D, CARRERAS_Y_UNIDADES, CarreraOUnidad } from '@/types';
 import { ModelViewer3D } from './ModelViewer3D';
 import {
   UploadCloud,
@@ -21,27 +21,31 @@ import {
   Mail,
   Phone,
   GraduationCap,
-  AlertCircle
+  AlertCircle,
+  MessageSquare,
+  Send
 } from 'lucide-react';
 
 interface RequestFormProps {
   onSuccessSubmit?: (code: string) => void;
 }
 
+const MAKERBOX_EMAIL = 'consultasmakerbox@utalca.cl';
+const MAKERBOX_PHONE = '+56 9 9123 4567';
+
 export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => {
-  // Form State
+  // Datos del solicitante
   const [nombre, setNombre] = useState('');
   const [correo, setCorreo] = useState('');
   const [telefono, setTelefono] = useState('');
-  const [carrera, setCarrera] = useState('');
-  const [tipoUsuario, setTipoUsuario] = useState<TipoUsuario>('Estudiante Pregrado');
+  const [carrera, setCarrera] = useState<CarreraOUnidad>('Ingeniería Civil Mecánica');
 
-  // File State
+  // Archivo 3D
   const [file, setFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [fileDimensions, setFileDimensions] = useState<{ x: number; y: number; z: number } | null>(null);
 
-  // Print Parameters State
+  // Parámetros técnicos
   const [material, setMaterial] = useState<Material3D>('PLA');
   const [color, setColor] = useState('Blanco');
   const [relleno, setRelleno] = useState('20% (Estándar)');
@@ -65,8 +69,13 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
       return;
     }
 
+    if (selectedFile.size === 0) {
+      setErrorMessage('El archivo seleccionado está vacío (0 bytes). Verifica el archivo en tu equipo.');
+      return;
+    }
+
     if (selectedFile.size > 50 * 1024 * 1024) {
-      setErrorMessage('El archivo excede el límite máximo de 50 MB.');
+      setErrorMessage('El archivo excede el límite máximo permitido de 50 MB.');
       return;
     }
 
@@ -82,11 +91,11 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
     }
   };
 
-  // Envío del Formulario
+  // Envío del Formulario vía FormData nativo
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file) {
-      setErrorMessage('Por favor selecciona o arrastra el archivo 3D de tu pieza.');
+    if (!file || file.size === 0) {
+      setErrorMessage('Por favor selecciona un archivo 3D válido (.stl, .obj, .3mf).');
       return;
     }
 
@@ -99,78 +108,71 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
     setErrorMessage(null);
 
     try {
-      // Convertir archivo a Base64 para guardarlo vía API
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const base64Data = (event.target?.result as string)?.split(',')[1] || '';
+      // Generar código amigable: MBX-2026-XXXX
+      const randomHex = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const generatedId = `MBX-2026-${randomHex}`;
 
-        // Generar código amigable: MBX-2026-XXXX
-        const randomHex = Math.random().toString(36).substring(2, 6).toUpperCase();
-        const generatedId = `MBX-2026-${randomHex}`;
-
-        const newRequest: Solicitud3D = {
-          id: generatedId,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          nombre: nombre.trim(),
-          correo: correo.trim(),
-          telefono: telefono.trim(),
-          tipoUsuario,
-          carrera: carrera.trim(),
-          archivoNombre: file.name,
-          archivoTamanoMb: Math.round((file.size / (1024 * 1024)) * 100) / 100,
-          archivoUrl: URL.createObjectURL(file), // URL temporal para el cliente
-          archivoFormato: (file.name.split('.').pop()?.toLowerCase() as any) || 'stl',
-          dimensionesMm: fileDimensions || undefined,
-          material,
-          color,
-          relleno,
-          calidad,
-          observaciones: observaciones.trim(),
-          estado: 'pendiente'
-        };
-
-        const res = await fetch('/api/requests', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            solicitud: newRequest,
-            fileBase64: base64Data
-          })
-        });
-
-        if (!res.ok) {
-          throw new Error('Error al enviar la solicitud al servidor.');
-        }
-
-        const data = await res.json();
-        setSubmittedRequest(newRequest);
-
-        // Generar código QR para seguimiento desde el móvil
-        const trackingUrl = `${window.location.origin}/?tab=tracking&code=${generatedId}`;
-        const qrUrl = await QRCode.toDataURL(trackingUrl, {
-          width: 256,
-          margin: 2,
-          color: { dark: '#46247a', light: '#ffffff' }
-        });
-        setQrCodeDataUrl(qrUrl);
-
-        // Efecto festivo de confeti
-        confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { y: 0.6 }
-        });
-
-        if (onSuccessSubmit) {
-          onSuccessSubmit(generatedId);
-        }
+      const newRequest: Solicitud3D = {
+        id: generatedId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        nombre: nombre.trim(),
+        correo: correo.trim(),
+        telefono: telefono.trim(),
+        carrera,
+        tipoUsuario: carrera, // Sincronizado
+        archivoNombre: file.name,
+        archivoTamanoMb: Math.round((file.size / (1024 * 1024)) * 100) / 100,
+        archivoUrl: `/api/files/${generatedId}`,
+        archivoFormato: (file.name.split('.').pop()?.toLowerCase() as any) || 'stl',
+        dimensionesMm: fileDimensions || undefined,
+        material,
+        color,
+        relleno,
+        calidad,
+        observaciones: observaciones.trim(),
+        estado: 'pendiente'
       };
 
-      reader.readAsDataURL(file);
+      // Envío binario mediante FormData
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('solicitud', JSON.stringify(newRequest));
+
+      const res = await fetch('/api/requests', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Error al enviar la solicitud al servidor.');
+      }
+
+      setSubmittedRequest(newRequest);
+
+      // Generar QR para seguimiento
+      const trackingUrl = `${window.location.origin}/?tab=tracking&code=${generatedId}`;
+      const qrUrl = await QRCode.toDataURL(trackingUrl, {
+        width: 256,
+        margin: 2,
+        color: { dark: '#46247a', light: '#ffffff' }
+      });
+      setQrCodeDataUrl(qrUrl);
+
+      // Efecto confeti
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
+
+      if (onSuccessSubmit) {
+        onSuccessSubmit(generatedId);
+      }
     } catch (err: unknown) {
       console.error('Error al enviar:', err);
-      setErrorMessage('Ocurrió un error al enviar la solicitud. Por favor intenta de nuevo.');
+      setErrorMessage(err instanceof Error ? err.message : 'Error al enviar la solicitud.');
     } finally {
       setIsSubmitting(false);
     }
@@ -184,6 +186,44 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
     }
   };
 
+  // Enviar comprobante por WhatsApp
+  const handleSendWhatsAppReceipt = () => {
+    if (!submittedRequest) return;
+    const msg = `¡Hola! Acabo de registrar mi solicitud de impresión 3D en MakerBox UTalca:\n\n` +
+      `📌 *Código de Seguimiento:* ${submittedRequest.id}\n` +
+      `📁 *Pieza:* ${submittedRequest.archivoNombre}\n` +
+      `⚙️ *Material:* ${submittedRequest.material} (${submittedRequest.color})\n` +
+      `📐 *Relleno:* ${submittedRequest.relleno}\n` +
+      (submittedRequest.dimensionesMm ? `📏 *Cotas:* ${submittedRequest.dimensionesMm.x} × ${submittedRequest.dimensionesMm.y} × ${submittedRequest.dimensionesMm.z} mm\n` : '') +
+      `\n*Equipo MakerBox:* ${MAKERBOX_EMAIL} | ${MAKERBOX_PHONE}\n` +
+      `Seguimiento en: ${window.location.origin}/?tab=tracking&code=${submittedRequest.id}`;
+
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
+  // Enviar comprobante por Correo
+  const handleSendEmailReceipt = () => {
+    if (!submittedRequest) return;
+    const subject = encodeURIComponent(`[Comprobante MakerBox] Solicitud Impresión 3D #${submittedRequest.id}`);
+    const body = encodeURIComponent(
+      `Hola ${submittedRequest.nombre},\n\n` +
+      `Hemos registrado tu solicitud de impresión 3D en MakerBox (Facultad de Ingeniería, Universidad de Talca).\n\n` +
+      `DATOS DE LA SOLICITUD:\n` +
+      `• Código de Seguimiento: ${submittedRequest.id}\n` +
+      `• Archivo: ${submittedRequest.archivoNombre} (${submittedRequest.archivoTamanoMb} MB)\n` +
+      `• Material y Color: ${submittedRequest.material} — ${submittedRequest.color}\n` +
+      `• Relleno: ${submittedRequest.relleno}\n` +
+      `• Calidad: ${submittedRequest.calidad}\n` +
+      (submittedRequest.observaciones ? `• Observaciones: ${submittedRequest.observaciones}\n` : '') +
+      `\nPuedes consultar el avance en tiempo real ingresando tu código en:\n` +
+      `${window.location.origin}/?tab=tracking&code=${submittedRequest.id}\n\n` +
+      `Cualquier consulta puedes responder a este correo o escribir a ${MAKERBOX_EMAIL}.\n\n` +
+      `Saludos,\nEquipo MakerBox\nFacultad de Ingeniería • Universidad de Talca`
+    );
+
+    window.open(`mailto:${submittedRequest.correo}?cc=${MAKERBOX_EMAIL}&subject=${subject}&body=${body}`, '_blank');
+  };
+
   const handleReset = () => {
     setFile(null);
     setFileDimensions(null);
@@ -192,7 +232,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
     setObservaciones('');
   };
 
-  // Pantalla de Confirmación / Ticket de Solicitud
+  // Pantalla de Comprobante / Ticket
   if (submittedRequest) {
     return (
       <div className="max-w-2xl w-full mx-auto my-6 p-6 sm:p-8 bg-white rounded-3xl border border-purple-200/80 shadow-xl flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
@@ -209,7 +249,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
           Tu trabajo de impresión está en cola
         </h2>
         <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-md">
-          El equipo de MakerBox evaluará tu modelo 3D y te notificará por correo y WhatsApp cuando comience la impresión o esté lista para retiro.
+          El <strong>Equipo Makerbox</strong> evaluará tu modelo 3D y te notificará por correo y WhatsApp cuando comience la impresión o esté lista para retiro.
         </p>
 
         {/* Tarjeta con Código de Seguimiento */}
@@ -231,10 +271,10 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
             </button>
           </div>
           <p className="text-[11px] text-slate-400">
-            Guarda este código para consultar el estado en cualquier momento o al retirar en el laboratorio.
+            Menciona este código al consultar o al momento de retirar en el laboratorio.
           </p>
 
-          {/* Código QR para escanear en smartphone */}
+          {/* Código QR para móvil */}
           {qrCodeDataUrl && (
             <div className="mt-2 p-3 bg-white rounded-2xl border border-slate-200 shadow-2xs flex flex-col items-center gap-1.5">
               <img src={qrCodeDataUrl} alt="QR Seguimiento Makerbox" className="w-36 h-36" />
@@ -243,15 +283,36 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
           )}
         </div>
 
-        {/* Resumen de Datos */}
-        <div className="w-full text-left bg-purple-50/50 border border-purple-100 rounded-2xl p-4 text-xs space-y-1.5 mb-6 text-slate-700">
-          <div><strong>Solicitante:</strong> {submittedRequest.nombre} ({submittedRequest.correo})</div>
-          <div><strong>Archivo:</strong> {submittedRequest.archivoNombre} ({submittedRequest.archivoTamanoMb} MB)</div>
-          <div><strong>Material y Color:</strong> {submittedRequest.material} — {submittedRequest.color}</div>
-          <div><strong>Relleno:</strong> {submittedRequest.relleno}</div>
-          {submittedRequest.dimensionesMm && (
-            <div><strong>Cotas aproximadas:</strong> {submittedRequest.dimensionesMm.x} × {submittedRequest.dimensionesMm.y} × {submittedRequest.dimensionesMm.z} mm</div>
-          )}
+        {/* Botones de Notificación y Comprobante Automático */}
+        <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+          <button
+            type="button"
+            onClick={handleSendWhatsAppReceipt}
+            className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs transition flex items-center justify-center gap-2 shadow-sm cursor-pointer active:scale-98"
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span>Guardar en mi WhatsApp</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSendEmailReceipt}
+            className="w-full py-3 px-4 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-800 font-extrabold text-xs transition flex items-center justify-center gap-2 shadow-xs cursor-pointer active:scale-98"
+          >
+            <Mail className="w-4 h-4 text-sky-600" />
+            <span>Enviar Comprobante por Correo</span>
+          </button>
+        </div>
+
+        {/* Canales Oficiales de Contacto MakerBox */}
+        <div className="w-full bg-purple-50/70 border border-purple-200 rounded-2xl p-4 text-xs text-left text-slate-700 space-y-1.5 mb-6">
+          <div className="font-extrabold text-purple-950 flex items-center gap-1.5 pb-1 border-b border-purple-200">
+            <Info className="w-4 h-4 text-purple-700" />
+            <span>Contacto Oficial del Equipo Makerbox:</span>
+          </div>
+          <div>✉️ Correo: <a href={`mailto:${MAKERBOX_EMAIL}`} className="font-bold text-purple-900 hover:underline">{MAKERBOX_EMAIL}</a></div>
+          <div>📞 WhatsApp / Teléfono: <span className="font-bold text-purple-900">{MAKERBOX_PHONE}</span></div>
+          <div>📍 Ubicación: Laboratorio MakerBox, Campus Los Niches / Curicó</div>
         </div>
 
         {/* Botón para nueva solicitud */}
@@ -271,28 +332,28 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
   return (
     <form onSubmit={handleSubmit} className="max-w-4xl w-full mx-auto flex flex-col gap-6">
       
-      {/* Banner de Bienvenida y Guía */}
+      {/* Banner de Bienvenida */}
       <div className="rounded-2xl bg-gradient-to-r from-purple-100 via-pink-50 to-amber-50 border border-purple-200/80 px-5 py-4 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full bg-purple-200 text-purple-950 text-[11px] font-black flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-purple-700" />
-              MakerBox • Fabricación Digital
+              Equipo Makerbox • Fabricación Digital
             </span>
             <span className="text-xs font-bold text-slate-600 hidden sm:inline">
-              Ingeniería Universidad de Talca
+              Facultad de Ingeniería UTalca
             </span>
           </div>
           <h2 className="text-base sm:text-lg font-black text-slate-800">
             Formulario de Solicitud de Impresión 3D
           </h2>
           <p className="text-xs text-slate-600">
-            Sube tu modelo digital (.STL, .OBJ, .3MF), define las especificaciones y nuestro equipo preparará la fabricación en el laboratorio.
+            Sube tu modelo digital (.STL, .OBJ, .3MF) y el Equipo Makerbox gestionará la preparación e impresión en el laboratorio.
           </p>
         </div>
       </div>
 
-      {/* Alerta de Error si aplica */}
+      {/* Alerta de Error */}
       {errorMessage && (
         <div className="bg-rose-50 border border-rose-200 text-rose-900 px-4 py-3 rounded-2xl text-xs flex items-center gap-2.5 shadow-xs">
           <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
@@ -359,47 +420,28 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
             <span className="text-[10px] text-slate-400 mt-0.5 block">Para avisarte por WhatsApp cuando esté lista.</span>
           </div>
 
+          {/* Carrera o Unidad Académica Unificada */}
           <div>
             <label className="font-bold text-slate-700 flex items-center gap-1 mb-1">
               <GraduationCap className="w-3.5 h-3.5 text-purple-600" />
-              <span>Carrera o Unidad Académica</span>
+              <span>Carrera o Unidad Académica *</span>
             </label>
-            <input
-              type="text"
-              placeholder="Ej: Ing. Civil Mecánica / Robótica"
+            <select
               value={carrera}
-              onChange={(e) => setCarrera(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-600 bg-slate-50/50"
-            />
-          </div>
-
-          <div className="sm:col-span-2">
-            <label className="font-bold text-slate-700 block mb-1">
-              Tipo de Solicitante
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {[
-                'Estudiante Pregrado',
-                'Estudiante Postgrado',
-                'Docente / Investigador',
-                'Proyecto de Título / Capstone',
-                'Taller / Seminario Maker',
-                'Externo'
-              ].map((tipo) => (
-                <button
-                  type="button"
-                  key={tipo}
-                  onClick={() => setTipoUsuario(tipo as TipoUsuario)}
-                  className={`px-3 py-2 rounded-xl text-left font-semibold text-xs border transition cursor-pointer ${
-                    tipoUsuario === tipo
-                      ? 'bg-purple-50 border-purple-500 text-purple-900 shadow-2xs'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  {tipo}
-                </button>
-              ))}
-            </div>
+              onChange={(e) => setCarrera(e.target.value as CarreraOUnidad)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-600 bg-slate-50/50 text-xs font-semibold"
+            >
+              <optgroup label="Facultad de Ingeniería UTalca">
+                {CARRERAS_Y_UNIDADES.slice(0, 8).map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Otras Unidades y Estamentos">
+                {CARRERAS_Y_UNIDADES.slice(8).map((u) => (
+                  <option key={u} value={u}>{u}</option>
+                ))}
+              </optgroup>
+            </select>
           </div>
 
         </div>
@@ -416,7 +458,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
               Carga y Previsualización del Modelo 3D
             </h3>
             <p className="text-[11px] text-slate-400">
-              Formatos aceptados: .STL, .OBJ, .3MF (hasta 50 MB)
+              Formatos compatibles: .STL, .OBJ, .3MF (hasta 50 MB)
             </p>
           </div>
         </div>
@@ -467,7 +509,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
                 Haz clic para subir o arrastra tu archivo 3D aquí
               </p>
               <p className="text-xs text-slate-500 mt-0.5">
-                Archivos .STL u .OBJ permitirán ver tu pieza en 3D y verificar sus dimensiones en mm.
+                Compatible con .STL, .OBJ y .3MF para inspeccionar cotas y geometría antes de enviar.
               </p>
             </>
           )}
@@ -642,7 +684,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
             </>
           ) : (
             <>
-              <span>Enviar Solicitud de Impresión</span>
+              <span>Enviar Solicitud al Equipo Makerbox</span>
               <ArrowRight className="w-4 h-4" />
             </>
           )}

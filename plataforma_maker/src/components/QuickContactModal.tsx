@@ -70,8 +70,8 @@ export const QuickContactModal: React.FC<QuickContactModalProps> = ({
 
   const handleOpenEmail = () => {
     const subject = encodeURIComponent(`[MakerBox UTalca] Estado Solicitud Impresión 3D #${solicitud.id}`);
-    const body = encodeURIComponent(message);
-    window.open(`mailto:${solicitud.correo}?subject=${subject}&body=${body}`, '_blank');
+    const body = encodeURIComponent(message + `\n\n---\nEquipo Makerbox\nconsultasmakerbox@utalca.cl\nFacultad de Ingeniería • Universidad de Talca`);
+    window.open(`mailto:${solicitud.correo}?cc=consultasmakerbox@utalca.cl&subject=${subject}&body=${body}`, '_blank');
   };
 
   const handleCopy = () => {

@@ -92,7 +92,7 @@ export const Header: React.FC<HeaderProps> = ({ activeView, onChangeView }) => {
                   }`}
                 >
                   <ShieldCheck className="w-4 h-4 text-pink-400" />
-                  <span>Encargados Lab</span>
+                  <span>Equipo Makerbox</span>
                 </button>
 
               </div>

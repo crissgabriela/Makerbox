@@ -9,16 +9,30 @@ export type EstadoSolicitud =
 
 export type Material3D = 'PLA' | 'PETG' | 'TPU' | 'Resina UV' | 'Otro';
 
-export type TipoUsuario =
-  | 'Estudiante Pregrado'
-  | 'Estudiante Postgrado'
-  | 'Docente / Investigador'
-  | 'Proyecto de Título / Capstone'
-  | 'Taller / Seminario Maker'
-  | 'Externo';
+export const CARRERAS_Y_UNIDADES = [
+  // Carreras Facultad de Ingeniería UTalca
+  'Ingeniería Civil Industrial',
+  'Ingeniería Civil Mecánica',
+  'Ingeniería Civil en Computación',
+  'Ingeniería Civil Eléctrica',
+  'Ingeniería Civil de Minas',
+  'Ingeniería Civil Mecatrónica',
+  'Ingeniería Civil en Bioinformática',
+  'Ingeniería en Desarrollo de Videojuegos y Realidad Virtual',
+  // Unidades Académicas y Estamentos
+  'Postgrado (Magíster / Doctorado)',
+  'Docente / Investigador(a) Facultad de Ingeniería',
+  'Proyecto de Título / Capstone',
+  'Equipo / Taller Makerbox',
+  'Funcionario(a) / Administrativo(a) UTalca',
+  'Otra Carrera / Unidad UTalca',
+  'Externo / Vinculación con el Medio'
+] as const;
+
+export type CarreraOUnidad = typeof CARRERAS_Y_UNIDADES[number];
 
 export interface Solicitud3D {
-  id: string; // Ej: MBX-2026-A8F2
+  id: string; // Ej: MBX-2026-A101
   createdAt: string;
   updatedAt: string;
   
@@ -26,13 +40,13 @@ export interface Solicitud3D {
   nombre: string;
   correo: string;
   telefono: string;
-  tipoUsuario: TipoUsuario;
-  carrera: string;
+  carrera: CarreraOUnidad | string;
+  tipoUsuario?: string; // Mantenido por retrocompatibilidad
 
   // Archivo 3D
   archivoNombre: string;
   archivoTamanoMb: number;
-  archivoUrl: string; // URL en GitHub o data/local
+  archivoUrl: string; // URL accesible (/api/files/[id])
   archivoFormato: 'stl' | 'obj' | '3mf' | 'otro';
   dimensionesMm?: {
     x: number;
@@ -43,11 +57,11 @@ export interface Solicitud3D {
   // Parámetros solicitados
   material: Material3D;
   color: string;
-  relleno: string; // '15%', '30%', '50%+', 'A criterio técnico'
+  relleno: string; // '15%', '20%', '35%', '60%+', 'A criterio técnico'
   calidad: string; // 'Borrador (0.28mm)', 'Estándar (0.20mm)', 'Fino (0.12mm)'
   observaciones?: string;
 
-  // Gestión interna MakerBox
+  // Gestión interna Equipo MakerBox
   estado: EstadoSolicitud;
   impresoraAsignada?: string;
   gramosEstimados?: number;
