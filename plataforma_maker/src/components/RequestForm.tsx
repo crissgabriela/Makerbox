@@ -23,7 +23,8 @@ import {
   GraduationCap,
   AlertCircle,
   MessageSquare,
-  Send
+  Send,
+  FolderArchive
 } from 'lucide-react';
 
 interface RequestFormProps {
@@ -64,8 +65,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
   // Manejo de archivo seleccionado
   const handleFileSelect = (selectedFile: File) => {
     const ext = selectedFile.name.split('.').pop()?.toLowerCase();
-    if (!['stl', 'obj', '3mf'].includes(ext || '')) {
-      setErrorMessage('Formato no soportado. Por favor sube un archivo .STL, .OBJ o .3MF');
+    if (!['stl', 'obj', '3mf', 'zip', 'rar'].includes(ext || '')) {
+      setErrorMessage('Formato no soportado. Por favor sube un archivo .STL, .OBJ, .3MF, .ZIP o .RAR');
       return;
     }
 
@@ -77,6 +78,10 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
     if (selectedFile.size > 50 * 1024 * 1024) {
       setErrorMessage('El archivo excede el límite máximo permitido de 50 MB.');
       return;
+    }
+
+    if (['zip', 'rar'].includes(ext || '')) {
+      setFileDimensions(null);
     }
 
     setErrorMessage(null);
@@ -458,7 +463,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
               Carga y Previsualización del Modelo 3D
             </h3>
             <p className="text-[11px] text-slate-400">
-              Formatos compatibles: .STL, .OBJ, .3MF (hasta 50 MB)
+              Formatos compatibles: .STL, .OBJ, .3MF, .ZIP, .RAR (hasta 50 MB)
             </p>
           </div>
         </div>
@@ -484,14 +489,18 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
             type="file"
             ref={fileInputRef}
             onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
-            accept=".stl,.obj,.3mf"
+            accept=".stl,.obj,.3mf,.zip,.rar"
             className="hidden"
           />
 
           {file ? (
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
-                <FileBox className="w-6 h-6" />
+                {['zip', 'rar'].includes(file.name.split('.').pop()?.toLowerCase() || '') ? (
+                  <FolderArchive className="w-6 h-6 text-emerald-700" />
+                ) : (
+                  <FileBox className="w-6 h-6" />
+                )}
               </div>
               <div className="text-left">
                 <p className="font-extrabold text-sm text-slate-800">{file.name}</p>
@@ -509,25 +518,47 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onSuccessSubmit }) => 
                 Haz clic para subir o arrastra tu archivo 3D aquí
               </p>
               <p className="text-xs text-slate-500 mt-0.5">
-                Compatible con .STL, .OBJ y .3MF para inspeccionar cotas y geometría antes de enviar.
+                Modelos individuales (.STL, .OBJ, .3MF) o paquetes comprimidos (.ZIP, .RAR) para múltiples piezas.
               </p>
             </>
           )}
         </div>
 
-        {/* Visor 3D Three.js integrado */}
+        {/* Visor 3D o Tarjeta de Paquete Comprimido */}
         {file && (
-          <div className="flex flex-col gap-2">
-            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4 text-purple-600" />
-              <span>Inspección 3D en Tiempo Real:</span>
-            </span>
-            <ModelViewer3D
-              file={file}
-              previewColor={color}
-              onDimensionsCalculated={setFileDimensions}
-            />
-          </div>
+          ['zip', 'rar'].includes(file.name.split('.').pop()?.toLowerCase() || '') ? (
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-purple-50 via-pink-50 to-amber-50 border border-purple-200 flex items-start gap-3.5 shadow-2xs">
+              <div className="w-11 h-11 rounded-xl bg-purple-200 text-purple-900 flex items-center justify-center shrink-0 shadow-2xs">
+                <FolderArchive className="w-6 h-6" />
+              </div>
+              <div className="text-xs">
+                <h4 className="font-extrabold text-sm text-purple-950 mb-1 flex items-center gap-2">
+                  <span>Paquete Comprimido ({file.name.split('.').pop()?.toUpperCase()})</span>
+                  <span className="px-2 py-0.5 rounded-full bg-purple-200 text-purple-900 text-[10px] font-black">
+                    Múltiples Piezas
+                  </span>
+                </h4>
+                <p className="text-slate-600 leading-relaxed">
+                  Has subido un archivo comprimido con varias piezas. La previsualización 3D individual se omite para paquetes comprimidos; el <strong>Equipo Makerbox</strong> descomprimirá el paquete y revisará cada modelo en el laboratorio.
+                </p>
+                <p className="text-[11px] text-purple-900 font-bold mt-1.5">
+                  💡 Recuerda detallar la cantidad de piezas o colores requeridos en el campo de "Observaciones".
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-purple-600" />
+                <span>Inspección 3D en Tiempo Real:</span>
+              </span>
+              <ModelViewer3D
+                file={file}
+                previewColor={color}
+                onDimensionsCalculated={setFileDimensions}
+              />
+            </div>
+          )
         )}
       </div>
 

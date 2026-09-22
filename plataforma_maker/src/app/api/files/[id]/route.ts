@@ -22,6 +22,8 @@ export async function GET(
     if (lower.endsWith('.stl')) contentType = 'model/stl';
     else if (lower.endsWith('.obj')) contentType = 'model/obj';
     else if (lower.endsWith('.3mf')) contentType = 'model/3mf';
+    else if (lower.endsWith('.zip')) contentType = 'application/zip';
+    else if (lower.endsWith('.rar')) contentType = 'application/x-rar-compressed';
 
     return new NextResponse(fileData.buffer as any, {
       status: 200,

@@ -27,7 +27,8 @@ import {
   Sparkles,
   RefreshCw,
   Info,
-  GraduationCap
+  GraduationCap,
+  FolderArchive
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
@@ -406,12 +407,21 @@ export const AdminDashboard: React.FC = () => {
 
                     {/* Archivo 3D y OBSERVACIONES DEL SOLICITANTE */}
                     <td className="px-4 py-3.5 align-top max-w-sm">
-                      <div className="font-semibold text-slate-800 flex items-center gap-1 truncate">
-                        <Box className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <div className="font-semibold text-slate-800 flex items-center gap-1.5 truncate">
+                        {['zip', 'rar'].includes(s.archivoFormato) ? (
+                          <FolderArchive className="w-4 h-4 text-purple-600 shrink-0" />
+                        ) : (
+                          <Box className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        )}
                         <span className="truncate font-bold">{s.archivoNombre}</span>
+                        {['zip', 'rar'].includes(s.archivoFormato) && (
+                          <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-900 text-[10px] font-black uppercase">
+                            {s.archivoFormato}
+                          </span>
+                        )}
                       </div>
                       <div className="text-[10px] text-slate-400 mt-0.5">
-                        {s.archivoTamanoMb} MB • {s.dimensionesMm ? `${s.dimensionesMm.x}×${s.dimensionesMm.y}×${s.dimensionesMm.z} mm` : 'Cotas N/D'}
+                        {s.archivoTamanoMb} MB • {s.dimensionesMm ? `${s.dimensionesMm.x}×${s.dimensionesMm.y}×${s.dimensionesMm.z} mm` : 'Paquete de piezas'}
                       </div>
 
                       {/* BLOQUE DESTACADO DE OBSERVACIONES DEL SOLICITANTE */}
@@ -555,11 +565,26 @@ export const AdminDashboard: React.FC = () => {
             </div>
 
             <div className="p-6 flex flex-col gap-4">
-              <ModelViewer3D
-                fileUrl={`/api/files/${inspectingItem.id}`}
-                previewColor={inspectingItem.color}
-                className="h-96"
-              />
+              {['zip', 'rar'].includes(inspectingItem.archivoFormato) ? (
+                <div className="p-8 rounded-3xl bg-purple-50/80 border border-purple-200 flex flex-col items-center text-center gap-3">
+                  <div className="w-16 h-16 rounded-2xl bg-purple-200 text-purple-900 flex items-center justify-center shadow-xs">
+                    <FolderArchive className="w-8 h-8" />
+                  </div>
+                  <h4 className="font-black text-base text-purple-950">
+                    Paquete de Archivos Comprimido ({inspectingItem.archivoNombre})
+                  </h4>
+                  <p className="text-xs text-slate-600 max-w-md">
+                    Este trabajo contiene múltiples archivos empaquetados en formato {inspectingItem.archivoFormato.toUpperCase()}.
+                    Descarga el archivo a continuación para descomprimirlo y evaluar cada pieza en Bambu Studio, PrusaSlicer o Cura.
+                  </p>
+                </div>
+              ) : (
+                <ModelViewer3D
+                  fileUrl={`/api/files/${inspectingItem.id}`}
+                  previewColor={inspectingItem.color}
+                  className="h-96"
+                />
+              )}
 
               {/* Observaciones en el Modal */}
               {inspectingItem.observaciones && (

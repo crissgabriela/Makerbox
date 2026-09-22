@@ -15,7 +15,8 @@ import {
   Sparkles,
   AlertCircle,
   FileBox,
-  MapPin
+  MapPin,
+  FolderArchive
 } from 'lucide-react';
 
 interface TrackingViewProps {
@@ -232,14 +233,30 @@ export const TrackingView: React.FC<TrackingViewProps> = ({ initialCode = '' }) 
               </div>
             </div>
 
-            {/* Visor 3D del Modelo */}
+            {/* Visor 3D del Modelo o Tarjeta de Paquete */}
             <div className="flex flex-col gap-2">
-              <span className="text-xs font-bold text-slate-700">Modelo 3D Cargado:</span>
-              <ModelViewer3D
-                fileUrl={solicitud.archivoUrl}
-                previewColor={solicitud.color}
-                className="h-72"
-              />
+              <span className="text-xs font-bold text-slate-700">Modelo o Archivo Cargado:</span>
+              {['zip', 'rar'].includes(solicitud.archivoFormato) ? (
+                <div className="h-72 rounded-2xl bg-purple-50/70 border border-purple-200 flex flex-col items-center justify-center text-center p-6 gap-3">
+                  <div className="w-14 h-14 rounded-2xl bg-purple-200 text-purple-900 flex items-center justify-center">
+                    <FolderArchive className="w-7 h-7" />
+                  </div>
+                  <div>
+                    <h5 className="font-extrabold text-sm text-purple-950 mb-0.5">
+                      Paquete de Múltiples Piezas ({solicitud.archivoNombre})
+                    </h5>
+                    <p className="text-xs text-slate-500 max-w-xs">
+                      Este trabajo contiene múltiples modelos comprimidos. El Equipo Makerbox descomprimirá y evaluará cada pieza en el laboratorio.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <ModelViewer3D
+                  fileUrl={solicitud.archivoUrl}
+                  previewColor={solicitud.color}
+                  className="h-72"
+                />
+              )}
             </div>
 
           </div>

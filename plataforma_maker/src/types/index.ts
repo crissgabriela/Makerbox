@@ -31,6 +31,8 @@ export const CARRERAS_Y_UNIDADES = [
 
 export type CarreraOUnidad = typeof CARRERAS_Y_UNIDADES[number];
 
+export type FormatoArchivo3D = 'stl' | 'obj' | '3mf' | 'zip' | 'rar' | 'otro';
+
 export interface Solicitud3D {
   id: string; // Ej: MBX-2026-A101
   createdAt: string;
@@ -41,13 +43,13 @@ export interface Solicitud3D {
   correo: string;
   telefono: string;
   carrera: CarreraOUnidad | string;
-  tipoUsuario?: string; // Mantenido por retrocompatibilidad
+  tipoUsuario?: string;
 
-  // Archivo 3D
+  // Archivo 3D o Paquete Comprimido
   archivoNombre: string;
   archivoTamanoMb: number;
-  archivoUrl: string; // URL accesible (/api/files/[id])
-  archivoFormato: 'stl' | 'obj' | '3mf' | 'otro';
+  archivoUrl: string; // /api/files/[id]
+  archivoFormato: FormatoArchivo3D;
   dimensionesMm?: {
     x: number;
     y: number;
@@ -57,8 +59,8 @@ export interface Solicitud3D {
   // Parámetros solicitados
   material: Material3D;
   color: string;
-  relleno: string; // '15%', '20%', '35%', '60%+', 'A criterio técnico'
-  calidad: string; // 'Borrador (0.28mm)', 'Estándar (0.20mm)', 'Fino (0.12mm)'
+  relleno: string;
+  calidad: string;
   observaciones?: string;
 
   // Gestión interna Equipo MakerBox
