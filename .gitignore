@@ -1,12 +1,16 @@
 # Dependencies
 node_modules/
 lengua-de-senas/node_modules/
+plataforma_maker/node_modules/
+**/node_modules/
 
 # Next.js build
 .next/
 lengua-de-senas/.next/
-out/
-lengua-de-senas/out/
+plataforma_maker/.next/
+**/out/
+**/.next/
+**/*.tsbuildinfo
 
 # Production build artifacts
 build/
@@ -14,6 +18,8 @@ build/
 # Environment variables
 .env*.local
 lengua-de-senas/.env*.local
+plataforma_maker/.env*.local
+**/.env*.local
 
 # Debug logs
 npm-debug.log*
