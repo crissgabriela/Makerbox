@@ -2,7 +2,7 @@
   {
     "id": "MBX-2026-WDHF",
     "createdAt": "2026-09-29T19:04:41.944Z",
-    "updatedAt": "2026-09-29T19:04:41.944Z",
+    "updatedAt": "2026-09-29T19:05:24.298Z",
     "nombre": "Crisss",
     "correo": "cricarreno@utalca.cl",
     "telefono": "+56987627231",
@@ -22,7 +22,7 @@
     "relleno": "20% (Estándar)",
     "calidad": "Estándar (0.20mm)",
     "observaciones": "ffffffff",
-    "estado": "pendiente"
+    "estado": "aprobada"
   },
   {
     "id": "MBX-2026-MSFH",
