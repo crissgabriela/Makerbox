@@ -1,5 +1,30 @@
 [
   {
+    "id": "MBX-2026-MSFH",
+    "createdAt": "2026-09-29T18:39:50.223Z",
+    "updatedAt": "2026-09-29T18:39:50.223Z",
+    "nombre": "Camila Morales",
+    "correo": "cricarreno@utalca.cl",
+    "telefono": "+56950955251",
+    "carrera": "Ingeniería Civil Mecánica",
+    "tipoUsuario": "Ingeniería Civil Mecánica",
+    "archivoNombre": "Llavero_Braille_KAREN (1).stl",
+    "archivoTamanoMb": 0.16,
+    "archivoUrl": "/api/files/MBX-2026-MSFH",
+    "archivoFormato": "stl",
+    "dimensionesMm": {
+      "x": 38,
+      "y": 16,
+      "z": 1.2
+    },
+    "material": "PLA",
+    "color": "Blanco",
+    "relleno": "20% (Estándar)",
+    "calidad": "Estándar (0.20mm)",
+    "observaciones": "wsdcsdc",
+    "estado": "pendiente"
+  },
+  {
     "id": "MBX-2026-LLHV",
     "createdAt": "2026-09-29T18:25:36.127Z",
     "updatedAt": "2026-09-29T18:29:23.389Z",
