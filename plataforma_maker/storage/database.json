@@ -1,5 +1,30 @@
 [
   {
+    "id": "MBX-2026-0QHM",
+    "createdAt": "2026-09-29T19:07:49.000Z",
+    "updatedAt": "2026-09-29T19:07:49.000Z",
+    "nombre": "Camicami",
+    "correo": "criss.gabriela.cb@gmail.com",
+    "telefono": "+56950955251",
+    "carrera": "Ingeniería Civil en Computación",
+    "tipoUsuario": "Ingeniería Civil en Computación",
+    "archivoNombre": "solar_panel_case.stl",
+    "archivoTamanoMb": 0.87,
+    "archivoUrl": "/api/files/MBX-2026-0QHM",
+    "archivoFormato": "stl",
+    "dimensionesMm": {
+      "x": 67.7,
+      "y": 113,
+      "z": 60
+    },
+    "material": "PLA",
+    "color": "Blanco",
+    "relleno": "20% (Estándar)",
+    "calidad": "Estándar (0.20mm)",
+    "observaciones": "",
+    "estado": "pendiente"
+  },
+  {
     "id": "MBX-2026-WDHF",
     "createdAt": "2026-09-29T19:04:41.944Z",
     "updatedAt": "2026-09-29T19:05:24.298Z",
