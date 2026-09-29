@@ -43,6 +43,7 @@ export const AdminDashboard: React.FC = () => {
     owner: string;
     repo: string;
     branch: string;
+    isEmailConfigured?: boolean;
   } | null>(null);
   const [showPersistenceHelp, setShowPersistenceHelp] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -302,14 +303,19 @@ export const AdminDashboard: React.FC = () => {
       )}
 
       {persistenceInfo && persistenceInfo.isPermanent && (
-        <div className="flex items-center justify-between px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800">
           <div className="flex items-center gap-2 font-medium">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>Respaldo permanente conectado con GitHub: <strong>{persistenceInfo.owner}/{persistenceInfo.repo}</strong> (rama {persistenceInfo.branch})</span>
+            <span>Respaldo permanente en GitHub: <strong>{persistenceInfo.owner}/{persistenceInfo.repo}</strong> (rama {persistenceInfo.branch})</span>
           </div>
-          <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full uppercase">
-            Persistencia Activa
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${persistenceInfo.isEmailConfigured ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-600'}`}>
+              {persistenceInfo.isEmailConfigured ? '✉️ Correo Automático' : '✉️ Correo Asistido'}
+            </span>
+            <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full uppercase">
+              Persistencia Activa
+            </span>
+          </div>
         </div>
       )}
 

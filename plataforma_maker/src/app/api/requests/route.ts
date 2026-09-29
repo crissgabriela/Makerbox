@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllRequests, createRequest, getStorageInfo } from '@/lib/github-storage';
+import { sendConfirmationEmail, isEmailConfigured } from '@/lib/email-service';
 import { Solicitud3D } from '@/types';
 
 export async function GET() {
   try {
     const requests = await getAllRequests();
-    const persistence = getStorageInfo();
+    const persistence = {
+      ...getStorageInfo(),
+      isEmailConfigured: isEmailConfigured()
+    };
     return NextResponse.json({ success: true, requests, persistence });
   } catch (err: unknown) {
     console.error('Error in GET /api/requests:', err);
@@ -43,7 +47,19 @@ export async function POST(req: NextRequest) {
       solicitud.archivoTamanoMb = Math.round((file.size / (1024 * 1024)) * 100) / 100;
 
       const result = await createRequest(solicitud, fileBuffer);
-      return NextResponse.json(result);
+
+      // Enviar correo de confirmación automático si está configurado
+      let emailSent = false;
+      if (result.success) {
+        try {
+          const emailRes = await sendConfirmationEmail(solicitud);
+          emailSent = emailRes.success;
+        } catch (e) {
+          console.warn('Error enviando correo de confirmación:', e);
+        }
+      }
+
+      return NextResponse.json({ ...result, emailSent });
     }
 
     // 2. Manejo fallback de JSON (si viene en base64)
@@ -59,7 +75,18 @@ export async function POST(req: NextRequest) {
 
     const fileBuffer = fileBase64 ? Buffer.from(fileBase64, 'base64') : undefined;
     const result = await createRequest(solicitud, fileBuffer);
-    return NextResponse.json(result);
+
+    let emailSent = false;
+    if (result.success) {
+      try {
+        const emailRes = await sendConfirmationEmail(solicitud);
+        emailSent = emailRes.success;
+      } catch (e) {
+        console.warn('Error enviando correo de confirmación:', e);
+      }
+    }
+
+    return NextResponse.json({ ...result, emailSent });
 
   } catch (err: unknown) {
     console.error('Error in POST /api/requests:', err);
