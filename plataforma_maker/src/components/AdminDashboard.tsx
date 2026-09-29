@@ -38,6 +38,13 @@ export const AdminDashboard: React.FC = () => {
 
   const [solicitudes, setSolicitudes] = useState<Solicitud3D[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [persistenceInfo, setPersistenceInfo] = useState<{
+    isPermanent: boolean;
+    owner: string;
+    repo: string;
+    branch: string;
+  } | null>(null);
+  const [showPersistenceHelp, setShowPersistenceHelp] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterEstado, setFilterEstado] = useState<string>('todos');
   const [filterMaterial, setFilterMaterial] = useState<string>('todos');
@@ -56,6 +63,9 @@ export const AdminDashboard: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         setSolicitudes(data.requests || []);
+        if (data.persistence) {
+          setPersistenceInfo(data.persistence);
+        }
       }
     } catch (err) {
       console.error('Error cargando solicitudes:', err);
@@ -231,6 +241,77 @@ export const AdminDashboard: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Indicador de Respaldo Permanente o Advertencia de Memoria Temporal */}
+      {persistenceInfo && !persistenceInfo.isPermanent && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col gap-3 shadow-xs">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-amber-100 text-amber-800 shrink-0 mt-0.5">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-extrabold text-sm text-amber-950">Almacenamiento Temporal Activo (Sin Respaldo en GitHub)</h4>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-800 uppercase tracking-wider">
+                    Modo Volátil
+                  </span>
+                </div>
+                <p className="text-xs text-amber-800 mt-0.5">
+                  Las solicitudes se guardan en la memoria temporal de Vercel y desaparecerán al suspenderse o reiniciarse el servidor. Para respaldo permanente en GitHub, configura la variable <code>GITHUB_TOKEN</code> en Vercel.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPersistenceHelp(!showPersistenceHelp)}
+              className="px-3.5 py-2 rounded-xl bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold transition shrink-0 cursor-pointer shadow-xs"
+            >
+              {showPersistenceHelp ? 'Ocultar Guía' : '¿Cómo activar respaldo en GitHub?'}
+            </button>
+          </div>
+
+          {showPersistenceHelp && (
+            <div className="mt-2 pt-3 border-t border-amber-200 text-xs text-slate-700 flex flex-col gap-2.5">
+              <div className="flex items-center justify-between">
+                <h5 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  Pasos para que las solicitudes queden guardadas para siempre en GitHub:
+                </h5>
+                <button
+                  type="button"
+                  onClick={() => setShowPersistenceHelp(false)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <ol className="list-decimal list-inside space-y-1.5 text-slate-600 pl-1">
+                <li>Ve a tu cuenta de <strong>GitHub</strong> &rarr; <strong>Settings</strong> &rarr; <strong>Developer Settings</strong> &rarr; <strong>Personal access tokens (classic)</strong>.</li>
+                <li>Genera un nuevo token con permiso <code>repo</code> marcado y copia el token (ej: <code>ghp_...</code>).</li>
+                <li>En tu panel de <strong>Vercel</strong>, abre tu proyecto &rarr; <strong>Settings</strong> &rarr; <strong>Environment Variables</strong>.</li>
+                <li>Agrega la clave <code>GITHUB_TOKEN</code> con el valor del token generado.</li>
+                <li>Ve a <strong>Deployments</strong> en Vercel y haz clic en <strong>Redeploy</strong>.</li>
+              </ol>
+              <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl text-emerald-800 text-[11px] font-medium">
+                Listo: Con eso, cada nueva solicitud y archivo se sincronizará automáticamente mediante commits en <code>{persistenceInfo.owner}/{persistenceInfo.repo}</code> y nunca más se perderá la información.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {persistenceInfo && persistenceInfo.isPermanent && (
+        <div className="flex items-center justify-between px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800">
+          <div className="flex items-center gap-2 font-medium">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>Respaldo permanente conectado con GitHub: <strong>{persistenceInfo.owner}/{persistenceInfo.repo}</strong> (rama {persistenceInfo.branch})</span>
+          </div>
+          <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full uppercase">
+            Persistencia Activa
+          </span>
+        </div>
+      )}
 
       {/* Tarjetas Métricas */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">

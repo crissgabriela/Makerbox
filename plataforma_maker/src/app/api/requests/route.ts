@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllRequests, createRequest } from '@/lib/github-storage';
+import { getAllRequests, createRequest, getStorageInfo } from '@/lib/github-storage';
 import { Solicitud3D } from '@/types';
 
 export async function GET() {
   try {
     const requests = await getAllRequests();
-    return NextResponse.json({ success: true, requests });
+    const persistence = getStorageInfo();
+    return NextResponse.json({ success: true, requests, persistence });
   } catch (err: unknown) {
     console.error('Error in GET /api/requests:', err);
     return NextResponse.json({ success: false, error: 'Error al obtener solicitudes' }, { status: 500 });

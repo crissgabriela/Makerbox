@@ -4,12 +4,33 @@ import os from 'os';
 import { Solicitud3D, EstadoSolicitud } from '@/types';
 
 // Configuración de GitHub desde variables de entorno
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
+const GITHUB_TOKEN = (process.env.GITHUB_TOKEN || '').trim();
 const GITHUB_OWNER = process.env.GITHUB_REPO_OWNER || 'crissgabriela';
 const GITHUB_REPO = process.env.GITHUB_REPO_NAME || 'Makerbox';
 const GITHUB_BRANCH = process.env.GITHUB_BRANCH || 'main';
+const GITHUB_STORAGE_DIR = process.env.GITHUB_STORAGE_PREFIX || 'plataforma_maker/storage';
 
-// Directorio seguro de almacenamiento:
+/**
+ * Retorna si la plataforma cuenta con token para persistencia en GitHub
+ */
+export function isGitHubConfigured(): boolean {
+  return Boolean(GITHUB_TOKEN && GITHUB_TOKEN.length > 5);
+}
+
+/**
+ * Información de configuración de almacenamiento
+ */
+export function getStorageInfo() {
+  return {
+    isPermanent: isGitHubConfigured(),
+    owner: GITHUB_OWNER,
+    repo: GITHUB_REPO,
+    branch: GITHUB_BRANCH,
+    storageDir: GITHUB_STORAGE_DIR
+  };
+}
+
+// Directorio seguro de almacenamiento local:
 // En Vercel o entornos serverless el sistema de archivos principal es de sólo lectura (EROFS),
 // por lo que se utiliza os.tmpdir() como buffer local.
 function getStoragePaths() {
@@ -25,7 +46,7 @@ function getStoragePaths() {
   };
 }
 
-// Almacén en memoria persistente durante el ciclo de vida del proceso
+// Almacén en memoria inicial con datos de demostración
 let memoryStore: Solicitud3D[] = [
   {
     id: 'MBX-2026-A101',
@@ -108,13 +129,16 @@ const fileMemoryCache = new Map<string, { buffer: Buffer; filename: string }>();
 function safeEnsureStorage() {
   try {
     const { baseDir, uploadsDir, dbFile } = getStoragePaths();
-    if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir, { recursive: true });
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-    if (!fs.existsSync(dbFile)) {
+    if (!fs.existsSync(/*turbopackIgnore: true*/ baseDir)) {
+      fs.mkdirSync(baseDir, { recursive: true });
+    }
+    if (!fs.existsSync(/*turbopackIgnore: true*/ uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    if (!fs.existsSync(/*turbopackIgnore: true*/ dbFile)) {
       fs.writeFileSync(dbFile, JSON.stringify(memoryStore, null, 2), 'utf-8');
     }
   } catch (err) {
-    // Si falla el filesystem (ej. permisos estrictos), se continúa en memoria sin caerse
     console.warn('Almacenamiento en disco no disponible, operando en memoria:', (err as any)?.message);
   }
 }
@@ -122,7 +146,7 @@ function safeEnsureStorage() {
 // Helper para llamadas a GitHub REST API
 async function callGitHubApi(endpoint: string, options: RequestInit = {}) {
   const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/${endpoint}`;
-  const response = await fetch(url, {
+  return fetch(url, {
     ...options,
     headers: {
       Accept: 'application/vnd.github.v3+json',
@@ -131,7 +155,6 @@ async function callGitHubApi(endpoint: string, options: RequestInit = {}) {
       ...options.headers
     }
   });
-  return response;
 }
 
 /**
@@ -141,8 +164,8 @@ function readLocalDb(): Solicitud3D[] {
   safeEnsureStorage();
   try {
     const { dbFile } = getStoragePaths();
-    if (fs.existsSync(dbFile)) {
-      const content = fs.readFileSync(dbFile, 'utf-8');
+    if (fs.existsSync(/*turbopackIgnore: true*/ dbFile)) {
+      const content = fs.readFileSync(/*turbopackIgnore: true*/ dbFile, 'utf-8');
       const parsed = JSON.parse(content) as Solicitud3D[];
       if (Array.isArray(parsed) && parsed.length > 0) {
         memoryStore = parsed;
@@ -170,43 +193,218 @@ function writeLocalDb(data: Solicitud3D[]) {
 }
 
 /**
+ * Obtiene la base de datos centralizada directamente desde GitHub
+ */
+async function fetchDatabaseFromGitHub(): Promise<{ data: Solicitud3D[]; sha: string } | null> {
+  if (!isGitHubConfigured()) return null;
+
+  const candidatePaths = [
+    `${GITHUB_STORAGE_DIR}/database.json`,
+    'plataforma_maker/storage/database.json',
+    'storage/database.json'
+  ];
+
+  for (const candidate of candidatePaths) {
+    try {
+      const res = await callGitHubApi(`contents/${candidate}?ref=${GITHUB_BRANCH}`);
+      if (!res.ok) continue;
+
+      const fileData = await res.json();
+      let rawJson = '';
+
+      if (fileData.content && fileData.encoding === 'base64') {
+        rawJson = Buffer.from(fileData.content, 'base64').toString('utf-8');
+      } else if (fileData.download_url) {
+        const dlRes = await fetch(fileData.download_url, {
+          headers: { Authorization: `Bearer ${GITHUB_TOKEN}` }
+        });
+        if (dlRes.ok) {
+          rawJson = await dlRes.text();
+        }
+      }
+
+      if (rawJson) {
+        const parsed = JSON.parse(rawJson) as Solicitud3D[];
+        if (Array.isArray(parsed)) {
+          return { data: parsed, sha: fileData.sha };
+        }
+      }
+    } catch (err) {
+      console.warn(`Error al consultar ${candidate} en GitHub:`, (err as any)?.message);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Guarda y comitea la base de datos centralizada en GitHub
+ */
+async function commitDatabaseToGitHub(data: Solicitud3D[], knownSha?: string): Promise<boolean> {
+  if (!isGitHubConfigured()) return false;
+
+  const targetPath = `${GITHUB_STORAGE_DIR}/database.json`;
+
+  try {
+    let sha = knownSha;
+
+    if (!sha) {
+      const checkRes = await callGitHubApi(`contents/${targetPath}?ref=${GITHUB_BRANCH}`);
+      if (checkRes.ok) {
+        const fileData = await checkRes.json();
+        sha = fileData.sha;
+      }
+    }
+
+    const jsonString = JSON.stringify(data, null, 2);
+    const base64Content = Buffer.from(jsonString, 'utf-8').toString('base64');
+
+    const body: Record<string, unknown> = {
+      message: `MakerBox 3D: Actualizar base de datos (${data.length} solicitudes)`,
+      content: base64Content,
+      branch: GITHUB_BRANCH
+    };
+    if (sha) {
+      body.sha = sha;
+    }
+
+    const res = await callGitHubApi(`contents/${targetPath}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+      // Si fue conflicto (409), reintentar obteniendo el sha fresco
+      if (res.status === 409) {
+        const refetch = await callGitHubApi(`contents/${targetPath}?ref=${GITHUB_BRANCH}`);
+        if (refetch.ok) {
+          const freshData = await refetch.json();
+          body.sha = freshData.sha;
+          const retryRes = await callGitHubApi(`contents/${targetPath}`, {
+            method: 'PUT',
+            body: JSON.stringify(body)
+          });
+          return retryRes.ok;
+        }
+      }
+      const errText = await res.text();
+      console.warn('Error al commitear database.json en GitHub:', res.status, errText);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error('Excepción al hacer commit de database.json:', err);
+    return false;
+  }
+}
+
+/**
+ * Guarda un archivo 3D o paquete comprimido en GitHub si pesa hasta 25MB
+ */
+async function saveFileToGitHub(id: string, filename: string, buffer: Buffer): Promise<boolean> {
+  if (!isGitHubConfigured()) return false;
+
+  // Límite de la API de GitHub REST Contents es 25MB
+  if (buffer.length > 25 * 1024 * 1024) {
+    console.warn(`Archivo ${filename} (${buffer.length} bytes) excede el límite de 25MB de GitHub API`);
+    return false;
+  }
+
+  const filePath = `${GITHUB_STORAGE_DIR}/uploads/${id}/${filename}`;
+
+  try {
+    let sha: string | undefined = undefined;
+    const checkRes = await callGitHubApi(`contents/${filePath}?ref=${GITHUB_BRANCH}`);
+    if (checkRes.ok) {
+      const data = await checkRes.json();
+      sha = data.sha;
+    }
+
+    const body: Record<string, unknown> = {
+      message: `MakerBox 3D: Subir modelo ${filename} (${id})`,
+      content: buffer.toString('base64'),
+      branch: GITHUB_BRANCH
+    };
+    if (sha) {
+      body.sha = sha;
+    }
+
+    const res = await callGitHubApi(`contents/${filePath}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    });
+
+    return res.ok;
+  } catch (err) {
+    console.warn(`Error al subir archivo ${filename} a GitHub:`, (err as any)?.message);
+    return false;
+  }
+}
+
+/**
+ * Descarga un archivo binario desde GitHub
+ */
+async function getFileFromGitHub(id: string, filename: string): Promise<Buffer | null> {
+  if (!isGitHubConfigured()) return null;
+
+  const candidatePaths = [
+    `${GITHUB_STORAGE_DIR}/uploads/${id}/${filename}`,
+    `plataforma_maker/storage/uploads/${id}/${filename}`,
+    `storage/uploads/${id}/${filename}`,
+    `storage/models/${id}/${filename}`
+  ];
+
+  for (const filePath of candidatePaths) {
+    try {
+      const res = await callGitHubApi(`contents/${filePath}?ref=${GITHUB_BRANCH}`);
+      if (!res.ok) continue;
+
+      const data = await res.json();
+
+      // Archivos menores a 1MB: vienen en base64 en data.content
+      if (data.content && data.encoding === 'base64') {
+        return Buffer.from(data.content, 'base64');
+      }
+
+      // Archivos mayores a 1MB: GitHub devuelve content vacío y proporciona download_url
+      if (data.download_url) {
+        const dlRes = await fetch(data.download_url, {
+          headers: {
+            Authorization: `Bearer ${GITHUB_TOKEN}`,
+            Accept: 'application/octet-stream'
+          }
+        });
+        if (dlRes.ok) {
+          const ab = await dlRes.arrayBuffer();
+          return Buffer.from(ab);
+        }
+      }
+    } catch (err) {
+      console.warn(`Error al descargar ${filePath} desde GitHub:`, (err as any)?.message);
+    }
+  }
+
+  return null;
+}
+
+/**
  * Obtiene todas las solicitudes ordenadas por fecha reciente
  */
 export async function getAllRequests(): Promise<Solicitud3D[]> {
-  const localList = readLocalDb();
-
-  if (!GITHUB_TOKEN) {
-    return [...localList].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }
-
-  try {
-    const res = await callGitHubApi(`contents/storage/requests?ref=${GITHUB_BRANCH}`);
-    if (!res.ok) {
-      return localList;
+  // 1. Si GitHub está configurado, consultar GitHub como fuente de verdad
+  if (isGitHubConfigured()) {
+    const ghDb = await fetchDatabaseFromGitHub();
+    if (ghDb && ghDb.data) {
+      memoryStore = ghDb.data;
+      writeLocalDb(ghDb.data);
+      return [...ghDb.data].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }
-
-    const files: Array<{ name: string; download_url: string }> = await res.json();
-    const jsonFiles = files.filter(f => f.name.endsWith('.json'));
-
-    const ghRequests = await Promise.all(
-      jsonFiles.map(async (f) => {
-        const fileRes = await fetch(f.download_url);
-        return (await fileRes.json()) as Solicitud3D;
-      })
-    );
-
-    // Unificar evitando duplicados por ID
-    const mergedMap = new Map<string, Solicitud3D>();
-    localList.forEach(r => mergedMap.set(r.id, r));
-    ghRequests.forEach(r => mergedMap.set(r.id, r));
-
-    return Array.from(mergedMap.values()).sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-  } catch (err) {
-    console.warn('Error sincronizando con GitHub API, devolviendo datos locales:', (err as any)?.message);
-    return localList;
   }
+
+  // 2. Si no hay token o falló GitHub, responder desde local / memoria
+  const localList = readLocalDb();
+  return [...localList].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 /**
@@ -227,56 +425,54 @@ export async function createRequest(
   // Asegurar URL persistente de descarga
   solicitud.archivoUrl = `/api/files/${solicitud.id}`;
 
-  // 1. Guardar en cache de memoria siempre
+  // 1. Guardar en cache de memoria y disco temporal
   if (fileBuffer && fileBuffer.length > 0) {
     fileMemoryCache.set(solicitud.id, {
       buffer: fileBuffer,
       filename: solicitud.archivoNombre
     });
 
-    // Intentar persistir en disco
     try {
       const { uploadsDir } = getStoragePaths();
       const itemDir = path.join(uploadsDir, solicitud.id);
-      if (!fs.existsSync(itemDir)) fs.mkdirSync(itemDir, { recursive: true });
+      if (!fs.existsSync(/*turbopackIgnore: true*/ itemDir)) {
+        fs.mkdirSync(itemDir, { recursive: true });
+      }
       fs.writeFileSync(path.join(itemDir, solicitud.archivoNombre), fileBuffer);
     } catch (err) {
       console.warn('No se pudo escribir archivo en disco local, conservado en memoria:', (err as any)?.message);
     }
   }
 
-  // 2. Guardar en memoria y base de datos local
-  const currentDb = readLocalDb();
+  // 2. Cargar lista actual (desde GitHub si está disponible)
+  let currentDb: Solicitud3D[] = [];
+  let currentSha: string | undefined = undefined;
+
+  if (isGitHubConfigured()) {
+    const ghDb = await fetchDatabaseFromGitHub();
+    if (ghDb) {
+      currentDb = ghDb.data;
+      currentSha = ghDb.sha;
+    } else {
+      currentDb = readLocalDb();
+    }
+  } else {
+    currentDb = readLocalDb();
+  }
+
+  // Añadir la nueva solicitud al inicio
   const updatedDb = [solicitud, ...currentDb.filter(r => r.id !== solicitud.id)];
   writeLocalDb(updatedDb);
 
-  // 3. Si hay GITHUB_TOKEN, sincronizar en segundo plano
-  if (GITHUB_TOKEN) {
+  // 3. Persistir en GitHub si el token está configurado
+  if (isGitHubConfigured()) {
     try {
-      if (fileBuffer && fileBuffer.length > 0 && solicitud.archivoTamanoMb <= 25) {
-        const modelPath = `storage/models/${solicitud.id}/${solicitud.archivoNombre}`;
-        await callGitHubApi(`contents/${modelPath}`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            message: `MakerBox 3D: Subir modelo ${solicitud.archivoNombre} (${solicitud.id})`,
-            content: fileBuffer.toString('base64'),
-            branch: GITHUB_BRANCH
-          })
-        });
+      if (fileBuffer && fileBuffer.length > 0 && fileBuffer.length <= 25 * 1024 * 1024) {
+        await saveFileToGitHub(solicitud.id, solicitud.archivoNombre, fileBuffer);
       }
-
-      const jsonPath = `storage/requests/${solicitud.id}.json`;
-      const jsonContentBase64 = Buffer.from(JSON.stringify(solicitud, null, 2)).toString('base64');
-      await callGitHubApi(`contents/${jsonPath}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          message: `MakerBox 3D: Crear solicitud ${solicitud.id} de ${solicitud.nombre}`,
-          content: jsonContentBase64,
-          branch: GITHUB_BRANCH
-        })
-      });
+      await commitDatabaseToGitHub(updatedDb, currentSha);
     } catch (err) {
-      console.warn('Error sincronizando con GitHub API (guardado localmente con éxito):', (err as any)?.message);
+      console.error('Error al persistir solicitud en GitHub:', err);
     }
   }
 
@@ -290,7 +486,21 @@ export async function updateRequest(
   id: string,
   updates: Partial<Solicitud3D>
 ): Promise<{ success: boolean; error?: string }> {
-  const currentDb = readLocalDb();
+  let currentDb: Solicitud3D[] = [];
+  let currentSha: string | undefined = undefined;
+
+  if (isGitHubConfigured()) {
+    const ghDb = await fetchDatabaseFromGitHub();
+    if (ghDb) {
+      currentDb = ghDb.data;
+      currentSha = ghDb.sha;
+    } else {
+      currentDb = readLocalDb();
+    }
+  } else {
+    currentDb = readLocalDb();
+  }
+
   const index = currentDb.findIndex(r => r.id.toUpperCase() === id.toUpperCase());
   if (index >= 0) {
     currentDb[index] = {
@@ -299,43 +509,14 @@ export async function updateRequest(
       updatedAt: new Date().toISOString()
     };
     writeLocalDb(currentDb);
-  }
 
-  if (!GITHUB_TOKEN) {
+    if (isGitHubConfigured()) {
+      await commitDatabaseToGitHub(currentDb, currentSha);
+    }
     return { success: true };
   }
 
-  try {
-    const jsonPath = `storage/requests/${id}.json`;
-    const getRes = await callGitHubApi(`contents/${jsonPath}?ref=${GITHUB_BRANCH}`);
-    if (!getRes.ok) return { success: true };
-
-    const fileData = await getRes.json();
-    const existingReq: Solicitud3D = JSON.parse(
-      Buffer.from(fileData.content, 'base64').toString('utf-8')
-    );
-
-    const updatedReq: Solicitud3D = {
-      ...existingReq,
-      ...updates,
-      updatedAt: new Date().toISOString()
-    };
-
-    const newContentBase64 = Buffer.from(JSON.stringify(updatedReq, null, 2)).toString('base64');
-    await callGitHubApi(`contents/${jsonPath}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        message: `MakerBox 3D: Actualizar solicitud ${id} a estado ${updatedReq.estado}`,
-        content: newContentBase64,
-        sha: fileData.sha,
-        branch: GITHUB_BRANCH
-      })
-    });
-  } catch (err) {
-    console.warn('Error sincronizando actualización en GitHub:', (err as any)?.message);
-  }
-
-  return { success: true };
+  return { success: false, error: 'Solicitud no encontrada' };
 }
 
 /**
@@ -369,8 +550,8 @@ export async function getFileBuffer(id: string): Promise<{
 
   for (const cand of candidates) {
     try {
-      if (fs.existsSync(cand)) {
-        const buf = fs.readFileSync(cand);
+      if (fs.existsSync(/*turbopackIgnore: true*/ cand)) {
+        const buf = fs.readFileSync(/*turbopackIgnore: true*/ cand);
         return {
           buffer: buf,
           filename: solicitud.archivoNombre,
@@ -380,24 +561,19 @@ export async function getFileBuffer(id: string): Promise<{
     } catch {}
   }
 
-  // 3. Si no está localmente y tenemos GitHub Token, descargarlo de GitHub
-  if (GITHUB_TOKEN) {
-    try {
-      const modelPath = `storage/models/${solicitud.id}/${solicitud.archivoNombre}`;
-      const res = await callGitHubApi(`contents/${modelPath}?ref=${GITHUB_BRANCH}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.content) {
-          const buf = Buffer.from(data.content, 'base64');
-          return {
-            buffer: buf,
-            filename: solicitud.archivoNombre,
-            sizeBytes: buf.length
-          };
-        }
-      }
-    } catch (err) {
-      console.warn('Error obteniendo archivo desde GitHub:', (err as any)?.message);
+  // 3. Descargar desde GitHub si está configurado
+  if (isGitHubConfigured()) {
+    const buf = await getFileFromGitHub(solicitud.id, solicitud.archivoNombre);
+    if (buf) {
+      fileMemoryCache.set(solicitud.id, {
+        buffer: buf,
+        filename: solicitud.archivoNombre
+      });
+      return {
+        buffer: buf,
+        filename: solicitud.archivoNombre,
+        sizeBytes: buf.length
+      };
     }
   }
 
