@@ -27,7 +27,7 @@
   {
     "id": "MBX-2026-0QHM",
     "createdAt": "2026-09-29T19:07:49.000Z",
-    "updatedAt": "2026-09-29T19:07:49.000Z",
+    "updatedAt": "2026-10-03T23:25:48.185Z",
     "nombre": "Camicami",
     "correo": "criss.gabriela.cb@gmail.com",
     "telefono": "+56950955251",
@@ -47,7 +47,10 @@
     "relleno": "20% (Estándar)",
     "calidad": "Estándar (0.20mm)",
     "observaciones": "",
-    "estado": "pendiente"
+    "estado": "pendiente",
+    "impresoraAsignada": "Bambu Lab X1-Carbon #1",
+    "gramosEstimados": 20,
+    "tiempoEstimadoHoras": 7
   },
   {
     "id": "MBX-2026-WDHF",
