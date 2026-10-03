@@ -415,7 +415,7 @@ function generatePlaqueMode(
           font-weight="bold" text-anchor="middle" fill="${config.engraveFillColor}">MAKERBOX · INGENIERÍA UTALCA</text>
     <text x="${(totalWidth / 2).toFixed(2)}" y="12" 
           font-family="'Montserrat', 'Arial', sans-serif" font-size="3" 
-          text-anchor="middle" fill="${config.engraveFillColor}">Día de las Personas Sordas y de la Lengua de Señas</text>
+          text-anchor="middle" fill="${config.engraveFillColor}">Festival de Ciencia y Tecnología 2026</text>
     <line x1="${paddingX}" y1="14" x2="${totalWidth - paddingX}" y2="14" stroke="${config.engraveStrokeColor}" stroke-width="0.2" />
   `;
 

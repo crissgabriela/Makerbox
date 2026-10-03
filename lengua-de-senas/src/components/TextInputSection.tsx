@@ -19,7 +19,7 @@ export const TextInputSection: React.FC<TextInputSectionProps> = ({
   onClear,
   onQuickWord
 }) => {
-  const quickWords = ['HOLA', 'GRACIAS', 'AMOR', 'INCLUSIÓN'];
+  const quickWords = ['HOLA', 'GRACIAS', 'CIENCIA', 'FESTIVAL'];
 
   const handleAddSymbol = (symChar: string) => {
     onChange(value + symChar);

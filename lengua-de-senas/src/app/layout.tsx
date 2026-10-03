@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'MakerBox UTalca | Lengua de Señas a Corte Láser',
+  title: 'MakerBox UTalca | Festival de Ciencia y Tecnología 2026',
   description:
-    'Plataforma para traducir texto a dactilología del Alfabeto Manual Chileno y generar archivos para corte láser en el stand demostrativo de MakerBox, Universidad de Talca.',
+    'Plataforma interactiva de fabricación digital (Corte Láser en Lengua de Señas, Litofanías 3D e Impresión Braille) para el Festival de Ciencia y Tecnología 2026 · MakerBox, Universidad de Talca.',
   icons: {
     icon: '/logos/makerbox-color.jpg',
   },

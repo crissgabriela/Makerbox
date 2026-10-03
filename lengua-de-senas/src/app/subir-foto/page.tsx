@@ -191,7 +191,7 @@ function SubirFotoContent() {
               MakerBox · Litofanía 3D
             </h1>
             <p className="text-xs font-semibold text-blue-600 mt-1">
-              Universidad de Talca · Stand de Demostración
+              Festival de Ciencia y Tecnología 2026 · Stand MakerBox
             </p>
           </div>
         </div>

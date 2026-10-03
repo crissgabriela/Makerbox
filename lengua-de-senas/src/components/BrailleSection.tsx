@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-const QUICK_WORDS = ['CRISS', 'MAKERBOX', 'UTALCA', 'TALCA', 'HOLA', 'INCLUSIÓN'];
+const QUICK_WORDS = ['CRISS', 'MAKERBOX', 'UTALCA', 'TALCA', 'HOLA', 'CIENCIA'];
 
 export const BrailleSection: React.FC = () => {
   const [config, setConfig] = useState<BrailleConfig>(DEFAULT_BRAILLE_CONFIG);

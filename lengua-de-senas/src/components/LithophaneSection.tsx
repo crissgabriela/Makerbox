@@ -468,7 +468,7 @@ export const LithophaneSection: React.FC = () => {
               <span>📱 Escanear QR para subir foto desde tu celular</span>
             </button>
 
-            {/* Tip rápido para ferias */}
+            {/* Tip rápido para el festival / stand */}
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50/80 border border-blue-200/60 text-[11px] text-blue-900 leading-tight">
               <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0" />
               <span>

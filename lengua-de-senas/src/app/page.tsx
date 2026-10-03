@@ -96,7 +96,7 @@ export default function Home() {
                 <div className="flex items-center gap-2">
                   <span className="px-2.5 py-0.5 rounded-full bg-purple-200 text-purple-900 text-[11px] font-extrabold flex items-center gap-1">
                     <Sparkles className="w-3 h-3 text-purple-700" />
-                    Feria de Conmemoración de la Lengua de Señas
+                    Festival de Ciencia y Tecnología 2026
                   </span>
                 </div>
                 <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-0.5">
@@ -177,7 +177,7 @@ export default function Home() {
             </span>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <span>Día de las Personas Sordas y de la Lengua de Señas</span>
+            <span>Festival de Ciencia y Tecnología 2026</span>
             <span>•</span>
             <span className="text-purple-700 font-bold">Stand de Impresión 3D y Corte Láser</span>
           </div>

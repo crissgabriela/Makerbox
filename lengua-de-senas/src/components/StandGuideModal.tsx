@@ -25,7 +25,7 @@ export const StandGuideModal: React.FC<StandGuideModalProps> = ({ isOpen, onClos
                 Guía de Corte Láser para el Stand
               </h2>
               <p className="text-sm text-slate-500">
-                Parámetros para MakerBox · Facultad de Ingeniería UTalca
+                Festival de Ciencia y Tecnología 2026 · MakerBox UTalca
               </p>
             </div>
           </div>

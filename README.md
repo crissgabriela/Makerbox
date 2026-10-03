@@ -24,7 +24,7 @@ Makerbox/
 
 Ubicado en la subcarpeta [`lengua-de-senas/`](./lengua-de-senas/).
 
-Diseñado especialmente para la pantalla táctil del stand demostrativo de **MakerBox** en la conmemoración del **Día de las Personas Sordas y de la Lengua de Señas**:
+Diseñado especialmente para la pantalla táctil del stand demostrativo de **MakerBox** en el **Festival de Ciencia y Tecnología 2026**:
 
 - **Teclado virtual flotante táctil** (Kiosk Mode) con teclas grandes y respuesta sonora.
 - **Traducción en tiempo real** a dactilología de Lengua de Señas (A-Z y Ñ).
