@@ -2,7 +2,7 @@
   {
     "id": "MBX-2026-5HV0",
     "createdAt": "2026-10-03T23:21:53.088Z",
-    "updatedAt": "2026-10-03T23:23:39.176Z",
+    "updatedAt": "2026-10-03T23:26:20.679Z",
     "nombre": "Verónica Placencia",
     "correo": "vasquez197614@gmail.com",
     "telefono": "+56965618213",
@@ -22,7 +22,7 @@
     "relleno": "15% (Prototipo Ligero / Visual)",
     "calidad": "Estándar (0.20mm)",
     "observaciones": "hooa",
-    "estado": "aprobada"
+    "estado": "en_impresion"
   },
   {
     "id": "MBX-2026-0QHM",
