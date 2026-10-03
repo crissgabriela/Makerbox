@@ -1,5 +1,30 @@
 [
   {
+    "id": "MBX-2026-5HV0",
+    "createdAt": "2026-10-03T23:21:53.088Z",
+    "updatedAt": "2026-10-03T23:21:53.089Z",
+    "nombre": "Verónica Placencia",
+    "correo": "vasquez197614@gmail.com",
+    "telefono": "+56965618213",
+    "carrera": "Ingeniería Civil Mecánica",
+    "tipoUsuario": "Ingeniería Civil Mecánica",
+    "archivoNombre": "base rueda.stl",
+    "archivoTamanoMb": 0.15,
+    "archivoUrl": "/api/files/MBX-2026-5HV0",
+    "archivoFormato": "stl",
+    "dimensionesMm": {
+      "x": 54.5,
+      "y": 54.4,
+      "z": 25.5
+    },
+    "material": "PLA",
+    "color": "Blanco",
+    "relleno": "15% (Prototipo Ligero / Visual)",
+    "calidad": "Estándar (0.20mm)",
+    "observaciones": "hooa",
+    "estado": "pendiente"
+  },
+  {
     "id": "MBX-2026-0QHM",
     "createdAt": "2026-09-29T19:07:49.000Z",
     "updatedAt": "2026-09-29T19:07:49.000Z",
