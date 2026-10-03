@@ -16,7 +16,7 @@ export const LaserControls: React.FC<LaserControlsProps> = ({ config, onChange }
 
   return (
     <div className="w-full bg-white rounded-3xl border border-slate-200 shadow-md p-6 sm:p-8 flex flex-col gap-6">
-      <div className="border-b border-slate-100 pb-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+      <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <h3 className="text-xl sm:text-2xl font-bold text-slate-800 flex items-center gap-2">
             <span className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-base font-extrabold">
@@ -25,13 +25,36 @@ export const LaserControls: React.FC<LaserControlsProps> = ({ config, onChange }
             <span>Ajustes de tu llavero:</span>
           </h3>
           <p className="text-sm text-slate-500 mt-1">
-            Personaliza las medidas del llavero antes de enviarlo a la cortadora láser.
+            Personaliza el formato y las medidas antes de enviarlo a la cortadora láser.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-purple-50 text-purple-800 border border-purple-200/80 font-bold text-xs">
-          <KeyRound className="w-4 h-4 text-purple-700" />
-          <span>Modelo Llavero Ranura CAD</span>
+        {/* Selector de formato / modelo */}
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200">
+          <button
+            type="button"
+            onClick={() => updateConfig('keychainShape', 'capsule')}
+            className={`px-3.5 py-1.5 rounded-xl font-extrabold text-xs transition active:scale-95 cursor-pointer flex items-center gap-1.5 ${
+              (config.keychainShape || 'capsule') === 'capsule'
+                ? 'bg-purple-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span>Cápsula (25 mm)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => updateConfig('keychainShape', 'heart')}
+            className={`px-3.5 py-1.5 rounded-xl font-extrabold text-xs transition active:scale-95 cursor-pointer flex items-center gap-1.5 ${
+              config.keychainShape === 'heart'
+                ? 'bg-rose-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <span>💖 Corazón Dúo (60 mm)</span>
+          </button>
         </div>
       </div>
 
@@ -54,7 +77,11 @@ export const LaserControls: React.FC<LaserControlsProps> = ({ config, onChange }
               className="w-full accent-purple-600 cursor-pointer h-2 bg-slate-200 rounded-lg mt-2"
             />
           </div>
-          <span className="text-xs text-slate-400">Centrado a 12.5 mm con pared estructural segura</span>
+          <span className="text-xs text-slate-400">
+            {config.keychainShape === 'heart'
+              ? 'Ubicado en el lóbulo superior izquierdo con pared segura'
+              : 'Centrado a 12.5 mm con pared estructural segura'}
+          </span>
         </div>
 
         {/* Espaciado entre señas */}

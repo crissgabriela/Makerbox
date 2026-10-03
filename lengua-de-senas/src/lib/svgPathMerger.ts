@@ -27,27 +27,24 @@ export function transformPath(pathD: string, scale = 1, offsetX = 0, offsetY = 0
 /**
  * Generador principal del SVG de corte láser.
  */
-export function generateLaserSvg(text: string, config: LaserConfig): GeneratedLaserSvg {
-  const letters = normalizeText(text);
+export function generateLaserSvg(
+  text: string,
+  config: LaserConfig,
+  secondaryText?: string
+): GeneratedLaserSvg {
+  const letters = normalizeText(text).slice(0, 10);
+  const secText = secondaryText !== undefined ? secondaryText : (config.secondaryText || '');
+  const letters2 = normalizeText(secText).slice(0, 10);
 
-  if (letters.length === 0) {
-    return {
-      svgString: `<svg xmlns="http://www.w3.org/2000/svg" width="60mm" height="25mm" viewBox="0 0 60 25">
-        <rect width="60" height="25" rx="12.5" ry="12.5" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2"/>
-        <circle cx="7.5" cy="12.5" r="2.25" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2"/>
-        <text x="35" y="14" font-family="Arial, sans-serif" font-size="3.5" text-anchor="middle" fill="#666">Escribe una palabra</text>
-      </svg>`,
-      widthMm: 60,
-      heightMm: 25,
-      signCount: 0,
-      estimatedCutLengthMm: 160
-    };
+  // Modo Llavero Corazón Dúo (60 mm de alto, 2 nombres)
+  if (config.keychainShape === 'heart' || config.mode === 'heart') {
+    return generateHeartMode(letters, letters2, config);
   }
 
-  const signHeightMm = 15; // Altura máxima de las manos: 15 mm
+  const signHeightMm = 13.5;
   const signSpacingMm = config.signSpacingMm || 2.5;
 
-  // Modo exclusivo: Llavero Ranura CAD (25 mm ancho fijo, manos vectoriales proporcionales centradas con >=5 mm de margen)
+  // Modo Llavero Ranura CAD (25 mm ancho fijo, manos vectoriales proporcionales + palabra en 3mm)
   return generateCapsuleMode(letters, config, signHeightMm, signSpacingMm);
 }
 
@@ -55,9 +52,10 @@ export function generateLaserSvg(text: string, config: LaserConfig): GeneratedLa
  * MODO 1: Llavero Ranura / Cápsula (Modelo CAD Oficial del Usuario)
  * Especificaciones de diseño:
  * - Ancho (altura vertical del perfil) fijo en 25 mm.
- * - Manos vectoriales con escala anatómica unificada (máximo 14.5 mm de alto, centradas verticalmente a 12.5 mm).
- * - Margen de al menos 5 mm por encima y 5 mm por debajo de las figuras.
- * - Largo del llavero se ajusta de forma 100% dinámica al ancho real proporcional de cada mano.
+ * - Manos vectoriales con escala anatómica unificada (máximo 13.5 mm de alto).
+ * - Debajo de las señas se graba la palabra que forman (altura de letras: 3 mm, sin símbolos de corazón).
+ * - La palabra queda centrada entre la parte inferior de las señas y el borde inferior del llavero,
+ *   y centrada en horizontal con el largo total que abordan las señas de manos.
  * - Orificio de argolla centrado verticalmente a 12.5 mm con pared estructural segura de >5 mm.
  */
 function generateCapsuleMode(
@@ -75,10 +73,30 @@ function generateCapsuleMode(
   const holeCenterX = 7.5;
   const holeCenterY = 12.5;
 
+  if (letters.length === 0) {
+    const defaultWidth = 60;
+    const pad = 1.0;
+    return {
+      svgString: `<svg xmlns="http://www.w3.org/2000/svg" width="${(defaultWidth + pad * 2).toFixed(2)}mm" height="${(totalHeight + pad * 2).toFixed(2)}mm" viewBox="${(-pad).toFixed(2)} ${(-pad).toFixed(2)} ${(defaultWidth + pad * 2).toFixed(2)} ${(totalHeight + pad * 2).toFixed(2)}">
+        <rect width="${defaultWidth}" height="${totalHeight}" rx="${endRadius}" ry="${endRadius}" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2"/>
+        <circle cx="${holeCenterX}" cy="${holeCenterY}" r="${holeRadius}" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2"/>
+        <text x="35" y="14" font-family="'Montserrat', 'Arial', sans-serif" font-size="3.5" text-anchor="middle" dominant-baseline="central" fill="#888">Escribe una palabra</text>
+      </svg>`,
+      widthMm: defaultWidth,
+      heightMm: totalHeight,
+      signCount: 0,
+      estimatedCutLengthMm: 160,
+      shape: 'capsule'
+    };
+  }
+
   // Inicio de las señas dejando espacio seguro y estético después del orificio de argolla
   const startSignsX = holeCenterX + holeRadius + 4.5; // ~14.25 mm
 
-  // Calculamos la posición y tamaño exacto de cada mano usando los vectores oficiales con proporción anatómica
+  // Altura máxima reservada para las manos: 13.5 mm, posicionadas con margen superior de 2.8 mm
+  const maxHandHeight = 13.5;
+  const topMargin = 2.8;
+
   const handElements: {
     x: number;
     y: number;
@@ -95,13 +113,11 @@ function generateCapsuleMode(
     const sign = CHILEAN_VECTOR_SIGNS[char];
     if (!sign) return;
 
-    // Escala del vector: vectorWidth = origWidth * 4.
-    // El tamaño deseado en milímetros es sign.widthMm.
+    // Escala del vector anatómico
     const scaleFactor = sign.widthMm / sign.vectorWidth;
 
-    // Centrado vertical respecto al eje Y = 12.5 mm:
-    // handY deja un margen perfectamente simétrico superior e inferior
-    const handY = (totalHeight - sign.heightMm) / 2;
+    // Centrado vertical de la mano dentro de la franja superior de 13.5 mm
+    const handY = topMargin + (maxHandHeight - sign.heightMm) / 2;
 
     handElements.push({
       x: currentX,
@@ -117,7 +133,6 @@ function generateCapsuleMode(
   });
 
   // Largo total ajustado dinámicamente al largo acumulado de la palabra
-  // Dejamos un margen seguro de 7.5 mm tras la última mano para que la semicircunferencia no roce los dedos
   const lastHand = handElements[handElements.length - 1];
   const lastHandRight = lastHand ? lastHand.x + lastHand.width : startSignsX + 30;
   const totalWidth = lastHandRight + 7.5;
@@ -151,6 +166,33 @@ function generateCapsuleMode(
     `;
   });
 
+  // Palabra que forman debajo de las señas (excluyendo señas de corazón)
+  // Altura de letra: 3 mm, centrada entre la parte inferior de las señas y el borde inferior del llavero,
+  // y centrada en horizontal con el largo que abordan las señas de manos.
+  const cleanWord = letters.filter(c => !c.startsWith('SYM_HEART')).join('');
+  let textEngraveSvg = '';
+
+  if (cleanWord && handElements.length > 0) {
+    const handsMinX = handElements[0].x;
+    const handsMaxX = lastHand.x + lastHand.width;
+    const handsCenterX = (handsMinX + handsMaxX) / 2;
+
+    const maxHandBottom = Math.max(...handElements.map(h => h.y + h.height));
+    const textCenterY = (maxHandBottom + totalHeight) / 2;
+
+    textEngraveSvg = `
+      <!-- Palabra formada por las señas grabada en láser (Altura de letra: 3 mm) -->
+      <text x="${handsCenterX.toFixed(2)}" y="${textCenterY.toFixed(2)}" 
+            font-family="'Montserrat', 'Arial', sans-serif" 
+            font-size="3.8" 
+            font-weight="bold" 
+            text-anchor="middle" 
+            dominant-baseline="central" 
+            letter-spacing="0.4" 
+            fill="${config.engraveFillColor || '#000000'}">${cleanWord}</text>
+    `;
+  }
+
   // Margen de seguridad (1.0 mm) para que el trazo perimetral (stroke-width 0.2mm) nunca sea recortado por el viewBox
   const pad = 1.0;
   const vbMinX = -pad;
@@ -168,9 +210,10 @@ function generateCapsuleMode(
     <desc>Llavero Ranura CAD Vectorial - Alfabeto Manual Chileno - MakerBox UTalca</desc>
   </defs>
 
-  <!-- CAPA 2: GRABADO LÁSER VECTORIAL (Vectores Puros en Escala Anatómica Proporcional) -->
+  <!-- CAPA 2: GRABADO LÁSER VECTORIAL (Vectores Puros en Escala Anatómica Proporcional + Palabra en Texto 3mm) -->
   <g id="capa-grabado-señas">
     ${vectorEngraveParts.join('\n    ')}
+    ${textEngraveSvg}
   </g>
 
   <!-- CAPA 1: CORTE EXTERIOR (Rojo #FF0000) -->
@@ -180,14 +223,177 @@ function generateCapsuleMode(
   </g>
 </svg>`;
 
-  const cutLength = (capRightX - capLeftX) * 2 + Math.PI * totalHeight + Math.PI * (holeRadius * 2);
+  return {
+    svgString: svgContent,
+    widthMm: Number(totalWidth.toFixed(2)),
+    heightMm: Number(totalHeight.toFixed(2)),
+    signCount: letters.length,
+    estimatedCutLengthMm: Number((totalWidth * 2 + totalHeight * 2).toFixed(1)),
+    shape: 'capsule'
+  };
+}
+
+/**
+ * MODO CORAZÓN DÚO (60 mm de alto):
+ * - Corte exterior: Corazón suave de 60 mm de alto x 67.6 mm de ancho con orificio para argolla en el lóbulo superior izquierdo.
+ * - Nombre 1 (Arriba): Señas en Lengua de Señas Chilena + palabra en texto latino de 3 mm debajo.
+ * - Centro: Corazón decorativo grabado conectando ambos nombres.
+ * - Nombre 2 (Abajo): Señas en Lengua de Señas Chilena + palabra en texto latino de 3 mm debajo.
+ */
+function generateHeartMode(
+  letters1: string[],
+  letters2: string[],
+  config: LaserConfig
+): GeneratedLaserSvg {
+  const totalHeight = 60.0;
+  const totalWidth = 67.64;
+  const cx = 33.82;
+
+  // Curva matemática suave del corazón exterior (60 mm de alto, 67.64 mm de ancho)
+  const heartPathD = `M 33.82 60.00 C 18.55 48.00, 0.00 34.91, 0.00 20.73 C 0.00 5.45, 14.18 0.00, 25.09 0.00 C 30.55 0.00, 33.82 5.45, 33.82 13.09 C 33.82 5.45, 37.09 0.00, 42.55 0.00 C 53.45 0.00, 67.64 5.45, 67.64 20.73 C 67.64 34.91, 49.09 48.00, 33.82 60.00 Z`;
+
+  // Orificio de argolla en lóbulo superior izquierdo (23.5, 8.5)
+  const holeRadius = (config.holeDiameterMm || 4.5) / 2;
+  const holeCenterX = 23.5;
+  const holeCenterY = 8.5;
+  const holeSvg = `
+    <!-- Orificio de Corte para Argolla (Lóbulo Superior) -->
+    <circle cx="${holeCenterX.toFixed(2)}" cy="${holeCenterY.toFixed(2)}" r="${holeRadius.toFixed(2)}" 
+            fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2" id="keychain-heart-hole" />
+  `;
+
+  // Función auxiliar para maquetar una fila de señas ajustada a un ancho máximo
+  const layoutSignsRow = (
+    rowLetters: string[],
+    maxWidth: number,
+    baseHeight: number,
+    baseY: number
+  ) => {
+    if (rowLetters.length === 0) return { parts: [], textY: baseY + baseHeight + 3.0 };
+
+    const rawSigns = rowLetters.map((char) => {
+      const sign = CHILEAN_VECTOR_SIGNS[char];
+      if (!sign) return null;
+      const initialHeight = baseHeight;
+      const initialWidth = sign.widthMm * (initialHeight / sign.heightMm);
+      return { char, sign, initialWidth, initialHeight };
+    }).filter(Boolean) as { char: string; sign: (typeof CHILEAN_VECTOR_SIGNS)[string]; initialWidth: number; initialHeight: number }[];
+
+    if (rawSigns.length === 0) return { parts: [], textY: baseY + baseHeight + 3.0 };
+
+    const initialSpacing = Math.min(config.signSpacingMm || 2.0, 2.5);
+    const rawTotalWidth = rawSigns.reduce((sum, s) => sum + s.initialWidth, 0) + (rawSigns.length - 1) * initialSpacing;
+
+    // Si excede el ancho disponible en esa franja del corazón, escalamos uniformemente
+    const scaleMultiplier = rawTotalWidth > maxWidth ? maxWidth / rawTotalWidth : 1.0;
+    const finalSpacing = initialSpacing * scaleMultiplier;
+    const finalTotalWidth = rawTotalWidth * scaleMultiplier;
+
+    let currX = cx - finalTotalWidth / 2;
+    const parts: string[] = [];
+
+    rawSigns.forEach((item, idx) => {
+      const finalW = item.initialWidth * scaleMultiplier;
+      const finalH = item.initialHeight * scaleMultiplier;
+      const scaleFactor = (finalH / item.sign.heightMm) * (item.sign.widthMm / item.sign.vectorWidth);
+      const signY = baseY + (baseHeight - finalH) / 2;
+
+      parts.push(`
+        <g id="heart-sign-${item.char}-${idx}" transform="translate(${currX.toFixed(3)}, ${signY.toFixed(3)}) scale(${scaleFactor.toFixed(6)})">
+          <path d="${item.sign.pathD}" fill="${config.engraveFillColor || '#000000'}" fill-rule="evenodd" stroke="none" />
+        </g>
+      `);
+      currX += finalW + finalSpacing;
+    });
+
+    const textY = baseY + baseHeight + 2.5;
+    return { parts, textY };
+  };
+
+  // Fila 1: Nombre 1 (Arriba, ancho máximo ~46 mm)
+  const row1 = layoutSignsRow(letters1, 46, 10.0, 15.0);
+  const cleanWord1 = letters1.filter(c => !c.startsWith('SYM_HEART')).join('');
+
+  // Fila 2: Nombre 2 (Abajo, ancho máximo ~35 mm)
+  const row2 = layoutSignsRow(letters2, 35, 9.0, 38.0);
+  const cleanWord2 = letters2.filter(c => !c.startsWith('SYM_HEART')).join('');
+
+  // Corazón central grabado
+  const smH = 7.0;
+  const smW = 8.0;
+  const smCy = 32.5;
+  const smallHeartD = `M ${cx} ${(smCy + smH/2).toFixed(2)}
+    C ${(cx - smW*0.25).toFixed(2)} ${(smCy + smH*0.3).toFixed(2)}, ${(cx - smW*0.5).toFixed(2)} ${(smCy + smH*0.1).toFixed(2)}, ${(cx - smW*0.5).toFixed(2)} ${(smCy - smH*0.15).toFixed(2)}
+    C ${(cx - smW*0.5).toFixed(2)} ${(smCy - smH*0.45).toFixed(2)}, ${(cx - smW*0.15).toFixed(2)} ${(smCy - smH*0.5).toFixed(2)}, ${cx} ${(smCy - smH*0.2).toFixed(2)}
+    C ${(cx + smW*0.15).toFixed(2)} ${(smCy - smH*0.5).toFixed(2)}, ${(cx + smW*0.5).toFixed(2)} ${(smCy - smH*0.45).toFixed(2)}, ${(cx + smW*0.5).toFixed(2)} ${(smCy - smH*0.15).toFixed(2)}
+    C ${(cx + smW*0.5).toFixed(2)} ${(smCy + smH*0.1).toFixed(2)}, ${(cx + smW*0.25).toFixed(2)} ${(smCy + smH*0.3).toFixed(2)}, ${cx} ${(smCy + smH/2).toFixed(2)} Z`.replace(/\s+/g, ' ');
+
+  const pad = 1.0;
+  const vbMinX = -pad;
+  const vbMinY = -pad;
+  const vbWidth = totalWidth + pad * 2;
+  const vbHeight = totalHeight + pad * 2;
+
+  const svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="${vbWidth.toFixed(2)}mm" 
+     height="${vbHeight.toFixed(2)}mm" 
+     viewBox="${vbMinX.toFixed(2)} ${vbMinY.toFixed(2)} ${vbWidth.toFixed(2)} ${vbHeight.toFixed(2)}"
+     style="overflow: visible;">
+  <defs>
+    <desc>Llavero Corazón Dúo - Alfabeto Manual Chileno - MakerBox UTalca</desc>
+  </defs>
+
+  <!-- CAPA 2: GRABADO LÁSER (Señas de Manos, Corazón Central y Nombres en 3mm) -->
+  <g id="capa-grabado-corazon">
+    <!-- Señas Nombre 1 (Arriba) -->
+    ${row1.parts.join('\n    ')}
+
+    <!-- Nombre 1 escrito en texto legible (Altura de letra: 3 mm) -->
+    ${cleanWord1 ? `
+    <text x="${cx.toFixed(2)}" y="${row1.textY.toFixed(2)}" 
+          font-family="'Montserrat', 'Arial', sans-serif" 
+          font-size="3.8" 
+          font-weight="bold" 
+          text-anchor="middle" 
+          dominant-baseline="central" 
+          letter-spacing="0.4" 
+          fill="${config.engraveFillColor || '#000000'}">${cleanWord1}</text>
+    ` : (letters1.length === 0 ? `<text x="${cx.toFixed(2)}" y="25" font-family="'Montserrat', 'Arial', sans-serif" font-size="3" text-anchor="middle" fill="#999">Nombre 1</text>` : '')}
+
+    <!-- Corazón decorativo de unión central -->
+    <path d="${smallHeartD}" fill="${config.engraveFillColor || '#000000'}" stroke="none" id="heart-connector" />
+
+    <!-- Señas Nombre 2 (Abajo) -->
+    ${row2.parts.join('\n    ')}
+
+    <!-- Nombre 2 escrito en texto legible (Altura de letra: 3 mm) -->
+    ${cleanWord2 ? `
+    <text x="${cx.toFixed(2)}" y="${row2.textY.toFixed(2)}" 
+          font-family="'Montserrat', 'Arial', sans-serif" 
+          font-size="3.8" 
+          font-weight="bold" 
+          text-anchor="middle" 
+          dominant-baseline="central" 
+          letter-spacing="0.4" 
+          fill="${config.engraveFillColor || '#000000'}">${cleanWord2}</text>
+    ` : (letters2.length === 0 ? `<text x="${cx.toFixed(2)}" y="48" font-family="'Montserrat', 'Arial', sans-serif" font-size="3" text-anchor="middle" fill="#999">Nombre 2</text>` : '')}
+  </g>
+
+  <!-- CAPA 1: CORTE EXTERIOR (Rojo #FF0000) -->
+  <g id="capa-corte-exterior">
+    <path d="${heartPathD}" fill="none" stroke="${config.cutStrokeColor}" stroke-width="0.2" stroke-linecap="round" stroke-linejoin="round" id="keychain-heart-cut" />
+    ${holeSvg}
+  </g>
+</svg>`;
 
   return {
     svgString: svgContent,
     widthMm: Number(totalWidth.toFixed(2)),
     heightMm: Number(totalHeight.toFixed(2)),
-    signCount: handElements.length,
-    estimatedCutLengthMm: Number(cutLength.toFixed(1))
+    signCount: letters1.length + letters2.length,
+    estimatedCutLengthMm: Number((totalWidth * 2.2 + totalHeight * 1.8).toFixed(1)),
+    shape: 'heart'
   };
 }
 

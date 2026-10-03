@@ -3,17 +3,28 @@
 import React from 'react';
 import Image from 'next/image';
 import { SIGNS_DICTIONARY, normalizeText } from '@/lib/signsData';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Heart } from 'lucide-react';
+import { KeychainShape } from '@/types';
 
 interface SignDisplayProps {
   text: string;
+  secondaryText?: string;
+  shape?: KeychainShape;
   onSelectLetter?: (letter: string) => void;
 }
 
-export const SignDisplay: React.FC<SignDisplayProps> = ({ text, onSelectLetter }) => {
-  const letters = normalizeText(text);
+export const SignDisplay: React.FC<SignDisplayProps> = ({
+  text,
+  secondaryText = '',
+  shape = 'capsule',
+  onSelectLetter
+}) => {
+  const letters1 = normalizeText(text).slice(0, 10);
+  const letters2 = normalizeText(secondaryText).slice(0, 10);
 
-  if (letters.length === 0) {
+  const hasAnyLetters = letters1.length > 0 || (shape === 'heart' && letters2.length > 0);
+
+  if (!hasAnyLetters) {
     return (
       <div className="w-full bg-white border-2 border-dashed border-slate-200 rounded-3xl p-10 text-center flex flex-col items-center justify-center gap-3 shadow-sm">
         <div className="w-16 h-16 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center">
@@ -28,6 +39,83 @@ export const SignDisplay: React.FC<SignDisplayProps> = ({ text, onSelectLetter }
       </div>
     );
   }
+
+  const renderLetterRow = (letters: string[], titleLabel?: string) => {
+    if (letters.length === 0) {
+      return (
+        <div className="p-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400 font-semibold">
+          Escribe en el campo superior para ver las señas.
+        </div>
+      );
+    }
+
+    return (
+      <div className="w-full overflow-x-auto pb-2 pt-0.5 scrollbar-thin">
+        {titleLabel && (
+          <span className="text-xs font-bold text-purple-700 block mb-2">{titleLabel}</span>
+        )}
+        <div className="flex items-stretch gap-3 min-w-min">
+          {letters.map((char, index) => {
+            if (char === ' ') {
+              return (
+                <div
+                  key={`space-${index}`}
+                  className="w-12 min-h-[140px] rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-400 font-bold text-[10px]"
+                >
+                  <span className="rotate-90 tracking-widest uppercase">Espacio</span>
+                </div>
+              );
+            }
+
+            const sign = SIGNS_DICTIONARY[char];
+            const imageFileName = char === 'Ñ' ? 'N_TILDE.png' : `${char}.png`;
+            const badgeLabel =
+              char === 'SYM_HEART1'
+                ? '♥'
+                : char === 'SYM_HEART2'
+                ? '♡'
+                : char === 'SYM_HEART3'
+                ? '★'
+                : char;
+
+            return (
+              <div
+                key={`${char}-${index}`}
+                onClick={() => onSelectLetter?.(char)}
+                className="group flex flex-col items-center justify-between bg-gradient-to-b from-white to-slate-50 border-2 border-slate-200 hover:border-purple-400 rounded-2xl p-2.5 sm:p-3 shadow-xs hover:shadow-md transition-all cursor-pointer flex-shrink-0 w-28 sm:w-32 text-center active:scale-95"
+              >
+                {/* Letra badge estilizado */}
+                <div className="w-8 h-8 rounded-xl bg-purple-600 text-white font-black text-sm flex items-center justify-center shadow-xs mb-1.5 group-hover:scale-105 transition">
+                  {badgeLabel}
+                </div>
+
+                {/* Ilustración chilena oficial en alta resolución */}
+                <div className="w-20 h-20 flex items-center justify-center bg-white rounded-xl border border-slate-100 p-1 shadow-inner overflow-hidden my-0.5">
+                  <Image
+                    src={`/signs/letters/${imageFileName}`}
+                    alt={`Seña oficial para letra ${badgeLabel}`}
+                    width={70}
+                    height={70}
+                    className="object-contain max-h-18 w-auto drop-shadow-xs"
+                  />
+                </div>
+
+                {/* Explicación en lenguaje sencillo */}
+                <div className="mt-1 flex flex-col items-center">
+                  <span className="text-xs font-bold text-slate-800 line-clamp-1">
+                    {sign ? sign.name : `Letra ${badgeLabel}`}
+                  </span>
+                  <p className="text-[10px] text-slate-500 leading-snug mt-0.5 line-clamp-2">
+                    {sign ? sign.description : ''}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="w-full bg-white rounded-3xl border border-slate-200 shadow-md p-6 sm:p-8 flex flex-col gap-5">
@@ -45,61 +133,22 @@ export const SignDisplay: React.FC<SignDisplayProps> = ({ text, onSelectLetter }
         </div>
       </div>
 
-      {/* Contenedor desplazable con las tarjetas de señas compactas y claras */}
-      <div className="w-full overflow-x-auto pb-2 pt-0.5 scrollbar-thin">
-        <div className="flex items-stretch gap-3 min-w-min">
-          {letters.map((char, index) => {
-            if (char === ' ') {
-              return (
-                <div
-                  key={`space-${index}`}
-                  className="w-12 min-h-[140px] rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-400 font-bold text-[10px]"
-                >
-                  <span className="rotate-90 tracking-widest uppercase">Espacio</span>
-                </div>
-              );
-            }
-
-            const sign = SIGNS_DICTIONARY[char];
-            const imageFileName = char === 'Ñ' ? 'N_TILDE.png' : `${char}.png`;
-            const badgeLabel = char === 'SYM_HEART1' ? '♥' : char === 'SYM_HEART2' ? '♡' : char === 'SYM_HEART3' ? '★' : char;
-
-            return (
-              <div
-                key={`${char}-${index}`}
-                onClick={() => onSelectLetter?.(char)}
-                className="group flex flex-col items-center justify-between bg-gradient-to-b from-white to-slate-50 border-2 border-slate-200 hover:border-purple-400 rounded-2xl p-2.5 sm:p-3 shadow-xs hover:shadow-md transition-all cursor-pointer flex-shrink-0 w-28 sm:w-32 text-center active:scale-95"
-              >
-                {/* Letra badge estilizado */}
-                <div className="w-8 h-8 rounded-xl bg-purple-600 text-white font-black text-sm flex items-center justify-center shadow-xs mb-1.5 group-hover:scale-105 transition">
-                  {badgeLabel}
-                </div>
-
-                {/* Ilustración chilena oficial en alta resolución y transparente */}
-                <div className="w-20 h-20 flex items-center justify-center bg-white rounded-xl border border-slate-100 p-1 shadow-inner overflow-hidden my-0.5">
-                  <Image
-                    src={`/signs/letters/${imageFileName}`}
-                    alt={`Seña oficial para letra ${badgeLabel}`}
-                    width={70}
-                    height={70}
-                    className="object-contain max-h-18 w-auto drop-shadow-xs"
-                  />
-                </div>
-
-                {/* Explicación en lenguaje sencillo para que cualquiera aprenda */}
-                <div className="mt-1 flex flex-col items-center">
-                  <span className="text-xs font-bold text-slate-800 line-clamp-1">
-                    {sign ? sign.name : `Letra ${badgeLabel}`}
-                  </span>
-                  <p className="text-[10px] text-slate-500 leading-snug mt-0.5 line-clamp-2">
-                    {sign ? sign.description : ''}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
+      {shape === 'heart' ? (
+        <div className="flex flex-col gap-4">
+          {renderLetterRow(letters1, '🔹 Nombre 1 (Arriba):')}
+          <div className="flex items-center gap-2 my-1">
+            <div className="flex-1 h-px bg-rose-200" />
+            <span className="px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-xs font-black flex items-center gap-1 border border-rose-200">
+              <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" />
+              <span>Corazón de Unión</span>
+            </span>
+            <div className="flex-1 h-px bg-rose-200" />
+          </div>
+          {renderLetterRow(letters2, '🔹 Nombre 2 (Abajo):')}
         </div>
-      </div>
+      ) : (
+        renderLetterRow(letters1)
+      )}
     </div>
   );
 };

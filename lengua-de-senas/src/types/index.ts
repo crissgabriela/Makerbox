@@ -10,18 +10,22 @@ export interface SignDefinition {
   wristAnchor: [number, number]; // [startX, endX] at y = height
 }
 
-export type LaserCutMode = 'capsule' | 'organic_contour' | 'keychain' | 'plaque';
+export type KeychainShape = 'capsule' | 'heart';
+
+export type LaserCutMode = 'capsule' | 'heart' | 'organic_contour' | 'keychain' | 'plaque';
 
 export interface LaserConfig {
   mode: LaserCutMode;
-  targetHeightMm: number; // e.g. 40 mm
+  keychainShape?: KeychainShape;
+  secondaryText?: string; // Segundo nombre en modo corazón
+  targetHeightMm: number; // e.g. 40 mm / 60 mm
   contourOffsetMm: number; // e.g. 5 mm
   baseBarHeightMm: number; // e.g. 10 mm
   addKeychainHole: boolean; // true/false
   holeDiameterMm: number; // e.g. 4.5 mm
   includeTextEngraving: boolean; // engrave latin text under signs
   includeBranding: boolean; // engrave MakerBox / UTalca
-  signSpacingMm: number; // spacing between signs in mm (default 3mm)
+  signSpacingMm: number; // spacing between signs in mm (default 2.5mm)
   materialThicknessMm: number; // e.g. 3 mm (MDF/Acrílico)
   cutStrokeColor: string; // #FF0000 (standard Lightburn/RDWorks cut)
   engraveStrokeColor: string; // #0000FF (standard vector score)
@@ -34,4 +38,5 @@ export interface GeneratedLaserSvg {
   heightMm: number;
   signCount: number;
   estimatedCutLengthMm: number;
+  shape?: KeychainShape;
 }

@@ -9,17 +9,21 @@ import confetti from 'canvas-confetti';
 
 interface LaserSvgGeneratorProps {
   text: string;
+  secondaryText?: string;
   config: LaserConfig;
 }
 
-export const LaserSvgGenerator: React.FC<LaserSvgGeneratorProps> = ({ text, config }) => {
+export const LaserSvgGenerator: React.FC<LaserSvgGeneratorProps> = ({ text, secondaryText, config }) => {
   const laserResult: GeneratedLaserSvg = useMemo(() => {
-    return generateLaserSvg(text, config);
-  }, [text, config]);
+    return generateLaserSvg(text, config, secondaryText);
+  }, [text, config, secondaryText]);
 
   const handleDownloadSvg = () => {
-    const cleanWord = text.trim().replace(/[^A-Za-z0-9ñÑ]/g, '') || 'llavero';
-    const filename = `llavero-senas-${cleanWord.toLowerCase()}.svg`;
+    const cleanWord1 = text.trim().replace(/[^A-Za-z0-9ñÑ]/g, '') || 'nombre1';
+    const cleanWord2 = secondaryText ? secondaryText.trim().replace(/[^A-Za-z0-9ñÑ]/g, '') || 'nombre2' : '';
+    const filename = config.keychainShape === 'heart'
+      ? `llavero-corazon-${cleanWord1.toLowerCase()}${cleanWord2 ? `-${cleanWord2.toLowerCase()}` : ''}.svg`
+      : `llavero-senas-${cleanWord1.toLowerCase()}.svg`;
     const blob = new Blob([laserResult.svgString], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -53,7 +57,15 @@ export const LaserSvgGenerator: React.FC<LaserSvgGeneratorProps> = ({ text, conf
             <span>Vista previa de tu llavero:</span>
           </h3>
           <p className="text-sm text-slate-500 mt-1">
-            Llavero cortado en una sola pieza continua (<strong className="text-purple-700">{laserResult.widthMm} mm de largo</strong> × <strong className="text-purple-700">{laserResult.heightMm} mm de ancho fijo</strong>).
+            {config.keychainShape === 'heart' ? (
+              <>
+                Llavero Corazón Dúo cortado en madera (<strong className="text-purple-700">{laserResult.widthMm} mm de ancho</strong> × <strong className="text-purple-700">{laserResult.heightMm} mm de alto</strong>).
+              </>
+            ) : (
+              <>
+                Llavero cortado en una sola pieza continua (<strong className="text-purple-700">{laserResult.widthMm} mm de largo</strong> × <strong className="text-purple-700">{laserResult.heightMm} mm de ancho fijo</strong>).
+              </>
+            )}
           </p>
         </div>
 

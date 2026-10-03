@@ -33,11 +33,14 @@ const DEFAULT_CONFIG: LaserConfig = {
 export default function Home() {
   const [activeTool, setActiveTool] = useState<'laser' | 'lithophane' | 'braille'>('laser');
   const [text, setText] = useState('');
+  const [secondaryText, setSecondaryText] = useState('');
   const [laserConfig, setLaserConfig] = useState<LaserConfig>(DEFAULT_CONFIG);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isAlphabetOpen, setIsAlphabetOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const MAX_CHARS = 10;
 
   // Manejo de pantalla completa (Modo Kiosco para pantalla táctil)
   const toggleFullscreen = () => {
@@ -61,7 +64,7 @@ export default function Home() {
   }, []);
 
   const handleKeyPress = (char: string) => {
-    setText((prev) => prev + char);
+    setText((prev) => (prev.length < MAX_CHARS ? prev + char : prev));
   };
 
   const handleBackspace = () => {
@@ -70,10 +73,11 @@ export default function Home() {
 
   const handleClear = () => {
     setText('');
+    setSecondaryText('');
   };
 
   const handleQuickWord = (word: string) => {
-    setText(word);
+    setText(word.slice(0, MAX_CHARS));
   };
 
   return (
@@ -122,6 +126,10 @@ export default function Home() {
             <TextInputSection
               value={text}
               onChange={setText}
+              secondaryValue={secondaryText}
+              onSecondaryChange={setSecondaryText}
+              shape={laserConfig.keychainShape || 'capsule'}
+              onShapeChange={(s) => setLaserConfig((prev) => ({ ...prev, keychainShape: s }))}
               isKeyboardOpen={isKeyboardOpen}
               onToggleKeyboard={() => setIsKeyboardOpen(!isKeyboardOpen)}
               onClear={handleClear}
@@ -131,6 +139,8 @@ export default function Home() {
             {/* Paso 2: Visualización de las señas con ilustraciones chilenas */}
             <SignDisplay
               text={text}
+              secondaryText={secondaryText}
+              shape={laserConfig.keychainShape || 'capsule'}
               onSelectLetter={() => {
                 setIsAlphabetOpen(true);
               }}
@@ -140,7 +150,11 @@ export default function Home() {
             <LaserControls config={laserConfig} onChange={setLaserConfig} />
 
             {/* Paso 4: Vista previa y descarga para la cortadora láser */}
-            <LaserSvgGenerator text={text} config={laserConfig} />
+            <LaserSvgGenerator
+              text={text}
+              secondaryText={secondaryText}
+              config={laserConfig}
+            />
           </>
         ) : activeTool === 'lithophane' ? (
           /* Herramienta 2: Litofanías 3D (Impresión 3D) */

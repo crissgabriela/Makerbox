@@ -137,29 +137,51 @@ export const Laser3DViewer: React.FC<Laser3DViewerProps> = ({
     const group = new THREE.Group();
 
     const totalWidth = laserResult.widthMm;
-    const totalHeight = laserResult.heightMm; // 25 mm
+    const totalHeight = laserResult.heightMm;
     const thickness = 3.0; // 3 mm standard laser MDF/wood
-    const endRadius = totalHeight / 2; // 12.5 mm
+    const endRadius = totalHeight / 2;
+    const isHeart = laserResult.shape === 'heart' || laserResult.heightMm >= 50;
 
-    const holeCenterX = 7.5;
-    const holeCenterY = 12.5;
+    let holeCenterX = 7.5;
+    let holeCenterY = 12.5;
     const holeRadius = (holeDiameterMm || 4.5) / 2;
 
-    // 1. Crear forma 2D de la cápsula con orificio
+    // 1. Crear forma 2D (Cápsula o Corazón) con orificio
     const shape = new THREE.Shape();
-    const capLeftX = endRadius;
-    const capRightX = Math.max(totalWidth - endRadius, capLeftX + 1);
 
-    shape.moveTo(capLeftX, 0);
-    shape.lineTo(capRightX, 0);
-    shape.absarc(capRightX, endRadius, endRadius, -Math.PI / 2, Math.PI / 2, false);
-    shape.lineTo(capLeftX, totalHeight);
-    shape.absarc(capLeftX, endRadius, endRadius, Math.PI / 2, 3 * Math.PI / 2, false);
+    if (isHeart) {
+      holeCenterX = 23.5;
+      holeCenterY = 8.5;
+      const H = totalHeight; // 60.0 mm
 
-    // Orificio de argolla
-    const holePath = new THREE.Path();
-    holePath.absarc(holeCenterX, holeCenterY, holeRadius, 0, Math.PI * 2, true);
-    shape.holes.push(holePath);
+      // Mapeo preciso de las curvas Bézier cúbicas del corazón en espacio Three.js (Y hacia arriba)
+      shape.moveTo(33.82, H - 60.00);
+      shape.bezierCurveTo(18.55, H - 48.00, 0.00, H - 34.91, 0.00, H - 20.73);
+      shape.bezierCurveTo(0.00, H - 5.45, 14.18, H - 0.00, 25.09, H - 0.00);
+      shape.bezierCurveTo(30.55, H - 0.00, 33.82, H - 5.45, 33.82, H - 13.09);
+      shape.bezierCurveTo(33.82, H - 5.45, 37.09, H - 0.00, 42.55, H - 0.00);
+      shape.bezierCurveTo(53.45, H - 0.00, 67.64, H - 5.45, 67.64, H - 20.73);
+      shape.bezierCurveTo(67.64, H - 34.91, 49.09, H - 48.00, 33.82, H - 60.00);
+
+      // Orificio de argolla en lóbulo superior
+      const holePath = new THREE.Path();
+      holePath.absarc(holeCenterX, H - holeCenterY, holeRadius, 0, Math.PI * 2, true);
+      shape.holes.push(holePath);
+    } else {
+      const capLeftX = endRadius;
+      const capRightX = Math.max(totalWidth - endRadius, capLeftX + 1);
+
+      shape.moveTo(capLeftX, 0);
+      shape.lineTo(capRightX, 0);
+      shape.absarc(capRightX, endRadius, endRadius, -Math.PI / 2, Math.PI / 2, false);
+      shape.lineTo(capLeftX, totalHeight);
+      shape.absarc(capLeftX, endRadius, endRadius, Math.PI / 2, 3 * Math.PI / 2, false);
+
+      // Orificio de argolla
+      const holePath = new THREE.Path();
+      holePath.absarc(holeCenterX, holeCenterY, holeRadius, 0, Math.PI * 2, true);
+      shape.holes.push(holePath);
+    }
 
     const extrudeSettings: THREE.ExtrudeGeometryOptions = {
       depth: thickness,
@@ -185,15 +207,10 @@ export const Laser3DViewer: React.FC<Laser3DViewerProps> = ({
     group.add(baseMesh);
 
     // 2. Anillo metálico de llavero (argolla concéntrica pasando limpiamente por el orificio)
-    // El centro del orificio en el espacio centrado está en:
-    // x = holeCenterX - totalWidth / 2
-    // y = 0
-    // z = 0
     const holeRelX = holeCenterX - totalWidth / 2;
+    const holeRelY = isHeart ? (totalHeight / 2 - holeCenterY) : 0;
 
-    // Radio de la argolla: 9.0 mm (rodea los 7.5 mm de distancia al borde exterior con más de 6 mm de holgura en aire)
-    const ringRadius = 9.0;
-    // Espesor del alambre: proporcional al orificio, asegurando holgura limpia
+    const ringRadius = isHeart ? 7.5 : 9.0;
     const tubeRadius = Math.min(Math.max(holeRadius * 0.38, 0.75), 1.0);
 
     const ringTorusGeo = new THREE.TorusGeometry(ringRadius, tubeRadius, 24, 64);
@@ -204,12 +221,15 @@ export const Laser3DViewer: React.FC<Laser3DViewerProps> = ({
     });
 
     const ringMesh = new THREE.Mesh(ringTorusGeo, ringMaterial);
-    // Orientamos el toroide en el plano XZ (plano vertical respecto a la placa)
     ringMesh.rotation.x = Math.PI / 2;
-    // Al desplazar el centro del toroide en (holeRelX - ringRadius, 0, 0),
-    // el punto del alambre en x = +ringRadius queda exactamente en (holeRelX, 0, 0),
-    // haciendo que la sección transversal del alambre sea 100% concéntrica con el círculo de corte del orificio.
-    ringMesh.position.set(holeRelX - ringRadius, 0, 0);
+
+    if (isHeart) {
+      // En el corazón, la argolla emerge hacia arriba desde el lóbulo
+      ringMesh.position.set(holeRelX, holeRelY + ringRadius, 0);
+    } else {
+      // En la cápsula, la argolla emerge hacia la izquierda
+      ringMesh.position.set(holeRelX - ringRadius, holeRelY, 0);
+    }
 
     group.add(ringMesh);
 
