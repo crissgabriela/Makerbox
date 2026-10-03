@@ -3,6 +3,7 @@
 import React from 'react';
 import Image from 'next/image';
 import { SIGNS_DICTIONARY, normalizeText } from '@/lib/signsData';
+import { CHILEAN_VECTOR_SIGNS } from '@/lib/chileanVectorsData';
 import { Sparkles, Heart } from 'lucide-react';
 import { KeychainShape } from '@/types';
 
@@ -69,14 +70,20 @@ export const SignDisplay: React.FC<SignDisplayProps> = ({
 
             const sign = SIGNS_DICTIONARY[char];
             const imageFileName = char === 'Ñ' ? 'N_TILDE.png' : `${char}.png`;
-            const badgeLabel =
-              char === 'SYM_HEART1'
-                ? '♥'
-                : char === 'SYM_HEART2'
-                ? '♡'
-                : char === 'SYM_HEART3'
-                ? '★'
-                : char;
+            const SYMBOL_LABELS: Record<string, string> = {
+              SYM_HEART1: '♥',
+              SYM_HEART2: '♡',
+              SYM_HEART3: '★',
+              SYM_PEACE: '✌',
+              SYM_DOG: '🐶',
+              SYM_CAT: '🐱',
+              SYM_SMILE: '😊',
+              SYM_LAUGH: '😄',
+              SYM_KISS: '😘',
+              SYM_WINK: '😉'
+            };
+            const badgeLabel = SYMBOL_LABELS[char] || char;
+            const isCustomVectorSymbol = char.startsWith('SYM_') && !['SYM_HEART1', 'SYM_HEART2', 'SYM_HEART3'].includes(char);
 
             return (
               <div
@@ -89,15 +96,26 @@ export const SignDisplay: React.FC<SignDisplayProps> = ({
                   {badgeLabel}
                 </div>
 
-                {/* Ilustración chilena oficial en alta resolución */}
+                {/* Ilustración chilena oficial o vector icon en alta resolución */}
                 <div className="w-20 h-20 flex items-center justify-center bg-white rounded-xl border border-slate-100 p-1 shadow-inner overflow-hidden my-0.5">
-                  <Image
-                    src={`/signs/letters/${imageFileName}`}
-                    alt={`Seña oficial para letra ${badgeLabel}`}
-                    width={70}
-                    height={70}
-                    className="object-contain max-h-18 w-auto drop-shadow-xs"
-                  />
+                  {isCustomVectorSymbol ? (
+                    <svg viewBox="0 0 100 100" className="w-14 h-14 text-slate-800">
+                      <path
+                        d={CHILEAN_VECTOR_SIGNS[char]?.pathD || ''}
+                        fill="currentColor"
+                        fillRule="evenodd"
+                        stroke="none"
+                      />
+                    </svg>
+                  ) : (
+                    <Image
+                      src={`/signs/letters/${imageFileName}`}
+                      alt={`Seña oficial para letra ${badgeLabel}`}
+                      width={70}
+                      height={70}
+                      className="object-contain max-h-18 w-auto drop-shadow-xs"
+                    />
+                  )}
                 </div>
 
                 {/* Explicación en lenguaje sencillo */}

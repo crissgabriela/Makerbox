@@ -166,23 +166,26 @@ function generateCapsuleMode(
     `;
   });
 
-  // Palabra que forman debajo de las señas (excluyendo señas de corazón)
+  // Palabra que forman debajo de las señas (excluyendo cualquier símbolo SYM_)
   // Altura de letra: 3 mm, centrada entre la parte inferior de las señas y el borde inferior del llavero,
-  // y centrada en horizontal con el largo que abordan las señas de manos.
-  const cleanWord = letters.filter(c => !c.startsWith('SYM_HEART')).join('');
+  // y centrada en horizontal ÚNICAMENTE con el largo que abordan las señas de letras (no todo el llavero ni símbolos).
+  const cleanWord = letters.filter(c => !c.startsWith('SYM_')).join('');
   let textEngraveSvg = '';
 
-  if (cleanWord && handElements.length > 0) {
-    const handsMinX = handElements[0].x;
-    const handsMaxX = lastHand.x + lastHand.width;
-    const handsCenterX = (handsMinX + handsMaxX) / 2;
+  const letterHands = handElements.filter(h => !h.letter.startsWith('SYM_'));
+
+  if (cleanWord && letterHands.length > 0) {
+    const lettersMinX = letterHands[0].x;
+    const lastLetterHand = letterHands[letterHands.length - 1];
+    const lettersMaxX = lastLetterHand.x + lastLetterHand.width;
+    const wordCenterX = (lettersMinX + lettersMaxX) / 2;
 
     const maxHandBottom = Math.max(...handElements.map(h => h.y + h.height));
     const textCenterY = (maxHandBottom + totalHeight) / 2;
 
     textEngraveSvg = `
-      <!-- Palabra formada por las señas grabada en láser (Altura de letra: 3 mm) -->
-      <text x="${handsCenterX.toFixed(2)}" y="${textCenterY.toFixed(2)}" 
+      <!-- Palabra formada por las señas grabada en láser (Altura de letra: 3 mm, centrada a las señas de letras) -->
+      <text x="${wordCenterX.toFixed(2)}" y="${textCenterY.toFixed(2)}" 
             font-family="'Montserrat', 'Arial', sans-serif" 
             font-size="3.8" 
             font-weight="bold" 
@@ -269,7 +272,7 @@ function generateHeartMode(
     baseHeight: number,
     baseY: number
   ) => {
-    if (rowLetters.length === 0) return { parts: [], textY: baseY + baseHeight + 3.0 };
+    if (rowLetters.length === 0) return { parts: [], textY: baseY + baseHeight + 3.0, textCenterX: cx };
 
     const rawSigns = rowLetters.map((char) => {
       const sign = CHILEAN_VECTOR_SIGNS[char];
@@ -279,7 +282,7 @@ function generateHeartMode(
       return { char, sign, initialWidth, initialHeight };
     }).filter(Boolean) as { char: string; sign: (typeof CHILEAN_VECTOR_SIGNS)[string]; initialWidth: number; initialHeight: number }[];
 
-    if (rawSigns.length === 0) return { parts: [], textY: baseY + baseHeight + 3.0 };
+    if (rawSigns.length === 0) return { parts: [], textY: baseY + baseHeight + 3.0, textCenterX: cx };
 
     const initialSpacing = Math.min(config.signSpacingMm || 2.0, 2.5);
     const rawTotalWidth = rawSigns.reduce((sum, s) => sum + s.initialWidth, 0) + (rawSigns.length - 1) * initialSpacing;
@@ -291,6 +294,7 @@ function generateHeartMode(
 
     let currX = cx - finalTotalWidth / 2;
     const parts: string[] = [];
+    const placedSigns: { char: string; x: number; width: number }[] = [];
 
     rawSigns.forEach((item, idx) => {
       const finalW = item.initialWidth * scaleMultiplier;
@@ -303,20 +307,31 @@ function generateHeartMode(
           <path d="${item.sign.pathD}" fill="${config.engraveFillColor || '#000000'}" fill-rule="evenodd" stroke="none" />
         </g>
       `);
+      placedSigns.push({ char: item.char, x: currX, width: finalW });
       currX += finalW + finalSpacing;
     });
 
     const textY = baseY + baseHeight + 2.5;
-    return { parts, textY };
+
+    // Centrado de la palabra latina únicamente con respecto a las letras (excluyendo símbolos)
+    const letterPlaced = placedSigns.filter(s => !s.char.startsWith('SYM_'));
+    let textCenterX = cx;
+    if (letterPlaced.length > 0) {
+      const minX = letterPlaced[0].x;
+      const maxX = letterPlaced[letterPlaced.length - 1].x + letterPlaced[letterPlaced.length - 1].width;
+      textCenterX = (minX + maxX) / 2;
+    }
+
+    return { parts, textY, textCenterX };
   };
 
   // Fila 1: Nombre 1 (Arriba, ancho máximo ~46 mm)
   const row1 = layoutSignsRow(letters1, 46, 10.0, 15.0);
-  const cleanWord1 = letters1.filter(c => !c.startsWith('SYM_HEART')).join('');
+  const cleanWord1 = letters1.filter(c => !c.startsWith('SYM_')).join('');
 
   // Fila 2: Nombre 2 (Abajo, ancho máximo ~35 mm)
   const row2 = layoutSignsRow(letters2, 35, 9.0, 38.0);
-  const cleanWord2 = letters2.filter(c => !c.startsWith('SYM_HEART')).join('');
+  const cleanWord2 = letters2.filter(c => !c.startsWith('SYM_')).join('');
 
   // Corazón central grabado
   const smH = 7.0;
@@ -351,7 +366,7 @@ function generateHeartMode(
 
     <!-- Nombre 1 escrito en texto legible (Altura de letra: 3 mm) -->
     ${cleanWord1 ? `
-    <text x="${cx.toFixed(2)}" y="${row1.textY.toFixed(2)}" 
+    <text x="${row1.textCenterX.toFixed(2)}" y="${row1.textY.toFixed(2)}" 
           font-family="'Montserrat', 'Arial', sans-serif" 
           font-size="3.8" 
           font-weight="bold" 
@@ -369,7 +384,7 @@ function generateHeartMode(
 
     <!-- Nombre 2 escrito en texto legible (Altura de letra: 3 mm) -->
     ${cleanWord2 ? `
-    <text x="${cx.toFixed(2)}" y="${row2.textY.toFixed(2)}" 
+    <text x="${row2.textCenterX.toFixed(2)}" y="${row2.textY.toFixed(2)}" 
           font-family="'Montserrat', 'Arial', sans-serif" 
           font-size="3.8" 
           font-weight="bold" 

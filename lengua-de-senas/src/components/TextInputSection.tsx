@@ -2,8 +2,10 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { X, Sparkles, Heart, KeyRound } from 'lucide-react';
+import { X, Sparkles, Heart, KeyRound, Check, Trash2, Smile, ArrowLeftRight } from 'lucide-react';
 import { KeychainShape } from '@/types';
+import { CHILEAN_VECTOR_SIGNS } from '@/lib/chileanVectorsData';
+import { normalizeText } from '@/lib/signsData';
 
 interface TextInputSectionProps {
   value: string;
@@ -18,6 +20,77 @@ interface TextInputSectionProps {
   onQuickWord: (word: string) => void;
 }
 
+const ALL_SYMBOL_CHARS = ['♥', '♡', '★', '✌', '🐶', '🐱', '😊', '😄', '😘', '😉', '🫰', '🫶', '💖', '❤️', '❤'];
+
+interface SymbolItem {
+  id: string;
+  char: string;
+  name: string;
+  type: 'image' | 'svg';
+  iconSrc?: string;
+  pathD?: string;
+}
+
+interface SymbolCategory {
+  title: string;
+  symbols: SymbolItem[];
+}
+
+const SYMBOL_CATEGORIES: SymbolCategory[] = [
+  {
+    title: 'Manos y Gestos',
+    symbols: [
+      { id: 'SYM_HEART1', char: '♥', name: 'Corazón dedos', type: 'image', iconSrc: '/signs/letters/SYM_HEART1.png' },
+      { id: 'SYM_HEART2', char: '♡', name: 'Manos corazón', type: 'image', iconSrc: '/signs/letters/SYM_HEART2.png' },
+      { id: 'SYM_HEART3', char: '★', name: 'Manos y amor', type: 'image', iconSrc: '/signs/letters/SYM_HEART3.png' },
+      { id: 'SYM_PEACE', char: '✌', name: 'Signo de Paz', type: 'svg', pathD: CHILEAN_VECTOR_SIGNS['SYM_PEACE']?.pathD }
+    ]
+  },
+  {
+    title: 'Mascotas',
+    symbols: [
+      { id: 'SYM_DOG', char: '🐶', name: 'Silueta Perro', type: 'svg', pathD: CHILEAN_VECTOR_SIGNS['SYM_DOG']?.pathD },
+      { id: 'SYM_CAT', char: '🐱', name: 'Silueta Gato', type: 'svg', pathD: CHILEAN_VECTOR_SIGNS['SYM_CAT']?.pathD }
+    ]
+  },
+  {
+    title: 'Emoticones',
+    symbols: [
+      { id: 'SYM_SMILE', char: '😊', name: 'Sonrisa', type: 'svg', pathD: CHILEAN_VECTOR_SIGNS['SYM_SMILE']?.pathD },
+      { id: 'SYM_LAUGH', char: '😄', name: 'Risa', type: 'svg', pathD: CHILEAN_VECTOR_SIGNS['SYM_LAUGH']?.pathD },
+      { id: 'SYM_KISS', char: '😘', name: 'Beso', type: 'svg', pathD: CHILEAN_VECTOR_SIGNS['SYM_KISS']?.pathD },
+      { id: 'SYM_WINK', char: '😉', name: 'Guiño', type: 'svg', pathD: CHILEAN_VECTOR_SIGNS['SYM_WINK']?.pathD }
+    ]
+  }
+];
+
+/**
+ * Separa de forma segura las letras del símbolo y detecta si el símbolo está al inicio o al final.
+ * Se restringe a un máximo de 9 letras y a lo sumo 1 símbolo (total máx 10 caracteres).
+ */
+function extractLettersAndSymbol(text: string): { letters: string; symbol: string | null; position: 'before' | 'after' } {
+  const cleaned = text.replace(/\uFE0F/g, '');
+  const chars = Array.from(cleaned);
+  let symbol: string | null = null;
+  let symbolIndex = -1;
+  const letters: string[] = [];
+
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    if (ALL_SYMBOL_CHARS.includes(ch)) {
+      if (!symbol) {
+        symbol = ch;
+        symbolIndex = i;
+      }
+    } else {
+      letters.push(ch);
+    }
+  }
+
+  const position: 'before' | 'after' = symbolIndex === 0 ? 'before' : 'after';
+  return { letters: letters.join('').slice(0, 9), symbol, position };
+}
+
 export const TextInputSection: React.FC<TextInputSectionProps> = ({
   value,
   onChange,
@@ -29,6 +102,7 @@ export const TextInputSection: React.FC<TextInputSectionProps> = ({
   onQuickWord
 }) => {
   const [activeField, setActiveField] = useState<'primary' | 'secondary'>('primary');
+  const [symbolPosition, setSymbolPosition] = useState<'before' | 'after'>('after');
 
   const MAX_CHARS = 10;
   const quickWordsCapsule = ['HOLA', 'GRACIAS', 'CIENCIA', 'FESTIVAL'];
@@ -39,45 +113,100 @@ export const TextInputSection: React.FC<TextInputSectionProps> = ({
     { name1: 'AMOR', name2: 'CIENCIA' }
   ];
 
-  const handleAddSymbol = (symChar: string) => {
-    if (shape === 'heart' && activeField === 'secondary') {
-      if (secondaryValue.length < MAX_CHARS && onSecondaryChange) {
-        onSecondaryChange(secondaryValue + symChar);
-      }
-    } else {
-      if (value.length < MAX_CHARS) {
-        onChange(value + symChar);
-      }
+  // Determinar el valor del campo actualmente activo
+  const currentTargetVal = shape === 'heart' && activeField === 'secondary' ? secondaryValue : value;
+  const { symbol: activeSymbol, position: currentSymbolPos } = extractLettersAndSymbol(currentTargetVal);
+
+  const handlePrimaryChange = (raw: string) => {
+    const { letters, symbol, position } = extractLettersAndSymbol(raw);
+    const maxLetters = letters.slice(0, 9);
+    let finalVal = maxLetters;
+    if (symbol) {
+      finalVal = position === 'before' ? symbol + maxLetters : maxLetters + symbol;
+    }
+    onChange(finalVal);
+  };
+
+  const handleSecondaryInputChange = (raw: string) => {
+    if (!onSecondaryChange) return;
+    const { letters, symbol, position } = extractLettersAndSymbol(raw);
+    const maxLetters = letters.slice(0, 9);
+    let finalVal = maxLetters;
+    if (symbol) {
+      finalVal = position === 'before' ? symbol + maxLetters : maxLetters + symbol;
+    }
+    onSecondaryChange(finalVal);
+  };
+
+  const handleToggleSymbol = (symChar: string) => {
+    const targetVal = shape === 'heart' && activeField === 'secondary' ? secondaryValue : value;
+    const setter = shape === 'heart' && activeField === 'secondary' ? onSecondaryChange : onChange;
+    if (!setter) return;
+
+    const { letters, symbol } = extractLettersAndSymbol(targetVal);
+
+    // Si ya tiene ese mismo símbolo, hacer toggle (quitarlo)
+    if (symbol === symChar) {
+      setter(letters);
+      return;
+    }
+
+    // Colocar el nuevo símbolo en la posición seleccionada (sustituyendo cualquier símbolo anterior)
+    const effectivePos = symbol ? currentSymbolPos : symbolPosition;
+    const finalVal = effectivePos === 'before' ? symChar + letters : letters + symChar;
+    setter(finalVal);
+  };
+
+  const handleChangePosition = (newPos: 'before' | 'after') => {
+    setSymbolPosition(newPos);
+    const targetVal = shape === 'heart' && activeField === 'secondary' ? secondaryValue : value;
+    const setter = shape === 'heart' && activeField === 'secondary' ? onSecondaryChange : onChange;
+    if (!setter) return;
+
+    const { letters, symbol } = extractLettersAndSymbol(targetVal);
+    if (symbol) {
+      const finalVal = newPos === 'before' ? symbol + letters : letters + symbol;
+      setter(finalVal);
     }
   };
 
-  const handlePrimaryChange = (val: string) => {
-    if (val.length <= MAX_CHARS) {
-      onChange(val);
-    }
+  const handleRemoveSymbol = () => {
+    const targetVal = shape === 'heart' && activeField === 'secondary' ? secondaryValue : value;
+    const setter = shape === 'heart' && activeField === 'secondary' ? onSecondaryChange : onChange;
+    if (!setter) return;
+
+    const { letters } = extractLettersAndSymbol(targetVal);
+    setter(letters);
   };
 
-  const handleSecondaryInputChange = (val: string) => {
-    if (val.length <= MAX_CHARS && onSecondaryChange) {
-      onSecondaryChange(val);
-    }
-  };
-
-  const renderCharCounter = (currentLength: number) => {
+  const renderCharCounter = (targetVal: string) => {
+    const tokens = normalizeText(targetVal);
+    const currentLength = tokens.length;
     const remaining = MAX_CHARS - currentLength;
+    const { letters, symbol } = extractLettersAndSymbol(targetVal);
+    const letterCount = Array.from(letters).length;
+
     if (remaining === 0) {
       return (
-        <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200 inline-flex items-center gap-1 shadow-2xs">
+        <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200 inline-flex items-center gap-1.5 shadow-2xs">
           <span>⚠️</span>
           <span>¡Largo máximo alcanzado (10/10)!</span>
         </span>
       );
     }
+
     return (
-      <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200 inline-flex items-center gap-1 shadow-2xs">
-        <span>Faltan {remaining} {remaining === 1 ? 'carácter' : 'caracteres'}</span>
-        <span className="text-purple-400 font-normal">({currentLength}/10)</span>
-      </span>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-full border border-purple-200 inline-flex items-center gap-1.5 shadow-2xs">
+          <span>Faltan {remaining} {remaining === 1 ? 'carácter' : 'caracteres'}</span>
+          <span className="text-purple-400 font-normal">({currentLength}/10)</span>
+        </span>
+        {letterCount === 9 && !symbol && (
+          <span className="hidden sm:inline-flex text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+            +1 símbolo disponible
+          </span>
+        )}
+      </div>
     );
   };
 
@@ -96,8 +225,8 @@ export const TextInputSection: React.FC<TextInputSectionProps> = ({
           </h2>
           <p className="text-sm text-slate-500 mt-1">
             {shape === 'heart'
-              ? 'Llavero en forma de corazón de 60 mm con 2 nombres (uno arriba, corazón en el centro y el otro abajo).'
-              : 'Llavero alargado clásico cortado en madera con señas y nombre grabado en la parte inferior.'}
+              ? 'Llavero en forma de corazón de 60 mm con 2 nombres (máx. 9 letras y 1 símbolo por nombre).'
+              : 'Llavero alargado clásico en madera: máximo 9 letras y 1 símbolo decorativo (10 caracteres total).'}
           </p>
         </div>
 
@@ -143,7 +272,7 @@ export const TextInputSection: React.FC<TextInputSectionProps> = ({
                 <span className="w-4 h-4 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center text-[10px] font-black">1</span>
                 <span>Nombre 1 (Arriba):</span>
               </label>
-              {renderCharCounter(value.length)}
+              {renderCharCounter(value)}
             </div>
 
             <div className="relative flex items-center">
@@ -151,7 +280,6 @@ export const TextInputSection: React.FC<TextInputSectionProps> = ({
                 id="name1-input"
                 type="text"
                 value={value}
-                maxLength={MAX_CHARS}
                 onFocus={() => setActiveField('primary')}
                 onChange={(e) => handlePrimaryChange(e.target.value)}
                 placeholder="EJ. CAMILA..."
@@ -181,7 +309,7 @@ export const TextInputSection: React.FC<TextInputSectionProps> = ({
                 <span className="w-4 h-4 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center text-[10px] font-black">2</span>
                 <span>Nombre 2 (Abajo):</span>
               </label>
-              {renderCharCounter(secondaryValue.length)}
+              {renderCharCounter(secondaryValue)}
             </div>
 
             <div className="relative flex items-center">
@@ -189,7 +317,6 @@ export const TextInputSection: React.FC<TextInputSectionProps> = ({
                 id="name2-input"
                 type="text"
                 value={secondaryValue}
-                maxLength={MAX_CHARS}
                 onFocus={() => setActiveField('secondary')}
                 onChange={(e) => handleSecondaryInputChange(e.target.value)}
                 placeholder="EJ. MATEO..."
@@ -219,7 +346,7 @@ export const TextInputSection: React.FC<TextInputSectionProps> = ({
             <span className="text-xs font-semibold text-slate-500">
               Escribe con tu teclado físico o toca la barra para usar la pantalla táctil:
             </span>
-            {renderCharCounter(value.length)}
+            {renderCharCounter(value)}
           </div>
 
           <div className="relative flex items-center">
@@ -227,7 +354,6 @@ export const TextInputSection: React.FC<TextInputSectionProps> = ({
               id="text-input"
               type="text"
               value={value}
-              maxLength={MAX_CHARS}
               onChange={(e) => handlePrimaryChange(e.target.value)}
               placeholder="Escribe aquí tu nombre o palabra..."
               className="w-full bg-slate-50 border-2 border-slate-300 focus:border-purple-600 focus:bg-white rounded-2xl px-6 py-4 sm:py-5 text-2xl sm:text-3xl font-extrabold tracking-wider text-slate-900 placeholder-slate-400 uppercase outline-none transition-all shadow-inner pr-16"
@@ -249,53 +375,127 @@ export const TextInputSection: React.FC<TextInputSectionProps> = ({
         </div>
       )}
 
-      {/* Símbolos especiales de señas / amor para agregar como si fueran una letra */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5 pt-2 border-t border-slate-100">
-        <span className="text-xs font-extrabold text-purple-700 uppercase tracking-wide flex items-center gap-1.5 flex-shrink-0">
-          <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
-          Añadir símbolos con manos:
-        </span>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => handleAddSymbol('♥')}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 hover:border-purple-300 transition active:scale-95 text-xs font-bold shadow-xs cursor-pointer"
-            title="Añadir seña: Corazón con dedos"
-          >
-            <div className="w-5 h-5 flex items-center justify-center bg-white rounded-md overflow-hidden border border-purple-100">
-              <Image src="/signs/letters/SYM_HEART1.png" alt="Corazón con dedos" width={20} height={20} className="w-4 h-4 object-contain" />
-            </div>
-            <span>Corazón dedos (♥)</span>
-          </button>
+      {/* SECCIÓN DE SÍMBOLOS ESPECIALES (MÁXIMO 1 SÍMBOLO, ANTES O DESPUÉS) */}
+      <div className="flex flex-col gap-3 pt-3 border-t border-slate-100">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-extrabold text-purple-800 uppercase tracking-wide flex items-center gap-1.5">
+              <Smile className="w-4 h-4 text-purple-600" />
+              <span>Añadir un símbolo (1 máx, antes o después):</span>
+            </span>
+            {shape === 'heart' && (
+              <span className="text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                Para: {activeField === 'primary' ? 'Nombre 1 (Arriba)' : 'Nombre 2 (Abajo)'}
+              </span>
+            )}
+          </div>
 
-          <button
-            type="button"
-            onClick={() => handleAddSymbol('♡')}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 hover:border-purple-300 transition active:scale-95 text-xs font-bold shadow-xs cursor-pointer"
-            title="Añadir seña: Manos en corazón"
-          >
-            <div className="w-5 h-5 flex items-center justify-center bg-white rounded-md overflow-hidden border border-purple-100">
-              <Image src="/signs/letters/SYM_HEART2.png" alt="Manos en corazón" width={20} height={20} className="w-4 h-4 object-contain" />
-            </div>
-            <span>Manos corazón (♡)</span>
-          </button>
+          {/* Selector de posición: Al inicio o Al final */}
+          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200">
+            <span className="text-[11px] font-bold text-slate-500 px-2 flex items-center gap-1">
+              <ArrowLeftRight className="w-3 h-3" />
+              <span>Ubicación:</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => handleChangePosition('before')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition active:scale-95 cursor-pointer ${
+                (activeSymbol ? currentSymbolPos === 'before' : symbolPosition === 'before')
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
+              }`}
+              title="Colocar el símbolo antes del nombre"
+            >
+              ⬅ Al inicio
+            </button>
+            <button
+              type="button"
+              onClick={() => handleChangePosition('after')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition active:scale-95 cursor-pointer ${
+                (activeSymbol ? currentSymbolPos === 'after' : symbolPosition === 'after')
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
+              }`}
+              title="Colocar el símbolo después del nombre"
+            >
+              Al final ➡
+            </button>
 
-          <button
-            type="button"
-            onClick={() => handleAddSymbol('★')}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 hover:border-purple-300 transition active:scale-95 text-xs font-bold shadow-xs cursor-pointer"
-            title="Añadir seña: Manos y amor"
-          >
-            <div className="w-5 h-5 flex items-center justify-center bg-white rounded-md overflow-hidden border border-purple-100">
-              <Image src="/signs/letters/SYM_HEART3.png" alt="Manos y corazón" width={20} height={20} className="w-4 h-4 object-contain" />
+            {activeSymbol && (
+              <button
+                type="button"
+                onClick={handleRemoveSymbol}
+                className="ml-1 px-2 py-1 rounded-lg text-xs font-bold text-rose-600 hover:bg-rose-50 hover:text-rose-800 transition cursor-pointer flex items-center gap-1"
+                title="Quitar símbolo del texto"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span className="hidden sm:inline">Quitar</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Grupos de Símbolos por Categoría */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {SYMBOL_CATEGORIES.map((cat) => (
+            <div key={cat.title} className="bg-slate-50/70 rounded-2xl border border-slate-200/80 p-2.5 flex flex-col gap-2">
+              <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider px-1">
+                {cat.title}
+              </span>
+              <div className="grid grid-cols-2 gap-1.5">
+                {cat.symbols.map((sym) => {
+                  const isSelected = activeSymbol === sym.char;
+                  return (
+                    <button
+                      key={sym.id}
+                      type="button"
+                      onClick={() => handleToggleSymbol(sym.char)}
+                      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition active:scale-95 cursor-pointer text-left ${
+                        isSelected
+                          ? 'bg-purple-600 text-white border-purple-700 shadow-sm ring-2 ring-purple-200'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-900 shadow-2xs'
+                      }`}
+                      title={`Añadir o cambiar por: ${sym.name} (${sym.char})`}
+                    >
+                      {/* Icono de vista previa */}
+                      <div className={`w-5 h-5 flex items-center justify-center rounded-md overflow-hidden flex-shrink-0 ${
+                        isSelected ? 'bg-white/20' : 'bg-slate-100'
+                      }`}>
+                        {sym.type === 'image' && sym.iconSrc ? (
+                          <Image src={sym.iconSrc} alt={sym.name} width={18} height={18} className="w-3.5 h-3.5 object-contain" />
+                        ) : (
+                          <svg viewBox="0 0 100 100" className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-slate-800'}`}>
+                            <path
+                              d={sym.pathD || ''}
+                              fill="currentColor"
+                              fillRule="evenodd"
+                              stroke="none"
+                            />
+                          </svg>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col min-w-0 flex-1 leading-tight">
+                        <span className="truncate text-[11px] font-extrabold">{sym.name}</span>
+                        <span className={`text-[10px] ${isSelected ? 'text-purple-200' : 'text-slate-400'}`}>
+                          ({sym.char})
+                        </span>
+                      </div>
+
+                      {isSelected && (
+                        <Check className="w-3.5 h-3.5 text-white flex-shrink-0 ml-auto" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <span>Manos y amor (★)</span>
-          </button>
+          ))}
         </div>
       </div>
 
       {/* Palabras rápidas sugeridas según el formato */}
-      <div className="flex items-center gap-2 flex-wrap pt-1">
+      <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-slate-100">
         <span className="text-xs font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1">
           <Sparkles className="w-3.5 h-3.5 text-amber-500" />
           Prueba con:

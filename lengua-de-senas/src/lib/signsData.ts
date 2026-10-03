@@ -557,16 +557,116 @@ export const SIGNS_DICTIONARY: Record<string, SignDefinition> = {
     wristAnchor: [28, 72],
     outerPath: '',
     innerPaths: []
+  },
+  SYM_PEACE: {
+    letter: '✌',
+    name: 'Signo de Paz',
+    description: 'Mano haciendo el símbolo de paz y victoria con dedos índice y medio en V.',
+    viewBox: '0 0 100 130',
+    width: 100,
+    height: 130,
+    wristAnchor: [28, 72],
+    outerPath: '',
+    innerPaths: []
+  },
+  SYM_DOG: {
+    letter: '🐶',
+    name: 'Silueta Perro',
+    description: 'Silueta de cabeza de perrito con orejas caídas y rostro amigable.',
+    viewBox: '0 0 100 130',
+    width: 100,
+    height: 130,
+    wristAnchor: [28, 72],
+    outerPath: '',
+    innerPaths: []
+  },
+  SYM_CAT: {
+    letter: '🐱',
+    name: 'Silueta Gato',
+    description: 'Silueta de cabeza de gatito con orejas puntiagudas y bigotes.',
+    viewBox: '0 0 100 130',
+    width: 100,
+    height: 130,
+    wristAnchor: [28, 72],
+    outerPath: '',
+    innerPaths: []
+  },
+  SYM_SMILE: {
+    letter: '😊',
+    name: 'Sonrisa',
+    description: 'Emoticón de rostro alegre con ojos sonrientes.',
+    viewBox: '0 0 100 130',
+    width: 100,
+    height: 130,
+    wristAnchor: [28, 72],
+    outerPath: '',
+    innerPaths: []
+  },
+  SYM_LAUGH: {
+    letter: '😄',
+    name: 'Risa',
+    description: 'Emoticón riendo con ojos achinados y expresión divertida.',
+    viewBox: '0 0 100 130',
+    width: 100,
+    height: 130,
+    wristAnchor: [28, 72],
+    outerPath: '',
+    innerPaths: []
+  },
+  SYM_KISS: {
+    letter: '😘',
+    name: 'Beso',
+    description: 'Emoticón lanzando un beso con guiño y corazón.',
+    viewBox: '0 0 100 130',
+    width: 100,
+    height: 130,
+    wristAnchor: [28, 72],
+    outerPath: '',
+    innerPaths: []
+  },
+  SYM_WINK: {
+    letter: '😉',
+    name: 'Guiño',
+    description: 'Emoticón con guiño cómplice y sonrisa.',
+    viewBox: '0 0 100 130',
+    width: 100,
+    height: 130,
+    wristAnchor: [28, 72],
+    outerPath: '',
+    innerPaths: []
   }
 };
 
 /**
  * Normaliza una cadena de texto a letras y símbolos admitidos por el catálogo.
- * Transforma tildes (Á -> A, etc.), mantiene la Ñ y reconoce los 3 símbolos de amor/manos.
+ * Transforma tildes (Á -> A, etc.), mantiene la Ñ y reconoce los 10 símbolos decorativos y de señas.
  */
 export function normalizeText(text: string): string[] {
+  if (!text) return [];
+
+  // Verificación de si se pasa directamente un token de símbolo
+  const KNOWN_SYMS: Record<string, string> = {
+    'SYM_HEART1': 'SYM_HEART1',
+    'SYM_HEART2': 'SYM_HEART2',
+    'SYM_HEART3': 'SYM_HEART3',
+    'SYM_PEACE': 'SYM_PEACE',
+    'SYM_DOG': 'SYM_DOG',
+    'SYM_CAT': 'SYM_CAT',
+    'SYM_SMILE': 'SYM_SMILE',
+    'SYM_LAUGH': 'SYM_LAUGH',
+    'SYM_KISS': 'SYM_KISS',
+    'SYM_WINK': 'SYM_WINK'
+  };
+
+  if (KNOWN_SYMS[text]) {
+    return [text];
+  }
+
   const tokens: string[] = [];
-  const normalizedStr = text
+  // Limpiar selectores de variación Unicode como \uFE0F
+  const cleanedStr = text.replace(/\uFE0F/g, '');
+
+  const normalizedStr = cleanedStr
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, (match, offset, str) => {
       if (str[offset - 1] === 'N' || str[offset - 1] === 'n') return match;
@@ -582,8 +682,22 @@ export function normalizeText(text: string): string[] {
       tokens.push('SYM_HEART1');
     } else if (char === '🫶' || char === '♡') {
       tokens.push('SYM_HEART2');
-    } else if (char === '💖' || char === '★' || char === '❤️') {
+    } else if (char === '💖' || char === '★' || char === '❤' || char === '❤️') {
       tokens.push('SYM_HEART3');
+    } else if (char === '✌') {
+      tokens.push('SYM_PEACE');
+    } else if (char === '🐶') {
+      tokens.push('SYM_DOG');
+    } else if (char === '🐱') {
+      tokens.push('SYM_CAT');
+    } else if (char === '😊') {
+      tokens.push('SYM_SMILE');
+    } else if (char === '😄') {
+      tokens.push('SYM_LAUGH');
+    } else if (char === '😘') {
+      tokens.push('SYM_KISS');
+    } else if (char === '😉') {
+      tokens.push('SYM_WINK');
     }
   }
   return tokens;
