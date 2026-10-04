@@ -75,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
                     : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                 }`}
               >
-                <span>🖨️ Litofanía 3D</span>
+                <span>🖼️ Imagen</span>
               </button>
 
               <button

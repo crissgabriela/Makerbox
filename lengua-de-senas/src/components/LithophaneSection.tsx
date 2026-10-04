@@ -8,6 +8,14 @@ import {
   generateLithophane3D,
   downloadStlFile
 } from '@/lib/lithophaneGenerator';
+import {
+  LaserImageConfig,
+  DEFAULT_LASER_IMAGE_CONFIG,
+  ProcessedLaserResult,
+  processImageForLaser,
+  downloadLaserSvg,
+  downloadLaserPng
+} from '@/lib/laserImageProcessor';
 import { Lithophane3DViewer } from './Lithophane3DViewer';
 import { ImageFramingEditor } from './ImageFramingEditor';
 import {
@@ -27,7 +35,14 @@ import {
   X,
   Copy,
   CheckCircle2,
-  ExternalLink
+  ExternalLink,
+  Scissors,
+  Flame,
+  Sun,
+  Contrast,
+  SlidersHorizontal,
+  Eye,
+  FileCode
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import QRCode from 'qrcode';
@@ -63,6 +78,47 @@ export const LithophaneSection: React.FC = () => {
   const updateConfig = <K extends keyof LithophaneConfig>(key: K, value: LithophaneConfig[K]) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
   };
+
+  // Modo de fabricación: Grabado Láser MDF o Litofanía 3D
+  const [activeMode, setActiveMode] = useState<'laser' | 'lithophane'>('laser');
+
+  // Configuración y resultado para Grabado Láser en MDF 8x8 cm (LightBurn)
+  const [laserConfig, setLaserConfig] = useState<LaserImageConfig>(DEFAULT_LASER_IMAGE_CONFIG);
+  const [laserResult, setLaserResult] = useState<ProcessedLaserResult | null>(null);
+  const [isProcessingLaser, setIsProcessingLaser] = useState(false);
+  const [laserPreviewType, setLaserPreviewType] = useState<'wood' | 'vector'>('wood');
+
+  const updateLaserConfig = <K extends keyof LaserImageConfig>(key: K, value: LaserImageConfig[K]) => {
+    setLaserConfig((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // Procesa la imagen para corte y grabado láser cuando cambia la imagen o la configuración
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function computeLaser() {
+      if (!selectedImage) return;
+      setIsProcessingLaser(true);
+      try {
+        const res = await processImageForLaser(selectedImage, laserConfig);
+        if (!isCancelled) {
+          setLaserResult(res);
+        }
+      } catch (err) {
+        console.error('Error procesando imagen para láser:', err);
+      } finally {
+        if (!isCancelled) {
+          setIsProcessingLaser(false);
+        }
+      }
+    }
+
+    const timer = setTimeout(computeLaser, 200);
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [selectedImage, laserConfig]);
 
   // Genera el modelo 3D cuando cambia la imagen o la configuración
   useEffect(() => {
@@ -333,6 +389,39 @@ export const LithophaneSection: React.FC = () => {
     }
   };
 
+  const handleDownloadLaserSvg = () => {
+    if (!laserResult) return;
+    const filename = `grabado-corte-mdf-8x8cm-${sessionId || 'makerbox'}.svg`;
+    downloadLaserSvg(laserResult.svgContent, filename);
+
+    try {
+      confetti({
+        particleCount: 85,
+        spread: 90,
+        origin: { y: 0.75 },
+        colors: ['#ef4444', '#f59e0b', '#3b82f6', '#10b981']
+      });
+    } catch {
+      // Ignorar
+    }
+  };
+
+  const handleDownloadLaserPng = () => {
+    if (!laserResult) return;
+    const filename = `imagen-laser-300dpi-8x8cm-${sessionId || 'makerbox'}.png`;
+    downloadLaserPng(laserResult.processedDataUrl, filename);
+
+    try {
+      confetti({
+        particleCount: 50,
+        spread: 70,
+        origin: { y: 0.75 }
+      });
+    } catch {
+      // Ignorar
+    }
+  };
+
   const setFixed100x100 = () => {
     setIsSquare100(true);
     setConfig((prev) => ({
@@ -344,23 +433,23 @@ export const LithophaneSection: React.FC = () => {
 
   return (
     <div className="w-full flex flex-col gap-6 sm:gap-8">
-      {/* Banner explicativo de la herramienta (altura compacta) */}
-      <div className="rounded-2xl bg-gradient-to-r from-blue-100 via-indigo-50 to-purple-50 border border-blue-200/80 px-5 py-3.5 sm:px-6 sm:py-4 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+      {/* Banner explicativo de la herramienta Imagen */}
+      <div className="rounded-2xl bg-gradient-to-r from-blue-100 via-indigo-50 to-rose-50 border border-blue-200/80 px-5 py-3.5 sm:px-6 sm:py-4 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full bg-blue-200 text-blue-900 text-[11px] font-extrabold flex items-center gap-1">
-              <Printer className="w-3 h-3 text-blue-700" />
-              MakerBox · Impresión 3D
+              <Sparkles className="w-3 h-3 text-blue-700" />
+              Festival de Ciencia y Tecnología 2026
             </span>
             <span className="text-xs font-semibold text-slate-500 hidden md:inline">
-              Transformador de Fotos a Modelos STL
+              MakerBox · Fabricación de Imágenes
             </span>
           </div>
           <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-0.5">
-            Generador de Litofanías 3D
+            Herramienta de Imagen (Grabado Láser y Litofanía 3D)
           </h2>
           <p className="text-xs sm:text-sm text-slate-600 max-w-2xl leading-snug">
-            Sube una fotografía. La plataforma la convertirá en un modelo 3D con relieve según la luminosidad (zonas claras más delgadas y zonas oscuras más gruesas) para imprimir en filamento blanco y verla a contraluz.
+            Sube tu fotografía y prepárala para grabarla y cortarla en madera MDF de 8×8 cm para LightBurn, o transfórmala en un modelo de litofanía 3D para imprimir en filamento blanco.
           </p>
         </div>
 
@@ -386,18 +475,76 @@ export const LithophaneSection: React.FC = () => {
         </div>
       </div>
 
-      {/* Grid de 2 columnas: Controles a la izquierda y Visor 3D a la derecha */}
+      {/* Selector de Técnica de Fabricación: Grabado Láser MDF vs Litofanía 3D */}
+      <div className="flex items-center justify-between bg-white p-2.5 rounded-2xl border border-slate-200 shadow-xs flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold text-slate-500 pl-2">Técnica de Fabricación:</span>
+          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setActiveMode('laser')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-black text-xs sm:text-sm transition cursor-pointer active:scale-95 ${
+                activeMode === 'laser'
+                  ? 'bg-rose-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
+              }`}
+            >
+              <Scissors className="w-4 h-4" />
+              <span>Grabado Láser MDF (8×8 cm)</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-md uppercase font-black tracking-wide ${
+                  activeMode === 'laser' ? 'bg-rose-800 text-white' : 'bg-rose-100 text-rose-800'
+                }`}
+              >
+                LightBurn
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveMode('lithophane')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-black text-xs sm:text-sm transition cursor-pointer active:scale-95 ${
+                activeMode === 'lithophane'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
+              }`}
+            >
+              <Printer className="w-4 h-4" />
+              <span>Litofanía 3D (Relieve)</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-md uppercase font-black tracking-wide ${
+                  activeMode === 'lithophane' ? 'bg-blue-800 text-white' : 'bg-blue-100 text-blue-800'
+                }`}
+              >
+                STL 3D
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div className="text-xs font-semibold text-slate-500 pr-2 hidden sm:block">
+          {activeMode === 'laser'
+            ? 'Corte y grabado sobre madera MDF 3 mm calibrado en 80×80 mm'
+            : 'Malla 3D para impresión en filamento blanco PLA'}
+        </div>
+      </div>
+
+      {/* Grid de 2 columnas: Controles a la izquierda y Visor a la derecha */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Columna Izquierda: Configuración de la Litofanía */}
+        {/* Columna Izquierda: Configuración según modo activo */}
         <div className="lg:col-span-5 flex flex-col gap-5">
-          {/* Paso 1: Selección de Imagen */}
+          {/* Paso 1: Selección de Imagen (Compartido) */}
           <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col gap-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <span className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-extrabold">
+                <span
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-extrabold ${
+                    activeMode === 'laser' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'
+                  }`}
+                >
                   1
                 </span>
-                <span>Imagen de la litofanía:</span>
+                <span>{activeMode === 'laser' ? 'Imagen para Láser (8×8 cm):' : 'Imagen de la Litofanía:'}</span>
               </h3>
 
               <input
@@ -420,7 +567,11 @@ export const LithophaneSection: React.FC = () => {
               onDrop={handleDrop}
               className={`relative group cursor-pointer border-2 border-dashed rounded-2xl p-4 transition flex flex-col items-center justify-center gap-2 text-center ${
                 isDragging
-                  ? 'border-blue-600 bg-blue-100/60 ring-4 ring-blue-300/40 scale-[1.01]'
+                  ? activeMode === 'laser'
+                    ? 'border-rose-600 bg-rose-100/60 ring-4 ring-rose-300/40 scale-[1.01]'
+                    : 'border-blue-600 bg-blue-100/60 ring-4 ring-blue-300/40 scale-[1.01]'
+                  : activeMode === 'laser'
+                  ? 'border-slate-300 hover:border-rose-500 bg-slate-50/70 hover:bg-rose-50/30'
                   : 'border-slate-300 hover:border-blue-500 bg-slate-50/70 hover:bg-blue-50/30'
               }`}
             >
@@ -429,16 +580,20 @@ export const LithophaneSection: React.FC = () => {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={selectedImage}
-                    alt="Foto para litofanía"
+                    alt="Foto seleccionada"
                     className="max-h-36 rounded-xl object-contain shadow-xs border border-slate-200 bg-white"
                   />
-                  <span className="text-xs font-bold text-blue-700 group-hover:underline">
+                  <span
+                    className={`text-xs font-bold group-hover:underline ${
+                      activeMode === 'laser' ? 'text-rose-700' : 'text-blue-700'
+                    }`}
+                  >
                     Toca para cambiar la imagen
                   </span>
                 </div>
               ) : (
                 <>
-                  <Upload className="w-8 h-8 text-blue-500" />
+                  <Upload className={`w-8 h-8 ${activeMode === 'laser' ? 'text-rose-500' : 'text-blue-500'}`} />
                   <span className="text-sm font-bold text-slate-700">Toca para elegir una foto</span>
                   <span className="text-xs text-slate-400">Formatos JPG, PNG o WebP</span>
                 </>
@@ -450,10 +605,14 @@ export const LithophaneSection: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsFramingOpen(true)}
-                className="w-full py-2.5 px-3 rounded-2xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-98"
+                className={`w-full py-2.5 px-3 rounded-2xl border text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-98 ${
+                  activeMode === 'laser'
+                    ? 'bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-700'
+                    : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700'
+                }`}
               >
-                <Maximize2 className="w-3.5 h-3.5 text-blue-600" />
-                <span>✂️ Ajustar Encuadre y Zoom</span>
+                <Maximize2 className={`w-3.5 h-3.5 ${activeMode === 'laser' ? 'text-rose-600' : 'text-blue-600'}`} />
+                <span>{activeMode === 'laser' ? '✂️ Encuadrar Cuadrado 1:1 para Láser' : '✂️ Ajustar Encuadre y Zoom'}</span>
               </button>
             )}
 
@@ -461,18 +620,28 @@ export const LithophaneSection: React.FC = () => {
             <button
               type="button"
               onClick={openQrModal}
-              className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-extrabold text-xs sm:text-sm shadow-md shadow-indigo-100 transition active:scale-[0.98] flex items-center justify-center gap-2 group"
+              className={`w-full py-3 px-4 rounded-2xl text-white font-extrabold text-xs sm:text-sm shadow-md transition active:scale-[0.98] flex items-center justify-center gap-2 group cursor-pointer ${
+                activeMode === 'laser'
+                  ? 'bg-gradient-to-r from-rose-600 via-pink-600 to-purple-600 hover:from-rose-700 hover:to-purple-700 shadow-rose-100'
+                  : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-indigo-100'
+              }`}
             >
-              <Smartphone className="w-4 h-4 text-blue-200 group-hover:scale-110 transition-transform" />
-              <QrCode className="w-4 h-4 text-indigo-200 group-hover:scale-110 transition-transform" />
+              <Smartphone className="w-4 h-4 text-white group-hover:scale-110 transition-transform" />
+              <QrCode className="w-4 h-4 text-white group-hover:scale-110 transition-transform" />
               <span>📱 Escanear QR para subir foto desde tu celular</span>
             </button>
 
             {/* Tip rápido para el festival / stand */}
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50/80 border border-blue-200/60 text-[11px] text-blue-900 leading-tight">
-              <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            <div
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-[11px] leading-tight ${
+                activeMode === 'laser'
+                  ? 'bg-rose-50/80 border-rose-200/60 text-rose-900'
+                  : 'bg-blue-50/80 border-blue-200/60 text-blue-900'
+              }`}
+            >
+              <Sparkles className={`w-3.5 h-3.5 shrink-0 ${activeMode === 'laser' ? 'text-rose-600' : 'text-blue-600'}`} />
               <span>
-                <strong>Atajo en el stand:</strong> Arrastra cualquier imagen aquí o presiona <strong>Ctrl + V</strong> para pegarla directo (ej. copiada desde WhatsApp Web).
+                <strong>Atajo en el stand:</strong> Arrastra cualquier imagen aquí o presiona <strong>Ctrl + V</strong> para pegarla directo (ej. desde WhatsApp Web).
               </span>
             </div>
 
@@ -488,9 +657,11 @@ export const LithophaneSection: React.FC = () => {
                       setRawFullImage(sample.url);
                       setSelectedImage(sample.url);
                     }}
-                    className={`p-2 rounded-xl border text-left transition flex flex-col items-center gap-1.5 active:scale-95 ${
+                    className={`p-2 rounded-xl border text-left transition flex flex-col items-center gap-1.5 active:scale-95 cursor-pointer ${
                       selectedImage === sample.url
-                        ? 'border-blue-600 bg-blue-50/80 ring-2 ring-blue-300/30'
+                        ? activeMode === 'laser'
+                          ? 'border-rose-600 bg-rose-50/80 ring-2 ring-rose-300/30'
+                          : 'border-blue-600 bg-blue-50/80 ring-2 ring-blue-300/30'
                         : 'border-slate-200 bg-slate-50 hover:bg-white'
                     }`}
                   >
@@ -509,270 +680,774 @@ export const LithophaneSection: React.FC = () => {
             </div>
           </div>
 
-          {/* Paso 2: Ajustes de Medidas (100x100mm y Espesores) */}
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col gap-5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <span className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-extrabold">
-                  2
-                </span>
-                <span>Dimensiones y Espesores:</span>
-              </h3>
-
-              <button
-                type="button"
-                onClick={setFixed100x100}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
-                  isSquare100
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-                title="Ajustar a cuadrado estándar de 100x100mm"
-              >
-                100×100 mm
-              </button>
-            </div>
-
-            {/* Tamaño general (Ancho y Alto) */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5 bg-slate-50 p-3 rounded-2xl border border-slate-200">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-700">Ancho:</span>
-                  <span className="font-extrabold text-blue-700">{config.widthMm} mm</span>
-                </div>
-                <input
-                  type="range"
-                  min={60}
-                  max={150}
-                  step={5}
-                  value={config.widthMm}
-                  onChange={(e) => {
-                    setIsSquare100(false);
-                    updateConfig('widthMm', Number(e.target.value));
-                  }}
-                  className="w-full accent-blue-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1.5 bg-slate-50 p-3 rounded-2xl border border-slate-200">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-700">Alto:</span>
-                  <span className="font-extrabold text-blue-700">{config.heightMm} mm</span>
-                </div>
-                <input
-                  type="range"
-                  min={60}
-                  max={150}
-                  step={5}
-                  value={config.heightMm}
-                  onChange={(e) => {
-                    setIsSquare100(false);
-                    updateConfig('heightMm', Number(e.target.value));
-                  }}
-                  className="w-full accent-blue-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
-                />
-              </div>
-            </div>
-
-            {/* Espesores de Luz y Sombra */}
-            <div className="flex flex-col gap-3">
-              {/* Espesor mínimo (zonas claras) */}
-              <div className="flex flex-col gap-1.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-800">Espesor Zonas Claras (Luz):</span>
-                  <span className="font-extrabold text-blue-700">{config.minThicknessMm} mm</span>
-                </div>
-                <input
-                  type="range"
-                  min={0.6}
-                  max={1.2}
-                  step={0.1}
-                  value={config.minThicknessMm}
-                  onChange={(e) => updateConfig('minThicknessMm', Number(e.target.value))}
-                  className="w-full accent-blue-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
-                />
-                <span className="text-[11px] text-slate-400">
-                  Grosor por donde la luz atraviesa con facilidad (0.8 mm recomendado)
+          {/* Paso 2: Según el Modo Activo */}
+          {activeMode === 'laser' ? (
+            /* PASO 2 MODO LÁSER: FILTROS DE IMAGEN Y PLACA MDF 8x8 CM */
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col gap-5">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center text-sm font-extrabold">
+                    2
+                  </span>
+                  <span>Ajustes de Grabado en MDF:</span>
+                </h3>
+                <span className="px-2.5 py-1 rounded-lg text-xs font-extrabold bg-rose-50 text-rose-700 border border-rose-200">
+                  Placa 80×80 mm (8×8 cm)
                 </span>
               </div>
 
-              {/* Espesor máximo (zonas oscuras) */}
-              <div className="flex flex-col gap-1.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+              {/* Modo de Tramado (Dithering) */}
+              <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-800">Espesor Zonas Oscuras (Sombra):</span>
-                  <span className="font-extrabold text-blue-700">{config.maxThicknessMm} mm</span>
+                  <span className="font-bold text-slate-800">Modo de Tramado / Procesamiento:</span>
+                  <span className="font-extrabold text-rose-600">
+                    {laserConfig.ditherMode === 'atkinson' && 'Atkinson (Recomendado Láser)'}
+                    {laserConfig.ditherMode === 'floyd-steinberg' && 'Floyd-Steinberg'}
+                    {laserConfig.ditherMode === 'grayscale' && 'Escala de Grises'}
+                    {laserConfig.ditherMode === 'threshold' && 'Alto Contraste'}
+                    {laserConfig.ditherMode === 'original' && 'Color Original'}
+                  </span>
                 </div>
-                <input
-                  type="range"
-                  min={1.8}
-                  max={3.0}
-                  step={0.1}
-                  value={config.maxThicknessMm}
-                  onChange={(e) => updateConfig('maxThicknessMm', Number(e.target.value))}
-                  className="w-full accent-blue-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
-                />
-                <span className="text-[11px] text-slate-400">
-                  Grosor que bloquea la luz creando el contraste (2.0 a 2.4 mm)
-                </span>
-              </div>
-            </div>
 
-            {/* Marco y Opciones Adicionales */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              <div className="flex flex-col gap-1 bg-slate-50 p-3 rounded-2xl border border-slate-200">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-700">Ancho de Marco:</span>
-                  <span className="font-extrabold text-blue-700">{config.frameWidthMm} mm</span>
-                </div>
-                <input
-                  type="range"
-                  min={2}
-                  max={8}
-                  step={0.5}
-                  value={config.frameWidthMm}
-                  onChange={(e) => updateConfig('frameWidthMm', Number(e.target.value))}
-                  className="w-full accent-blue-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
-                />
-              </div>
-
-              {/* Checkbox de Pie de Apoyo */}
-              <label className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200 cursor-pointer hover:bg-blue-50/40 transition">
-                <input
-                  type="checkbox"
-                  checked={config.hasStandBase}
-                  onChange={(e) => updateConfig('hasStandBase', e.target.checked)}
-                  className="w-5 h-5 rounded-md accent-blue-600 cursor-pointer"
-                />
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-slate-800">Pie de apoyo</span>
-                  <span className="text-[11px] text-slate-500">Base para pararse en la mesa</span>
-                </div>
-              </label>
-            </div>
-
-            {/* Selector de Resolución / Calidad 3D (mm/píxel) */}
-            <div className="flex flex-col gap-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-800">Resolución de Detalle 3D:</span>
-                <span className="font-extrabold text-blue-700">
-                  {config.resolution >= 450
-                    ? '0.2 mm/px (Ultra Detalle)'
-                    : config.resolution >= 220
-                    ? '0.4 mm/px (Alta Calidad)'
-                    : '0.7 mm/px (Rápida Stand)'}
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { label: '0.7 mm/px', desc: 'Rápida (140)', res: 140 },
-                  { label: '0.4 mm/px', desc: 'Alta (250)', res: 250 },
-                  { label: '0.2 mm/px', desc: 'Ultra (500)', res: 500 }
-                ].map((item) => (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   <button
-                    key={item.res}
                     type="button"
-                    onClick={() => updateConfig('resolution', item.res)}
-                    className={`px-2 py-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center transition ${
-                      config.resolution === item.res
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                    onClick={() => updateLaserConfig('ditherMode', 'atkinson')}
+                    className={`px-2.5 py-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-0.5 transition cursor-pointer ${
+                      laserConfig.ditherMode === 'atkinson'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100'
                     }`}
                   >
-                    <span>{item.label}</span>
-                    <span className={`text-[10px] ${config.resolution === item.res ? 'text-blue-100' : 'text-slate-400'}`}>
-                      {item.desc}
+                    <span className="flex items-center gap-1">⭐ Atkinson</span>
+                    <span
+                      className={`text-[10px] ${
+                        laserConfig.ditherMode === 'atkinson' ? 'text-rose-100' : 'text-slate-400'
+                      }`}
+                    >
+                      Ideal MDF (Madera)
                     </span>
                   </button>
-                ))}
+
+                  <button
+                    type="button"
+                    onClick={() => updateLaserConfig('ditherMode', 'floyd-steinberg')}
+                    className={`px-2.5 py-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-0.5 transition cursor-pointer ${
+                      laserConfig.ditherMode === 'floyd-steinberg'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>Floyd-Steinberg</span>
+                    <span
+                      className={`text-[10px] ${
+                        laserConfig.ditherMode === 'floyd-steinberg' ? 'text-rose-100' : 'text-slate-400'
+                      }`}
+                    >
+                      Difusión suave
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => updateLaserConfig('ditherMode', 'grayscale')}
+                    className={`px-2.5 py-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-0.5 transition cursor-pointer ${
+                      laserConfig.ditherMode === 'grayscale'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>Escala de Grises</span>
+                    <span
+                      className={`text-[10px] ${
+                        laserConfig.ditherMode === 'grayscale' ? 'text-rose-100' : 'text-slate-400'
+                      }`}
+                    >
+                      Potencia Variable
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => updateLaserConfig('ditherMode', 'threshold')}
+                    className={`px-2.5 py-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-0.5 transition cursor-pointer ${
+                      laserConfig.ditherMode === 'threshold'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>Alto Contraste</span>
+                    <span
+                      className={`text-[10px] ${
+                        laserConfig.ditherMode === 'threshold' ? 'text-rose-100' : 'text-slate-400'
+                      }`}
+                    >
+                      Umbral / Logos
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => updateLaserConfig('ditherMode', 'original')}
+                    className={`px-2.5 py-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center gap-0.5 transition cursor-pointer sm:col-span-2 ${
+                      laserConfig.ditherMode === 'original'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>Foto Calibrada Original</span>
+                    <span
+                      className={`text-[10px] ${
+                        laserConfig.ditherMode === 'original' ? 'text-rose-100' : 'text-slate-400'
+                      }`}
+                    >
+                      LightBurn aplica su dither
+                    </span>
+                  </button>
+                </div>
+
+                {laserConfig.ditherMode === 'threshold' && (
+                  <div className="flex flex-col gap-1.5 bg-slate-50 p-3 rounded-2xl border border-slate-200 mt-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-700">Nivel de Umbral (Corte B/N):</span>
+                      <span className="font-extrabold text-rose-600">{laserConfig.thresholdLevel}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={30}
+                      max={225}
+                      value={laserConfig.thresholdLevel}
+                      onChange={(e) => updateLaserConfig('thresholdLevel', Number(e.target.value))}
+                      className="w-full accent-rose-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
+                    />
+                  </div>
+                )}
               </div>
-              <span className="text-[11px] text-slate-400">
-                0.2 mm/px genera máxima definición fotográfica (~1M de triángulos). 0.7 mm/px es ideal para vista previa rápida en el stand.
-              </span>
+
+              {/* Filtros de Contraste, Brillo y Nitidez */}
+              <div className="flex flex-col gap-3">
+                {/* Contraste */}
+                <div className="flex flex-col gap-1.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-800">Contraste (Crucial para MDF):</span>
+                    <span className="font-extrabold text-rose-600">
+                      {laserConfig.contrast > 0 ? `+${laserConfig.contrast}` : laserConfig.contrast}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={-50}
+                    max={100}
+                    step={5}
+                    value={laserConfig.contrast}
+                    onChange={(e) => updateLaserConfig('contrast', Number(e.target.value))}
+                    className="w-full accent-rose-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
+                  />
+                  <span className="text-[11px] text-slate-400">
+                    Separa tonos oscuros y claros para que las sombras se quemen nítidas en la madera.
+                  </span>
+                </div>
+
+                {/* Brillo */}
+                <div className="flex flex-col gap-1.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-800">Brillo:</span>
+                    <span className="font-extrabold text-rose-600">
+                      {laserConfig.brightness > 0 ? `+${laserConfig.brightness}` : laserConfig.brightness}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={-50}
+                    max={50}
+                    step={5}
+                    value={laserConfig.brightness}
+                    onChange={(e) => updateLaserConfig('brightness', Number(e.target.value))}
+                    className="w-full accent-rose-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
+                  />
+                  <span className="text-[11px] text-slate-400">
+                    Aclara u oscurece la imagen para evitar zonas negras empastadas.
+                  </span>
+                </div>
+
+                {/* Nitidez (Sharpen) */}
+                <div className="flex flex-col gap-1.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-800">Nitidez (Realce de bordes):</span>
+                    <span className="font-extrabold text-rose-600">{laserConfig.sharpen}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={laserConfig.sharpen}
+                    onChange={(e) => updateLaserConfig('sharpen', Number(e.target.value))}
+                    className="w-full accent-rose-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
+                  />
+                  <span className="text-[11px] text-slate-400">
+                    Realza rasgos faciales, ojos y texturas finas al quemar con láser.
+                  </span>
+                </div>
+
+                {/* Invertir colores */}
+                <label className="flex items-center justify-between bg-slate-50 p-3 rounded-2xl border border-slate-200 cursor-pointer hover:bg-rose-50/30 transition">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-slate-800">Invertir Colores (Negativo)</span>
+                    <span className="text-[11px] text-slate-500">Útil para materiales que aclaran al grabar</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={laserConfig.invert}
+                    onChange={(e) => updateLaserConfig('invert', e.target.checked)}
+                    className="w-5 h-5 rounded-md accent-rose-600 cursor-pointer"
+                  />
+                </label>
+              </div>
+
+              {/* Opciones de la Placa de Madera MDF 8x8 cm */}
+              <div className="border-t border-slate-100 pt-3 flex flex-col gap-3">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-500">
+                  Corte de la Placa MDF (80×80 mm):
+                </span>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Esquinas redondeadas */}
+                  <div className="flex flex-col gap-1.5 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-700">Radio de esquinas:</span>
+                      <span className="font-extrabold text-rose-600">{laserConfig.cornerRadiusMm} mm</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={10}
+                      step={1}
+                      value={laserConfig.cornerRadiusMm}
+                      onChange={(e) => updateLaserConfig('cornerRadiusMm', Number(e.target.value))}
+                      className="w-full accent-rose-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
+                    />
+                    <span className="text-[10px] text-slate-400">Bordes suaves sin astillas</span>
+                  </div>
+
+                  {/* Margen de imagen */}
+                  <div className="flex flex-col gap-1.5 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-700">Margen interior:</span>
+                      <span className="font-extrabold text-rose-600">{laserConfig.marginMm} mm</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={8}
+                      step={1}
+                      value={laserConfig.marginMm}
+                      onChange={(e) => updateLaserConfig('marginMm', Number(e.target.value))}
+                      className="w-full accent-rose-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
+                    />
+                    <span className="text-[10px] text-slate-400">Espacio antes del corte</span>
+                  </div>
+                </div>
+
+                {/* Orificio para colgar */}
+                <div className="flex flex-col gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={laserConfig.hasHole}
+                        onChange={(e) => updateLaserConfig('hasHole', e.target.checked)}
+                        className="w-4 h-4 rounded accent-rose-600 cursor-pointer"
+                      />
+                      <span className="text-xs font-bold text-slate-800">Orificio para colgar / llavero</span>
+                    </label>
+                    {laserConfig.hasHole && (
+                      <span className="text-xs font-extrabold text-rose-600">Ø {laserConfig.holeDiameterMm} mm</span>
+                    )}
+                  </div>
+
+                  {laserConfig.hasHole && (
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200/60">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-slate-500 font-semibold">Ubicación:</span>
+                        <button
+                          type="button"
+                          onClick={() => updateLaserConfig('holePosition', 'top-center')}
+                          className={`px-2 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${
+                            laserConfig.holePosition === 'top-center'
+                              ? 'bg-rose-600 text-white'
+                              : 'bg-white text-slate-600 border border-slate-200'
+                          }`}
+                        >
+                          Centro Superior
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateLaserConfig('holePosition', 'top-left')}
+                          className={`px-2 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${
+                            laserConfig.holePosition === 'top-left'
+                              ? 'bg-rose-600 text-white'
+                              : 'bg-white text-slate-600 border border-slate-200'
+                          }`}
+                        >
+                          Esquina
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            /* PASO 2 MODO LITOFANÍA 3D: DIMENSIONES Y ESPESORES */
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col gap-5">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-extrabold">
+                    2
+                  </span>
+                  <span>Dimensiones y Espesores:</span>
+                </h3>
+
+                <button
+                  type="button"
+                  onClick={setFixed100x100}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    isSquare100
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                  title="Ajustar a cuadrado estándar de 100x100mm"
+                >
+                  100×100 mm
+                </button>
+              </div>
+
+              {/* Tamaño general (Ancho y Alto) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-700">Ancho:</span>
+                    <span className="font-extrabold text-blue-700">{config.widthMm} mm</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={60}
+                    max={150}
+                    step={5}
+                    value={config.widthMm}
+                    onChange={(e) => {
+                      setIsSquare100(false);
+                      updateConfig('widthMm', Number(e.target.value));
+                    }}
+                    className="w-full accent-blue-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-700">Alto:</span>
+                    <span className="font-extrabold text-blue-700">{config.heightMm} mm</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={60}
+                    max={150}
+                    step={5}
+                    value={config.heightMm}
+                    onChange={(e) => {
+                      setIsSquare100(false);
+                      updateConfig('heightMm', Number(e.target.value));
+                    }}
+                    className="w-full accent-blue-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
+                  />
+                </div>
+              </div>
+
+              {/* Espesores de Luz y Sombra */}
+              <div className="flex flex-col gap-3">
+                {/* Espesor mínimo (zonas claras) */}
+                <div className="flex flex-col gap-1.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-800">Espesor Zonas Claras (Luz):</span>
+                    <span className="font-extrabold text-blue-700">{config.minThicknessMm} mm</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.6}
+                    max={1.2}
+                    step={0.1}
+                    value={config.minThicknessMm}
+                    onChange={(e) => updateConfig('minThicknessMm', Number(e.target.value))}
+                    className="w-full accent-blue-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
+                  />
+                  <span className="text-[11px] text-slate-400">
+                    Grosor por donde la luz atraviesa con facilidad (0.8 mm recomendado)
+                  </span>
+                </div>
+
+                {/* Espesor máximo (zonas oscuras) */}
+                <div className="flex flex-col gap-1.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-800">Espesor Zonas Oscuras (Sombra):</span>
+                    <span className="font-extrabold text-blue-700">{config.maxThicknessMm} mm</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={1.8}
+                    max={3.0}
+                    step={0.1}
+                    value={config.maxThicknessMm}
+                    onChange={(e) => updateConfig('maxThicknessMm', Number(e.target.value))}
+                    className="w-full accent-blue-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
+                  />
+                  <span className="text-[11px] text-slate-400">
+                    Grosor que bloquea la luz creando el contraste (2.0 a 2.4 mm)
+                  </span>
+                </div>
+              </div>
+
+              {/* Marco y Opciones Adicionales */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="flex flex-col gap-1 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-700">Ancho de Marco:</span>
+                    <span className="font-extrabold text-blue-700">{config.frameWidthMm} mm</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={2}
+                    max={8}
+                    step={0.5}
+                    value={config.frameWidthMm}
+                    onChange={(e) => updateConfig('frameWidthMm', Number(e.target.value))}
+                    className="w-full accent-blue-600 cursor-pointer h-2 bg-slate-200 rounded-lg"
+                  />
+                </div>
+
+                {/* Checkbox de Pie de Apoyo */}
+                <label className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200 cursor-pointer hover:bg-blue-50/40 transition">
+                  <input
+                    type="checkbox"
+                    checked={config.hasStandBase}
+                    onChange={(e) => updateConfig('hasStandBase', e.target.checked)}
+                    className="w-5 h-5 rounded-md accent-blue-600 cursor-pointer"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-slate-800">Pie de apoyo</span>
+                    <span className="text-[11px] text-slate-500">Base para pararse en la mesa</span>
+                  </div>
+                </label>
+              </div>
+
+              {/* Selector de Resolución / Calidad 3D (mm/píxel) */}
+              <div className="flex flex-col gap-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-800">Resolución de Detalle 3D:</span>
+                  <span className="font-extrabold text-blue-700">
+                    {config.resolution >= 450
+                      ? '0.2 mm/px (Ultra Detalle)'
+                      : config.resolution >= 220
+                      ? '0.4 mm/px (Alta Calidad)'
+                      : '0.7 mm/px (Rápida Stand)'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: '0.7 mm/px', desc: 'Rápida (140)', res: 140 },
+                    { label: '0.4 mm/px', desc: 'Alta (250)', res: 250 },
+                    { label: '0.2 mm/px', desc: 'Ultra (500)', res: 500 }
+                  ].map((item) => (
+                    <button
+                      key={item.res}
+                      type="button"
+                      onClick={() => updateConfig('resolution', item.res)}
+                      className={`px-2 py-2 rounded-xl text-xs font-bold flex flex-col items-center justify-center transition cursor-pointer ${
+                        config.resolution === item.res
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>{item.label}</span>
+                      <span
+                        className={`text-[10px] ${
+                          config.resolution === item.res ? 'text-blue-100' : 'text-slate-400'
+                        }`}
+                      >
+                        {item.desc}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <span className="text-[11px] text-slate-400">
+                  0.2 mm/px genera máxima definición fotográfica (~1M de triángulos). 0.7 mm/px es ideal para vista previa rápida en el stand.
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Columna Derecha: Visor 3D Interactivo y Descarga STL */}
+        {/* Columna Derecha: Visor y Descargas según el Modo Activo */}
         <div className="lg:col-span-7 flex flex-col gap-5">
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col gap-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-              <div>
-                <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2">
-                  <span className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-extrabold">
-                    3
-                  </span>
-                  <span>Visor 3D en Tiempo Real:</span>
-                </h3>
-                <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                  Gira la pieza con el dedo y prueba el botón <strong>"Efecto a Contraluz"</strong>.
-                </p>
+          {activeMode === 'laser' ? (
+            /* VISOR Y DESCARGAS MODO LÁSER (MDF 8x8 CM / LIGHTBURN) */
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col gap-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2">
+                    <span className="w-7 h-7 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center text-sm font-extrabold">
+                      3
+                    </span>
+                    <span>Vista Previa Láser MDF 8×8 cm:</span>
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                    Diseño listo para <strong>LightBurn</strong> en placa de madera MDF 3 mm.
+                  </p>
+                </div>
+
+                {/* Botones de Descarga */}
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={handleDownloadLaserSvg}
+                    disabled={!laserResult || isProcessingLaser}
+                    className="px-5 py-3 rounded-2xl text-xs sm:text-sm font-black bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 disabled:bg-slate-300 text-white shadow-md shadow-rose-200 transition-all active:scale-95 flex items-center gap-2 justify-center flex-1 sm:flex-none cursor-pointer"
+                    title="Descargar SVG con capa de grabado y línea roja de corte 80x80 mm para LightBurn"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Descargar SVG (LightBurn)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadLaserPng}
+                    disabled={!laserResult || isProcessingLaser}
+                    className="px-3.5 py-3 rounded-2xl text-xs font-bold bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 text-slate-700 border border-slate-300 transition-all active:scale-95 flex items-center gap-1.5 justify-center cursor-pointer"
+                    title="Descargar imagen PNG a 300 DPI"
+                  >
+                    <span>PNG 300 DPI</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Botón Principal de Descarga STL */}
-              <button
-                type="button"
-                onClick={handleDownloadStl}
-                disabled={!result || isGenerating}
-                className="px-6 py-3.5 rounded-2xl text-base font-extrabold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center gap-2 justify-center w-full sm:w-auto"
-              >
-                <Download className="w-5 h-5" />
-                <span>Descargar Modelo STL</span>
-              </button>
-            </div>
+              {/* Selector de visualización: Madera simulada o Vector LightBurn */}
+              <div className="flex items-center justify-between gap-2 bg-slate-100 p-1 rounded-2xl border border-slate-200 flex-wrap">
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setLaserPreviewType('wood')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      laserPreviewType === 'wood'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>🪵 Simulación Madera MDF</span>
+                  </button>
 
-            {/* Lienzo WebGL Three.js con simulación de luz y ampolleta trasera */}
-            <Lithophane3DViewer
-              geometry={result?.geometry ?? null}
-              imageSource={selectedImage}
-              config={config}
-              isLoading={isGenerating}
-            />
+                  <button
+                    type="button"
+                    onClick={() => setLaserPreviewType('vector')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      laserPreviewType === 'vector'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>📐 Capas LightBurn (Rojo/Negro)</span>
+                  </button>
+                </div>
 
-            {/* Métricas Técnicas para Laminación */}
-            {result && (
+                <div className="text-[11px] font-extrabold text-slate-500 pr-2">
+                  80 × 80 mm (300 DPI)
+                </div>
+              </div>
+
+              {/* Contenedor del Visor */}
+              <div className="relative w-full aspect-square max-w-[440px] mx-auto rounded-3xl overflow-hidden border-2 border-slate-200 shadow-inner bg-slate-100 flex items-center justify-center p-3">
+                {isProcessingLaser ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <RefreshCw className="w-8 h-8 text-rose-600 animate-spin" />
+                    <span className="text-xs font-bold text-slate-600">Procesando tramado y corte láser...</span>
+                  </div>
+                ) : laserResult ? (
+                  laserPreviewType === 'wood' ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={laserResult.woodPreviewDataUrl}
+                      alt="Simulación de Grabado Láser en Madera MDF"
+                      className="w-full h-full object-contain drop-shadow-md rounded-2xl transition-all"
+                    />
+                  ) : (
+                    /* Vista de vectores LightBurn con marco rojo y foto procesada */
+                    <div
+                      className="relative bg-white shadow-md border-2 border-dashed border-slate-300 flex items-center justify-center transition-all w-[90%] h-[90%]"
+                      style={{
+                        borderRadius: `${(laserConfig.cornerRadiusMm / 80) * 100}%`
+                      }}
+                    >
+                      {/* Línea perimetral de corte en rojo */}
+                      <div
+                        className="absolute inset-0 border-2 border-red-600 pointer-events-none"
+                        style={{ borderRadius: `${(laserConfig.cornerRadiusMm / 80) * 100}%` }}
+                      />
+
+                      {/* Orificio opcional */}
+                      {laserConfig.hasHole && (
+                        <div
+                          className="absolute w-4 h-4 rounded-full border-2 border-red-600 bg-white"
+                          style={{
+                            top: laserConfig.holePosition === 'top-center' ? '8px' : '8px',
+                            left: laserConfig.holePosition === 'top-center' ? 'calc(50% - 8px)' : '8px'
+                          }}
+                        />
+                      )}
+
+                      {/* Imagen grabada centrada */}
+                      <div
+                        className="overflow-hidden"
+                        style={{
+                          width: `${((80 - laserConfig.marginMm * 2) / 80) * 100}%`,
+                          height: `${((80 - laserConfig.marginMm * 2) / 80) * 100}%`
+                        }}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={laserResult.processedDataUrl}
+                          alt="Capa de Grabado Láser"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+
+                      {/* Etiquetas identificadoras de capas */}
+                      <div className="absolute top-2 right-2 bg-red-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
+                        Línea Roja: Corte
+                      </div>
+                      <div className="absolute bottom-2 left-2 bg-slate-900 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
+                        Negro: Grabado
+                      </div>
+                    </div>
+                  )
+                ) : null}
+              </div>
+
+              {/* Ficha Técnica de Fabricación */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-center">
                 <div className="flex flex-col">
-                  <span className="text-[11px] font-semibold text-slate-500">Dimensiones:</span>
-                  <span className="text-sm font-extrabold text-slate-800">
-                    {result.widthMm} × {result.heightMm} mm
-                  </span>
+                  <span className="text-[11px] font-semibold text-slate-500">Formato MDF:</span>
+                  <span className="text-sm font-extrabold text-slate-800">80 × 80 mm</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[11px] font-semibold text-slate-500">Malla 3D:</span>
-                  <span className="text-sm font-extrabold text-blue-700">
-                    {result.triangleCount.toLocaleString()} △
-                  </span>
+                  <span className="text-[11px] font-semibold text-slate-500">Resolución:</span>
+                  <span className="text-sm font-extrabold text-rose-600">300 DPI (HD)</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[11px] font-semibold text-slate-500">Filamento PLA:</span>
-                  <span className="text-sm font-extrabold text-slate-800">
-                    ~{result.estimatedWeightGrams} gramos
-                  </span>
+                  <span className="text-[11px] font-semibold text-slate-500">Capa Corte:</span>
+                  <span className="text-sm font-extrabold text-red-600">Rojo 0.2mm</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[11px] font-semibold text-slate-500">Tiempo aprox:</span>
-                  <span className="text-sm font-extrabold text-slate-800">
-                    ~{Math.floor(result.estimatedPrintTimeMinutes / 60)}h {result.estimatedPrintTimeMinutes % 60}m
-                  </span>
+                  <span className="text-[11px] font-semibold text-slate-500">Capa Grabado:</span>
+                  <span className="text-sm font-extrabold text-slate-800">Scan / Tramado</span>
                 </div>
               </div>
-            )}
 
-            {/* Tarjeta de Recomendaciones para el Operador del Stand */}
-            <div className="bg-blue-50/60 border border-blue-200 rounded-2xl p-4 flex items-start gap-3">
-              <Printer className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div className="text-xs sm:text-sm text-slate-700 leading-relaxed flex flex-col gap-1">
-                <span className="font-bold text-blue-950">
-                  Instrucciones de Laminación (Cura / PrusaSlicer / Bambu Studio):
-                </span>
-                <p>
-                  1. Imprimir en <strong>filamento blanco</strong> (PLA o PETG).<br />
-                  2. Configurar <strong>100% de relleno (Infill)</strong> para que la luz se transmita de forma continua sin patrones de rejilla.<br />
-                  3. Orientar la litofanía <strong>de pie verticalmente</strong> sobre la base para obtener máxima resolución fotográfica en el eje Z.
-                </p>
+              {/* Guía rápida para el operador con LightBurn */}
+              <div className="bg-gradient-to-r from-rose-50 to-amber-50 border border-rose-200 rounded-2xl p-4 flex items-start gap-3">
+                <Flame className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs sm:text-sm text-slate-700 leading-relaxed flex flex-col gap-1">
+                  <span className="font-bold text-rose-950">
+                    Cómo cortarlo y grabarlo en LightBurn (Operador del Stand):
+                  </span>
+                  <p className="text-xs leading-normal">
+                    1. Descarga el archivo <strong>.SVG</strong> y arrástralo directamente a la ventana de <strong>LightBurn</strong>.<br />
+                    2. LightBurn asignará de inmediato el marco rojo a la <strong>Capa de Corte</strong> y la foto a la <strong>Capa de Grabado (Image/Scan)</strong>.<br />
+                    3. Pon una placa de trupán / MDF de 3 mm de espesor y presiona <em>Start</em>. ¡Las medidas 80×80 mm coinciden exactamente!
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            /* VISOR Y DESCARGAS MODO LITOFANÍA 3D */
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col gap-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                  <h3 className="text-lg sm:text-xl font-bold text-slate-900 flex items-center gap-2">
+                    <span className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-sm font-extrabold">
+                      3
+                    </span>
+                    <span>Visor 3D en Tiempo Real:</span>
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                    Gira la pieza con el dedo y prueba el botón <strong>&quot;Efecto a Contraluz&quot;</strong>.
+                  </p>
+                </div>
+
+                {/* Botón Principal de Descarga STL */}
+                <button
+                  type="button"
+                  onClick={handleDownloadStl}
+                  disabled={!result || isGenerating}
+                  className="px-6 py-3.5 rounded-2xl text-base font-extrabold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center gap-2 justify-center w-full sm:w-auto cursor-pointer"
+                >
+                  <Download className="w-5 h-5" />
+                  <span>Descargar Modelo STL</span>
+                </button>
+              </div>
+
+              {/* Lienzo WebGL Three.js con simulación de luz y ampolleta trasera */}
+              <Lithophane3DViewer
+                geometry={result?.geometry ?? null}
+                imageSource={selectedImage}
+                config={config}
+                isLoading={isGenerating}
+              />
+
+              {/* Métricas Técnicas para Laminación */}
+              {result && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-center">
+                  <div className="flex flex-col">
+                    <span className="text-[11px] font-semibold text-slate-500">Dimensiones:</span>
+                    <span className="text-sm font-extrabold text-slate-800">
+                      {result.widthMm} × {result.heightMm} mm
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[11px] font-semibold text-slate-500">Malla 3D:</span>
+                    <span className="text-sm font-extrabold text-blue-700">
+                      {result.triangleCount.toLocaleString()} △
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[11px] font-semibold text-slate-500">Filamento PLA:</span>
+                    <span className="text-sm font-extrabold text-slate-800">
+                      ~{result.estimatedWeightGrams} gramos
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[11px] font-semibold text-slate-500">Tiempo aprox:</span>
+                    <span className="text-sm font-extrabold text-slate-800">
+                      ~{Math.floor(result.estimatedPrintTimeMinutes / 60)}h {result.estimatedPrintTimeMinutes % 60}m
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Tarjeta de Recomendaciones para el Operador del Stand */}
+              <div className="bg-blue-50/60 border border-blue-200 rounded-2xl p-4 flex items-start gap-3">
+                <Printer className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs sm:text-sm text-slate-700 leading-relaxed flex flex-col gap-1">
+                  <span className="font-bold text-blue-950">
+                    Instrucciones de Laminación (Cura / PrusaSlicer / Bambu Studio):
+                  </span>
+                  <p>
+                    1. Imprimir en <strong>filamento blanco</strong> (PLA o PETG).<br />
+                    2. Configurar <strong>100% de relleno (Infill)</strong> para que la luz se transmita de forma continua sin patrones de rejilla.<br />
+                    3. Orientar la litofanía <strong>de pie verticalmente</strong> sobre la base para obtener máxima resolución fotográfica en el eje Z.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -965,8 +1640,16 @@ export const LithophaneSection: React.FC = () => {
           isOpen={isFramingOpen}
           onClose={() => setIsFramingOpen(false)}
           onApply={(cropped) => setSelectedImage(cropped)}
-          title="Ajustar Encuadre y Zoom del Modelo"
-          confirmLabel="Aplicar a la Litofanía 3D"
+          title={
+            activeMode === 'laser'
+              ? 'Ajustar Encuadre Cuadrado para Grabado Láser MDF 8×8 cm'
+              : 'Ajustar Encuadre y Zoom de la Litofanía 3D'
+          }
+          confirmLabel={
+            activeMode === 'laser'
+              ? 'Aplicar a Grabado Láser MDF'
+              : 'Aplicar a la Litofanía 3D'
+          }
         />
       )}
     </div>

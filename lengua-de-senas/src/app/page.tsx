@@ -157,7 +157,7 @@ export default function Home() {
             />
           </>
         ) : activeTool === 'lithophane' ? (
-          /* Herramienta 2: Litofanías 3D (Impresión 3D) */
+          /* Herramienta 2: Imagen (Litofanía 3D y Grabado Láser MDF 8x8 cm) */
           <LithophaneSection />
         ) : (
           /* Herramienta 3: Llaveros Braille 3D (Impresión 3D STL y OBJ) */
