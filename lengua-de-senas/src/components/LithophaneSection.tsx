@@ -200,6 +200,7 @@ export const LithophaneSection: React.FC = () => {
   const [newPhotoNotification, setNewPhotoNotification] = useState<string | null>(null);
   const [isFramingOpen, setIsFramingOpen] = useState(false);
   const lastTimestampRef = useRef<number>(0);
+  const hasReceivedPhotoRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -220,9 +221,13 @@ export const LithophaneSection: React.FC = () => {
   }, []);
 
   const openQrModal = () => {
-    if (!sessionId) {
+    // Si ya se había recibido una foto en esta sesión o no hay código,
+    // generamos un código completamente NUEVO para el nuevo asistente
+    if (!sessionId || hasReceivedPhotoRef.current) {
       const newCode = 'MK-' + Math.floor(1000 + Math.random() * 9000);
       setSessionId(newCode);
+      lastTimestampRef.current = 0;
+      hasReceivedPhotoRef.current = false;
       if (typeof window !== 'undefined') {
         localStorage.setItem('makerbox_stand_session', newCode);
       }
@@ -235,6 +240,8 @@ export const LithophaneSection: React.FC = () => {
     const newCode = 'MK-' + Math.floor(1000 + Math.random() * 9000);
     setSessionId(newCode);
     lastTimestampRef.current = 0;
+    hasReceivedPhotoRef.current = false;
+    setReceivedSuccess(false);
     if (typeof window !== 'undefined') {
       localStorage.setItem('makerbox_stand_session', newCode);
     }
@@ -289,15 +296,26 @@ export const LithophaneSection: React.FC = () => {
 
     const interval = setInterval(async () => {
       try {
-        const url = `/api/live-sync?s=${encodeURIComponent(sessionId)}&since=${lastTimestampRef.current}`;
-        const res = await fetch(url);
+        const url = `/api/live-sync?s=${encodeURIComponent(sessionId)}&since=${lastTimestampRef.current}&_t=${Date.now()}`;
+        const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) return;
         const data = await res.json();
 
         if (data.success && data.image && data.timestamp) {
           lastTimestampRef.current = data.timestamp;
+          hasReceivedPhotoRef.current = true;
           setRawFullImage(data.image);
           setSelectedImage(data.image);
+
+          // Purgar inmediatamente la sesión en el servidor para asegurar que nunca se reentregue
+          try {
+            fetch(`/api/live-sync?s=${encodeURIComponent(sessionId)}`, {
+              method: 'DELETE',
+              cache: 'no-store'
+            }).catch(() => {});
+          } catch {
+            // Ignorar
+          }
 
           try {
             confetti({

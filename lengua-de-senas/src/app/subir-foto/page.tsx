@@ -19,8 +19,8 @@ import Link from 'next/link';
 // Función para comprimir y mantener la foto COMPLETA sin recortar en el celular
 async function processFullImage(
   file: File,
-  maxDim = 1400,
-  quality = 0.85
+  maxDim = 1200,
+  quality = 0.82
 ): Promise<{ dataUrl: string; originalSizeKb: number; compressedSizeKb: number }> {
   const originalSizeKb = Math.round(file.size / 1024);
 
@@ -101,7 +101,7 @@ function SubirFotoContent() {
 
     try {
       // Procesa la imagen completa sin recortar
-      const result = await processFullImage(file, 1400, 0.85);
+      const result = await processFullImage(file, 1200, 0.82);
       setPreviewUrl(result.dataUrl);
       setStats({
         originalKb: result.originalSizeKb,
@@ -135,6 +135,7 @@ function SubirFotoContent() {
         headers: {
           'Content-Type': 'application/json'
         },
+        cache: 'no-store',
         body: JSON.stringify({
           sessionId: sessionCode.trim().toUpperCase(),
           image: previewUrl
@@ -188,7 +189,7 @@ function SubirFotoContent() {
           </div>
           <div>
             <h1 className="text-base font-black text-slate-900 tracking-tight leading-none">
-              MakerBox · Litofanía 3D
+              MakerBox · Imagen y Grabado Láser / 3D
             </h1>
             <p className="text-xs font-semibold text-blue-600 mt-1">
               Festival de Ciencia y Tecnología 2026 · Stand MakerBox
@@ -219,7 +220,7 @@ function SubirFotoContent() {
               ¡Tu foto ya está en la pantalla!
             </h2>
             <p className="text-sm text-slate-600 max-w-sm leading-relaxed">
-              Mira hacia la pantalla del stand. Tu foto completa llegó y se está encuadrando para modelar la litofanía 3D en vivo.
+              Mira hacia la pantalla del stand. Tu foto completa llegó y se está preparando para grabado láser / 3D en vivo.
             </p>
           </div>
 
