@@ -11,6 +11,7 @@ import { StandGuideModal } from '@/components/StandGuideModal';
 import { CustomSignUploader } from '@/components/CustomSignUploader';
 import { LithophaneSection } from '@/components/LithophaneSection';
 import { BrailleSection } from '@/components/BrailleSection';
+import { FractionsSection } from '@/components/FractionsSection';
 import { LaserConfig } from '@/types';
 import { Sparkles, Maximize, Minimize, Heart, Award } from 'lucide-react';
 
@@ -31,7 +32,7 @@ const DEFAULT_CONFIG: LaserConfig = {
 };
 
 export default function Home() {
-  const [activeTool, setActiveTool] = useState<'laser' | 'lithophane' | 'braille'>('laser');
+  const [activeTool, setActiveTool] = useState<'laser' | 'lithophane' | 'braille' | 'fractions'>('laser');
   const [text, setText] = useState('');
   const [secondaryText, setSecondaryText] = useState('');
   const [laserConfig, setLaserConfig] = useState<LaserConfig>(DEFAULT_CONFIG);
@@ -159,9 +160,12 @@ export default function Home() {
         ) : activeTool === 'lithophane' ? (
           /* Herramienta 2: Imagen (Litofanía 3D y Grabado Láser MDF 8x8 cm) */
           <LithophaneSection />
-        ) : (
+        ) : activeTool === 'braille' ? (
           /* Herramienta 3: Llaveros Braille 3D (Impresión 3D STL y OBJ) */
           <BrailleSection />
+        ) : (
+          /* Herramienta 4: Fracciones Didácticas (Impresión 3D STL y Corte Láser SVG) */
+          <FractionsSection />
         )}
       </main>
 

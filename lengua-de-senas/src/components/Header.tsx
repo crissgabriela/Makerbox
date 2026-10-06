@@ -5,8 +5,8 @@ import Image from 'next/image';
 import { BookOpen } from 'lucide-react';
 
 interface HeaderProps {
-  activeTool: 'laser' | 'lithophane' | 'braille';
-  onSelectTool: (tool: 'laser' | 'lithophane' | 'braille') => void;
+  activeTool: 'laser' | 'lithophane' | 'braille' | 'fractions';
+  onSelectTool: (tool: 'laser' | 'lithophane' | 'braille' | 'fractions') => void;
   onOpenGuide?: () => void;
   onOpenCustomSigns: () => void;
 }
@@ -51,7 +51,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Navegación entre las 3 herramientas de Fabricación Digital */}
+          {/* Navegación entre las 4 herramientas de Fabricación Digital */}
           <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
             <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner">
               <button
@@ -88,6 +88,18 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 <span>⠇ Braille 3D</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onSelectTool('fractions')}
+                className={`flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-lg font-extrabold text-xs sm:text-sm transition-all active:scale-95 cursor-pointer ${
+                  activeTool === 'fractions'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }`}
+              >
+                <span>🥧 Fracciones</span>
               </button>
             </div>
 
