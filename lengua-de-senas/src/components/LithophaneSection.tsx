@@ -194,9 +194,11 @@ export const LithophaneSection: React.FC = () => {
   const [sessionId, setSessionId] = useState<string>('');
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
   const [customHost, setCustomHost] = useState<string>('');
+  const [showDomainSettings, setShowDomainSettings] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [receivedSuccess, setReceivedSuccess] = useState(false);
   const [isLocalhost, setIsLocalhost] = useState(false);
+  const [isVercel, setIsVercel] = useState(false);
   const [newPhotoNotification, setNewPhotoNotification] = useState<string | null>(null);
   const [isFramingOpen, setIsFramingOpen] = useState(false);
   const lastTimestampRef = useRef<number>(0);
@@ -207,6 +209,13 @@ export const LithophaneSection: React.FC = () => {
       const isLocal =
         window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       setIsLocalhost(isLocal);
+      const isVer = window.location.hostname.includes('.vercel.app');
+      setIsVercel(isVer);
+
+      const storedHost = localStorage.getItem('makerbox_stand_custom_host');
+      if (storedHost) {
+        setCustomHost(storedHost);
+      }
 
       // Código de sesión persistente para el stand (no cambia al cerrar el modal)
       const stored = localStorage.getItem('makerbox_stand_session');
@@ -219,6 +228,17 @@ export const LithophaneSection: React.FC = () => {
       }
     }
   }, []);
+
+  const handleUpdateCustomHost = (value: string) => {
+    setCustomHost(value);
+    if (typeof window !== 'undefined') {
+      if (value.trim()) {
+        localStorage.setItem('makerbox_stand_custom_host', value.trim());
+      } else {
+        localStorage.removeItem('makerbox_stand_custom_host');
+      }
+    }
+  };
 
   const openQrModal = () => {
     // Si ya se había recibido una foto en esta sesión o no hay código,
@@ -1619,24 +1639,99 @@ export const LithophaneSection: React.FC = () => {
                   </a>
                 </div>
 
-                {/* Ayuda para pruebas en Localhost */}
-                {isLocalhost && (
-                  <div className="rounded-2xl bg-amber-50 border border-amber-200/80 p-3 text-[11px] text-amber-900 flex flex-col gap-1">
-                    <span className="font-bold flex items-center gap-1">
-                      ⚠️ Nota para pruebas locales (localhost):
+                {/* Configuración de enlace, dominio público y ayuda para Vercel / Localhost */}
+                <div className="border-t border-slate-100 pt-2.5 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowDomainSettings(!showDomainSettings)}
+                    className="text-[11px] font-bold text-slate-500 hover:text-blue-600 flex items-center justify-between py-1 transition cursor-pointer"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Configuración de enlace / Vercel</span>
+                      {customHost.trim() && (
+                        <span className="px-1.5 py-0.2 rounded bg-blue-100 text-blue-700 text-[10px] font-black">
+                          Personalizado
+                        </span>
+                      )}
                     </span>
-                    <p className="text-amber-800 leading-tight">
-                      Tu celular no puede abrir &quot;localhost&quot;. Si tu laptop y celular están en la misma red Wi-Fi o zona móvil, ingresa la IP local de tu laptop (ej: <code className="bg-amber-100 px-1 rounded">http://192.168.1.50:3000</code>) o tu URL pública:
-                    </p>
-                    <input
-                      type="text"
-                      placeholder="http://192.168.x.x:3000 o https://tu-dominio.vercel.app"
-                      value={customHost}
-                      onChange={(e) => setCustomHost(e.target.value)}
-                      className="mt-1 w-full text-xs px-2.5 py-1.5 rounded-lg border border-amber-300 bg-white font-mono text-slate-800 outline-none"
-                    />
-                  </div>
-                )}
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {showDomainSettings ? '▲ Ocultar' : '▼ Configurar enlace'}
+                    </span>
+                  </button>
+
+                  {showDomainSettings ? (
+                    <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3.5 flex flex-col gap-2.5 text-xs text-slate-700 animate-in fade-in duration-150">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-bold text-slate-700">
+                            Dominio del QR (Host público):
+                          </label>
+                          {customHost.trim() && (
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateCustomHost('')}
+                              className="text-[10px] font-bold text-rose-600 hover:underline cursor-pointer"
+                            >
+                              Restablecer a URL actual
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          placeholder={
+                            typeof window !== 'undefined'
+                              ? window.location.origin
+                              : 'https://tu-proyecto.vercel.app'
+                          }
+                          value={customHost}
+                          onChange={(e) => handleUpdateCustomHost(e.target.value)}
+                          className="w-full text-xs px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono text-slate-800 outline-none focus:border-blue-600 transition"
+                        />
+                        <p className="text-[10px] text-slate-500 break-all">
+                          El QR apunta a:{' '}
+                          <code className="bg-slate-200/70 px-1 py-0.5 rounded font-mono text-[10px] text-blue-700">
+                            {getUploadUrl()}
+                          </code>
+                        </p>
+                      </div>
+
+                      {/* Guía rápida para Vercel Authentication */}
+                      <div className="rounded-xl bg-amber-50 border border-amber-200 p-2.5 flex flex-col gap-1 text-[11px] text-amber-900">
+                        <span className="font-extrabold flex items-center gap-1 text-amber-950">
+                          ⚠️ ¿El celular te pide &quot;Iniciar sesión en Vercel&quot;?
+                        </span>
+                        <p className="leading-relaxed text-amber-800 text-[10.5px]">
+                          Vercel activa por defecto protección con login para enlaces de prueba. Para dejarlo 100% público y abierto para cualquier asistente:
+                        </p>
+                        <ol className="list-decimal list-inside text-[10px] text-amber-900 space-y-0.5 font-medium pl-1">
+                          <li>
+                            Entra a <strong>vercel.com</strong> &gt; tu proyecto &gt; <strong>Settings</strong>.
+                          </li>
+                          <li>
+                            En el menú lateral entra a <strong>Deployment Protection</strong>.
+                          </li>
+                          <li>
+                            En <strong>Vercel Authentication</strong>, cámbialo a <strong>Disabled</strong> (Desactivado) y haz clic en <strong>Save</strong>.
+                          </li>
+                        </ol>
+                      </div>
+
+                      {isLocalhost && (
+                        <div className="rounded-xl bg-blue-50 border border-blue-200 p-2.5 text-[10.5px] text-blue-900">
+                          <strong>Nota Localhost:</strong> El celular no puede abrir &quot;localhost&quot;. Conecta tu celular a la misma red Wi-Fi e ingresa la IP local de tu laptop (ej: <code className="bg-blue-100 px-1 rounded">http://192.168.1.50:3000</code>).
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    /* Aviso discreto si está en Vercel pero el panel está cerrado */
+                    isVercel && (
+                      <p className="text-[10px] text-slate-400 leading-tight">
+                        💡 Si al escanear pide login en Vercel, desactiva <em>Deployment Protection</em> en tu panel de Vercel.
+                      </p>
+                    )
+                  )}
+                </div>
               </>
             )}
           </div>
