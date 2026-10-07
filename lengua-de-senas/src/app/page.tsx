@@ -12,8 +12,9 @@ import { CustomSignUploader } from '@/components/CustomSignUploader';
 import { LithophaneSection } from '@/components/LithophaneSection';
 import { BrailleSection } from '@/components/BrailleSection';
 import { FractionsSection } from '@/components/FractionsSection';
+import { ToolsHub, ToolId } from '@/components/ToolsHub';
 import { LaserConfig } from '@/types';
-import { Sparkles, Maximize, Minimize, Heart, Award } from 'lucide-react';
+import { Sparkles, Maximize, Minimize, Heart, Award, ArrowLeft } from 'lucide-react';
 
 const DEFAULT_CONFIG: LaserConfig = {
   mode: 'capsule',
@@ -32,7 +33,8 @@ const DEFAULT_CONFIG: LaserConfig = {
 };
 
 export default function Home() {
-  const [activeTool, setActiveTool] = useState<'laser' | 'lithophane' | 'braille' | 'fractions'>('laser');
+  // Estado de la herramienta activa. null = Menú 2x2 de selección
+  const [activeTool, setActiveTool] = useState<ToolId | null>(null);
   const [text, setText] = useState('');
   const [secondaryText, setSecondaryText] = useState('');
   const [laserConfig, setLaserConfig] = useState<LaserConfig>(DEFAULT_CONFIG);
@@ -91,28 +93,42 @@ export default function Home() {
         onOpenCustomSigns={() => setIsAlphabetOpen(true)}
       />
 
-      {/* Contenedor principal con diseño limpio y espacioso */}
+      {/* Contenedor principal */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-6 sm:gap-8">
-        {activeTool === 'laser' ? (
-          <>
-            {/* Banner suave y acogedor de bienvenida (altura compacta) */}
-            <div className="rounded-2xl bg-gradient-to-r from-purple-100 via-pink-50 to-amber-50 border border-purple-200/80 px-5 py-3.5 sm:px-6 sm:py-4 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-full bg-purple-200 text-purple-900 text-[11px] font-extrabold flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-purple-700" />
-                    Festival de Ciencia y Tecnología 2026
-                  </span>
-                </div>
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-0.5">
-                  Corta tu llavero en Lengua de Señas Chilena
-                </h1>
-                <p className="text-xs sm:text-sm text-slate-600 max-w-2xl leading-snug">
-                  Escribe cualquier palabra o tu nombre. La plataforma lo transforma en señas de manos y genera un diseño unificado para cortarlo con láser en madera y llevarte un recuerdo del stand.
-                </p>
-              </div>
+        {activeTool === null ? (
+          /* ========================================================================= */
+          /* PANTALLA PRINCIPAL: SELECCIÓN EN CUADRÍCULA 2X2 EN EL CENTRO              */
+          /* ========================================================================= */
+          <div className="flex flex-col items-center justify-center min-h-[60vh] w-full">
+            <ToolsHub onSelectTool={setActiveTool} />
 
-              {/* Botón para poner en Pantalla Completa en la pantalla táctil */}
+            <div className="mt-4 flex items-center justify-center">
+              <button
+                onClick={toggleFullscreen}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-black bg-white hover:bg-slate-100 text-purple-900 border-2 border-purple-200 shadow-sm active:scale-95 transition-all cursor-pointer"
+                title="Modo Pantalla Completa para la Pizarra Interactiva"
+              >
+                {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                <span>{isFullscreen ? 'Salir de Pantalla Completa' : '🖥️ Modo Pantalla Completa (Pizarra Táctil)'}</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* ========================================================================= */
+          /* HERRAMIENTA SELECCIONADA CON BOTÓN DE RETORNO AL INICIO 2X2               */
+          /* ========================================================================= */
+          <>
+            {/* Barra superior de navegación para volver a la selección de herramientas */}
+            <div className="flex items-center justify-between pb-1 flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => setActiveTool(null)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white hover:bg-purple-50 text-purple-900 font-extrabold text-xs sm:text-sm border-2 border-purple-200 shadow-sm active:scale-95 transition-all cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4 text-purple-700" />
+                <span>Volver a Selección de Herramientas (Menú)</span>
+              </button>
+
               <button
                 onClick={toggleFullscreen}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-purple-800 border border-purple-200 transition active:scale-95 shadow-xs flex-shrink-0 cursor-pointer"
@@ -123,49 +139,71 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Paso 1: Entrada de texto */}
-            <TextInputSection
-              value={text}
-              onChange={setText}
-              secondaryValue={secondaryText}
-              onSecondaryChange={setSecondaryText}
-              shape={laserConfig.keychainShape || 'capsule'}
-              onShapeChange={(s) => setLaserConfig((prev) => ({ ...prev, keychainShape: s }))}
-              isKeyboardOpen={isKeyboardOpen}
-              onToggleKeyboard={() => setIsKeyboardOpen(!isKeyboardOpen)}
-              onClear={handleClear}
-              onQuickWord={handleQuickWord}
-            />
+            {activeTool === 'laser' ? (
+              <>
+                {/* Banner suave y acogedor de bienvenida (altura compacta) */}
+                <div className="rounded-2xl bg-gradient-to-r from-purple-100 via-pink-50 to-amber-50 border border-purple-200/80 px-5 py-3.5 sm:px-6 sm:py-4 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full bg-purple-200 text-purple-900 text-[11px] font-extrabold flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-purple-700" />
+                        Festival de Ciencia y Tecnología 2026
+                      </span>
+                    </div>
+                    <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-0.5">
+                      Corta tu llavero en Lengua de Señas Chilena
+                    </h1>
+                    <p className="text-xs sm:text-sm text-slate-600 max-w-2xl leading-snug">
+                      Escribe cualquier palabra o tu nombre. La plataforma lo transforma en señas de manos y genera un diseño unificado para cortarlo con láser en madera y llevarte un recuerdo del stand.
+                    </p>
+                  </div>
+                </div>
 
-            {/* Paso 2: Visualización de las señas con ilustraciones chilenas */}
-            <SignDisplay
-              text={text}
-              secondaryText={secondaryText}
-              shape={laserConfig.keychainShape || 'capsule'}
-              onSelectLetter={() => {
-                setIsAlphabetOpen(true);
-              }}
-            />
+                {/* Paso 1: Entrada de texto */}
+                <TextInputSection
+                  value={text}
+                  onChange={setText}
+                  secondaryValue={secondaryText}
+                  onSecondaryChange={setSecondaryText}
+                  shape={laserConfig.keychainShape || 'capsule'}
+                  onShapeChange={(s) => setLaserConfig((prev) => ({ ...prev, keychainShape: s }))}
+                  isKeyboardOpen={isKeyboardOpen}
+                  onToggleKeyboard={() => setIsKeyboardOpen(!isKeyboardOpen)}
+                  onClear={handleClear}
+                  onQuickWord={handleQuickWord}
+                />
 
-            {/* Paso 3: Opciones del llavero físico */}
-            <LaserControls config={laserConfig} onChange={setLaserConfig} />
+                {/* Paso 2: Visualización de las señas con ilustraciones chilenas */}
+                <SignDisplay
+                  text={text}
+                  secondaryText={secondaryText}
+                  shape={laserConfig.keychainShape || 'capsule'}
+                  onSelectLetter={() => {
+                    setIsAlphabetOpen(true);
+                  }}
+                />
 
-            {/* Paso 4: Vista previa y descarga para la cortadora láser */}
-            <LaserSvgGenerator
-              text={text}
-              secondaryText={secondaryText}
-              config={laserConfig}
-            />
+                {/* Paso 3: Opciones del llavero físico */}
+                <LaserControls config={laserConfig} onChange={setLaserConfig} />
+
+                {/* Paso 4: Vista previa y descarga para la cortadora láser */}
+                <LaserSvgGenerator
+                  text={text}
+                  secondaryText={secondaryText}
+                  config={laserConfig}
+                />
+              </>
+            ) : activeTool === 'lithophane' ? (
+              /* Herramienta 2: Imagen (Litofanía 3D y Grabado Láser MDF 8x8 cm) */
+              <LithophaneSection />
+            ) : activeTool === 'braille' ? (
+              /* Herramienta 3: Llaveros Braille 3D (Impresión 3D STL y OBJ) */
+              <BrailleSection />
+            ) : (
+              /* Herramienta 4: Fracciones Didácticas (Impresión 3D STL y Corte Láser SVG) */
+              <FractionsSection />
+            )}
           </>
-        ) : activeTool === 'lithophane' ? (
-          /* Herramienta 2: Imagen (Litofanía 3D y Grabado Láser MDF 8x8 cm) */
-          <LithophaneSection />
-        ) : activeTool === 'braille' ? (
-          /* Herramienta 3: Llaveros Braille 3D (Impresión 3D STL y OBJ) */
-          <BrailleSection />
-        ) : (
-          /* Herramienta 4: Fracciones Didácticas (Impresión 3D STL y Corte Láser SVG) */
-          <FractionsSection />
         )}
       </main>
 

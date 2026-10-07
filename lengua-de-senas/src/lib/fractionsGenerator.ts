@@ -413,9 +413,96 @@ export function createSinglePieceWithMarkings(
   let finalPieceGeo: THREE.BufferGeometry;
   let markingsGeo: THREE.BufferGeometry | null = null;
 
-  if (config.mode === 'numbers') {
+  if (config.materialStyle === 'mdf') {
     // =========================================================================
-    // MODO NÚMEROS: BAJO RELIEVE (Deboss de 0.8 mm en Z = 2.2 a 3.0 mm)
+    // MODO MADERA MDF (Corte y Grabado Láser):
+    // - Pieza de corte sólido plano de 3 mm (sin cavidades profundas ni domos)
+    // - Números y Braille son quemaduras láser oscuras PLANAS al ras de la madera
+    // =========================================================================
+    const baseGeo = new THREE.ExtrudeGeometry(sectorShape, {
+      depth: pieceThick, // 3 mm sólido
+      bevelEnabled: false,
+      curveSegments: 24
+    });
+
+    if (config.mode === 'numbers') {
+      const textStr = `1/${den}`;
+      const fontSize = den <= 3 ? 7.2 : den === 4 ? 6.5 : 5.8;
+      const shapes = helvetikerFont.generateShapes(textStr, fontSize);
+
+      const bbox = new THREE.Box2();
+      shapes.forEach((s) => {
+        s.getPoints(12).forEach((p) => bbox.expandByPoint(p));
+      });
+      const textWidth = bbox.max.x - bbox.min.x;
+      const textHeight = bbox.max.y - bbox.min.y;
+
+      const targetY = rPocket * 0.60; // ~18 mm
+      const textOffsetX = -bbox.min.x - textWidth / 2;
+      const textOffsetY = targetY - bbox.min.y - textHeight / 2;
+
+      const textGeos: THREE.BufferGeometry[] = [];
+      shapes.forEach((shape) => {
+        // Texto plano quemado láser (al ras de la superficie de madera)
+        const tGeo = new THREE.ExtrudeGeometry(shape, {
+          depth: 0.05,
+          bevelEnabled: false,
+          curveSegments: 16
+        });
+        tGeo.translate(textOffsetX, textOffsetY, pieceThick + 0.02);
+        textGeos.push(tGeo);
+      });
+      markingsGeo = mergeBufferGeometries(textGeos);
+    } else {
+      // Braille en MDF: discos circulares planos quemados por láser (NO domos esféricos)
+      const brailleInfo = FRACTION_BRAILLE_CELLS[den];
+      const cells = brailleInfo.cells;
+
+      const dotSpacing = 2.2;
+      const colSpacing = 2.3;
+      const cellSpacing = 5.2;
+      const dotRadius = config.dotDiameterMm / 2; // 1.0 mm
+
+      const dotGeos: THREE.BufferGeometry[] = [];
+      const totalBrailleWidth = (cells.length - 1) * cellSpacing + colSpacing;
+      const startX = -totalBrailleWidth / 2;
+      const centerY = rPocket * 0.58; // ~17.4 mm
+
+      cells.forEach((cellDots, cellIdx) => {
+        const cellCenterX = startX + cellIdx * cellSpacing + colSpacing / 2;
+        const dotCoords: Record<number, [number, number]> = {
+          1: [cellCenterX - colSpacing / 2, centerY + dotSpacing],
+          2: [cellCenterX - colSpacing / 2, centerY],
+          3: [cellCenterX - colSpacing / 2, centerY - dotSpacing],
+          4: [cellCenterX + colSpacing / 2, centerY + dotSpacing],
+          5: [cellCenterX + colSpacing / 2, centerY],
+          6: [cellCenterX + colSpacing / 2, centerY - dotSpacing]
+        };
+
+        cellDots.forEach((d) => {
+          const coord = dotCoords[d];
+          if (coord) {
+            // Disco plano circular quemado por láser (al ras de la superficie Z = pieceThick)
+            const diskShape = new THREE.Shape();
+            diskShape.absarc(coord[0], coord[1], dotRadius, 0, Math.PI * 2, false);
+            const diskGeo = new THREE.ExtrudeGeometry(diskShape, {
+              depth: 0.05,
+              bevelEnabled: false,
+              curveSegments: 20
+            });
+            diskGeo.translate(0, 0, pieceThick + 0.02);
+            dotGeos.push(diskGeo);
+          }
+        });
+      });
+
+      markingsGeo = mergeBufferGeometries(dotGeos);
+    }
+
+    finalPieceGeo = baseGeo;
+  } else if (config.mode === 'numbers') {
+    // =========================================================================
+    // MODO PLA NÚMEROS: BAJO RELIEVE (Deboss de 0.8 mm en Z = 2.2 a 3.0 mm)
     // =========================================================================
     const debossDepth = config.textDebossDepthMm; // 0.8 mm
     const floorThick = pieceThick - debossDepth; // 2.2 mm base sólida
@@ -461,7 +548,7 @@ export function createSinglePieceWithMarkings(
       outerHole.closePath();
       topSectorShape.holes.push(outerHole);
 
-      // Inlay grabado visual (piso de cavidad oscuro quemado para el visor)
+      // Inlay grabado visual (piso de cavidad oscuro para el visor)
       const letterShape = new THREE.Shape();
       pts.forEach((pt, i) => {
         const tx = pt.x + textOffsetX;
@@ -504,7 +591,7 @@ export function createSinglePieceWithMarkings(
         });
       }
 
-      // Geometría fina quemada en el fondo del bajo relieve (Z = floorThick a floorThick + 0.15mm)
+      // Geometría fina en el fondo del bajo relieve
       const cavityFloor = new THREE.ExtrudeGeometry(letterShape, {
         depth: 0.15,
         bevelEnabled: false,
@@ -525,7 +612,7 @@ export function createSinglePieceWithMarkings(
     markingsGeo = mergeBufferGeometries(textCavityFloorGeos);
   } else {
     // =========================================================================
-    // MODO BRAILLE: SOBRE RELIEVE (Puntos Ø 2 mm, Altura 1 mm en Z = 3.0 a 4.0 mm)
+    // MODO PLA BRAILLE: SOBRE RELIEVE (Puntos Ø 2 mm, Altura 1 mm en Z = 3.0 a 4.0 mm)
     // =========================================================================
     const baseGeo = new THREE.ExtrudeGeometry(sectorShape, {
       depth: pieceThick, // 3 mm
@@ -597,7 +684,7 @@ export function createSinglePieceGeometry(
 
 /**
  * Genera el set completo de piezas rotadas para encajar en el plato
- * Con soporte para distancia de explosión (para verlas desarmadas o armadas)
+ * Con soporte para apertura en diagonal hacia arriba (se levantan y se abren las piezas)
  */
 export function createAssembledPiecesGeometry(
   config: FractionsConfig,
@@ -610,12 +697,17 @@ export function createAssembledPiecesGeometry(
   const pieceGeos: THREE.BufferGeometry[] = [];
   const markingGeos: THREE.BufferGeometry[] = [];
 
+  // Apertura en diagonal hacia arriba:
+  // - Desplazamiento radial en el plano XY = explodeDistanceMm
+  // - Elevación vertical en el eje Z = explodeDistanceMm * 0.85
+  const zLift = explodeDistanceMm * 0.85;
+
   for (let i = 0; i < den; i++) {
     const pGeo = pieceGeo.clone();
     const rotZ = i * angleStep;
 
     if (explodeDistanceMm > 0) {
-      pGeo.translate(0, explodeDistanceMm, 0);
+      pGeo.translate(0, explodeDistanceMm, zLift);
     }
     pGeo.rotateZ(rotZ);
     pGeo.translate(0, 0, config.trayFloorThicknessMm);
@@ -624,7 +716,7 @@ export function createAssembledPiecesGeometry(
     if (singleMarkingGeo) {
       const mGeo = singleMarkingGeo.clone();
       if (explodeDistanceMm > 0) {
-        mGeo.translate(0, explodeDistanceMm, 0);
+        mGeo.translate(0, explodeDistanceMm, zLift);
       }
       mGeo.rotateZ(rotZ);
       mGeo.translate(0, 0, config.trayFloorThicknessMm);

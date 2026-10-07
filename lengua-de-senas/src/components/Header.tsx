@@ -5,8 +5,8 @@ import Image from 'next/image';
 import { BookOpen } from 'lucide-react';
 
 interface HeaderProps {
-  activeTool: 'laser' | 'lithophane' | 'braille' | 'fractions';
-  onSelectTool: (tool: 'laser' | 'lithophane' | 'braille' | 'fractions') => void;
+  activeTool: 'laser' | 'lithophane' | 'braille' | 'fractions' | null;
+  onSelectTool: (tool: 'laser' | 'lithophane' | 'braille' | 'fractions' | null) => void;
   onOpenGuide?: () => void;
   onOpenCustomSigns: () => void;
 }
@@ -22,7 +22,11 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 py-3 sm:py-3.5">
         <div className="flex flex-col md:flex-row items-center justify-between gap-3 sm:gap-4">
           {/* Logos e Identidad Institucional */}
-          <div className="flex items-center gap-4 sm:gap-6 justify-center md:justify-start">
+          <div
+            onClick={() => onSelectTool(null)}
+            className="flex items-center gap-4 sm:gap-6 justify-center md:justify-start cursor-pointer hover:opacity-90 transition-opacity"
+            title="Volver a Selección de Herramientas"
+          >
             {/* Logo MakerBox */}
             <div className="flex items-center">
               <Image
@@ -54,22 +58,36 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Navegación entre las 4 herramientas de Fabricación Digital */}
           <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
             <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner">
+              {/* Botón Inicio / Menú 2x2 */}
+              <button
+                type="button"
+                onClick={() => onSelectTool(null)}
+                className={`flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-lg font-extrabold text-xs sm:text-sm transition-all active:scale-95 cursor-pointer ${
+                  activeTool === null
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'text-slate-700 hover:text-slate-950 hover:bg-white/80'
+                }`}
+                title="Volver a Selección en Cuadrícula 2x2"
+              >
+                <span>🏠 Inicio</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => onSelectTool('laser')}
-                className={`flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-lg font-extrabold text-xs sm:text-sm transition-all active:scale-95 cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-lg font-extrabold text-xs sm:text-sm transition-all active:scale-95 cursor-pointer ${
                   activeTool === 'laser'
                     ? 'bg-purple-600 text-white shadow-sm'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                 }`}
               >
-                <span>✂️ Llavero Láser</span>
+                <span>✂️ Señas</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => onSelectTool('lithophane')}
-                className={`flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-lg font-extrabold text-xs sm:text-sm transition-all active:scale-95 cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-lg font-extrabold text-xs sm:text-sm transition-all active:scale-95 cursor-pointer ${
                   activeTool === 'lithophane'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
@@ -81,19 +99,19 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectTool('braille')}
-                className={`flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-lg font-extrabold text-xs sm:text-sm transition-all active:scale-95 cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-lg font-extrabold text-xs sm:text-sm transition-all active:scale-95 cursor-pointer ${
                   activeTool === 'braille'
-                    ? 'bg-amber-600 text-white shadow-sm'
+                    ? 'bg-indigo-600 text-white shadow-sm'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                 }`}
               >
-                <span>⠇ Braille 3D</span>
+                <span>⠇ Braille</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => onSelectTool('fractions')}
-                className={`flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-lg font-extrabold text-xs sm:text-sm transition-all active:scale-95 cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-lg font-extrabold text-xs sm:text-sm transition-all active:scale-95 cursor-pointer ${
                   activeTool === 'fractions'
                     ? 'bg-emerald-600 text-white shadow-sm'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
