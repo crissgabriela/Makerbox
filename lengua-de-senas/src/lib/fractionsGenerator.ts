@@ -8,15 +8,17 @@ const helvetikerFont = new Font(HELVETIKER_BOLD);
 
 export type FractionDenominator = 2 | 3 | 4 | 5 | 6;
 export type MarkingMode = 'numbers' | 'braille';
+export type MaterialStyle = 'mdf' | 'pla_white' | 'pla_color';
 
 export interface FractionsConfig {
   denominator: FractionDenominator; // 2, 3, 4, 5, 6
   mode: MarkingMode; // 'numbers' (bajo relieve) o 'braille' (sobre relieve)
+  materialStyle: MaterialStyle; // 'mdf' (MDF 3mm corte láser) o 'pla_white' / 'pla_color'
   trayOuterDiameterMm: number; // 70 mm
   trayInnerDiameterMm: number; // 60 mm
-  trayTotalHeightMm: number; // 5 mm
+  trayTotalHeightMm: number; // 6 mm (MDF: 3mm base + 3mm aro) o 5 mm (PLA)
   trayPocketDepthMm: number; // 3 mm
-  trayFloorThicknessMm: number; // 2 mm
+  trayFloorThicknessMm: number; // 3 mm (MDF) o 2 mm (PLA)
   pieceThicknessMm: number; // 3 mm
   toleranceMm: number; // 0.2 mm
   textDebossDepthMm: number; // 0.8 mm
@@ -31,19 +33,20 @@ export interface FractionsConfig {
 export const DEFAULT_FRACTIONS_CONFIG: FractionsConfig = {
   denominator: 3, // 1/3 como en las fotos de muestra
   mode: 'numbers', // 'numbers' o 'braille'
+  materialStyle: 'mdf', // MDF 3mm por defecto
   trayOuterDiameterMm: 70,
   trayInnerDiameterMm: 60,
-  trayTotalHeightMm: 5,
+  trayTotalHeightMm: 6, // 6 mm para MDF (3mm base + 3mm anillo)
   trayPocketDepthMm: 3,
-  trayFloorThicknessMm: 2,
+  trayFloorThicknessMm: 3, // 3 mm base en MDF
   pieceThicknessMm: 3,
-  toleranceMm: 0.2, // 0.2 mm de tolerancia para no interferir
+  toleranceMm: 0.2, // 0.2 mm de tolerancia calibrada
   textDebossDepthMm: 0.8,
   dotDiameterMm: 2.0, // 2 mm diámetro solicitado
   dotHeightMm: 1.0, // 1 mm altura solicitada
-  trayColor: '#ffffff',
-  pieceColor: '#ffffff',
-  markingColor: '#0f172a',
+  trayColor: '#deb887',
+  pieceColor: '#e8c49a',
+  markingColor: '#2b1408',
   explodeDistanceMm: 0
 };
 
@@ -51,6 +54,7 @@ export interface FractionsModelResult {
   config: FractionsConfig;
   trayGeometry: THREE.BufferGeometry;
   piecesGeometry: THREE.BufferGeometry; // Todas las piezas ensambladas / explosionadas
+  markingsGeometry: THREE.BufferGeometry | null; // Números grabados o puntos braille
   singlePieceGeometry: THREE.BufferGeometry; // 1 pieza individual centrada
   printLayoutGeometry: THREE.BufferGeometry; // Plato + Piezas lado a lado en una sola placa para imprimir
   
@@ -75,16 +79,6 @@ export interface FractionsModelResult {
 }
 
 // Mapeo Braille para fracciones (numerador 1, barra de fracción, denominador)
-// Puntos: 1..6
-// Prefijo de número: [3, 4, 5, 6]
-// 1: [1]
-// Barra de fracción: [3, 4]
-// Denominadores:
-// 2: [1, 2]
-// 3: [1, 4]
-// 4: [1, 4, 5]
-// 5: [1, 5]
-// 6: [1, 2, 4]
 export const FRACTION_BRAILLE_CELLS: Record<FractionDenominator, { name: string; cells: number[][] }> = {
   2: {
     name: '1/2',
@@ -142,6 +136,7 @@ function mergeBufferGeometries(geometries: THREE.BufferGeometry[]): THREE.Buffer
   const normals: number[] = [];
 
   for (const geo of geometries) {
+    if (!geo) continue;
     const nonIndexed = geo.index ? geo.toNonIndexed() : geo;
     const posAttr = nonIndexed.getAttribute('position');
     const normAttr = nonIndexed.getAttribute('normal');
@@ -221,119 +216,45 @@ export function exportBufferGeometryToBinaryStl(geometry: THREE.BufferGeometry):
 
 /**
  * Crea la geometría 3D del plato cilíndrico con alojamiento interior
+ * - 100% cerrada y hermética usando ExtrudeGeometry con contorno y hueco
  * - Diámetro exterior: 70 mm (radio 35 mm)
- * - Altura total: 5 mm
- * - Cavidad interior: diámetro 60 mm (radio 30 mm), profundidad 3 mm (piso en Z=2 mm)
+ * - Cavidad interior: diámetro 60 mm (radio 30 mm), profundidad 3 mm
+ * - Altura total: 6 mm para MDF (3 mm base + 3 mm anillo) o 5 mm para PLA
  */
 export function createTrayGeometry(config: FractionsConfig): THREE.BufferGeometry {
   const rOuter = config.trayOuterDiameterMm / 2; // 35 mm
   const rInner = config.trayInnerDiameterMm / 2; // 30 mm
-  const hTotal = config.trayTotalHeightMm; // 5 mm
-  const hFloor = config.trayFloorThicknessMm; // 2 mm
-  const segments = 72; // Suavidad circular alta
+  const hFloor = config.trayFloorThicknessMm; // 3 mm (MDF) o 2 mm (PLA)
+  const hTotal = config.trayTotalHeightMm; // 6 mm (MDF) o 5 mm (PLA)
+  const ringDepth = Math.max(1, hTotal - hFloor); // 3 mm
 
-  const positions: number[] = [];
-  const normals: number[] = [];
+  // 1. Base sólida cilíndrica del fondo (Z = 0 a hFloor)
+  const floorShape = new THREE.Shape();
+  floorShape.absarc(0, 0, rOuter, 0, Math.PI * 2, false);
+  const floorGeo = new THREE.ExtrudeGeometry(floorShape, {
+    depth: hFloor,
+    bevelEnabled: false,
+    curveSegments: 72
+  });
 
-  const addTri = (
-    p1: [number, number, number],
-    p2: [number, number, number],
-    p3: [number, number, number]
-  ) => {
-    const ux = p2[0] - p1[0],
-      uy = p2[1] - p1[1],
-      uz = p2[2] - p1[2];
-    const vx = p3[0] - p1[0],
-      vy = p3[1] - p1[1],
-      vz = p3[2] - p1[2];
-    let nx = uy * vz - uz * vy;
-    let ny = uz * vx - ux * vz;
-    let nz = ux * vy - uy * vx;
-    const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
-    nx /= len;
-    ny /= len;
-    nz /= len;
+  // 2. Anillo perimetral superior (Z = hFloor a hTotal)
+  const ringShape = new THREE.Shape();
+  ringShape.absarc(0, 0, rOuter, 0, Math.PI * 2, false);
+  const holePath = new THREE.Path();
+  holePath.absarc(0, 0, rInner, 0, Math.PI * 2, true); // Sentido horario para corte interior
+  ringShape.holes.push(holePath);
 
-    positions.push(...p1, ...p2, ...p3);
-    normals.push(nx, ny, nz, nx, ny, nz, nx, ny, nz);
-  };
+  const ringGeo = new THREE.ExtrudeGeometry(ringShape, {
+    depth: ringDepth,
+    bevelEnabled: false,
+    curveSegments: 72
+  });
+  ringGeo.translate(0, 0, hFloor);
 
-  // 1. Tapa inferior (Z = 0, hacia abajo)
-  for (let i = 0; i < segments; i++) {
-    const a1 = (i / segments) * Math.PI * 2;
-    const a2 = ((i + 1) / segments) * Math.PI * 2;
-    const x1 = Math.cos(a1) * rOuter;
-    const y1 = Math.sin(a1) * rOuter;
-    const x2 = Math.cos(a2) * rOuter;
-    const y2 = Math.sin(a2) * rOuter;
-    addTri([0, 0, 0], [x2, y2, 0], [x1, y1, 0]);
-  }
-
-  // 2. Pared cilíndrica exterior (de Z = 0 a Z = hTotal)
-  for (let i = 0; i < segments; i++) {
-    const a1 = (i / segments) * Math.PI * 2;
-    const a2 = ((i + 1) / segments) * Math.PI * 2;
-    const x1 = Math.cos(a1) * rOuter;
-    const y1 = Math.sin(a1) * rOuter;
-    const x2 = Math.cos(a2) * rOuter;
-    const y2 = Math.sin(a2) * rOuter;
-
-    // Cuadrilátero exterior
-    addTri([x1, y1, 0], [x2, y2, 0], [x2, y2, hTotal]);
-    addTri([x1, y1, 0], [x2, y2, hTotal], [x1, y1, hTotal]);
-  }
-
-  // 3. Borde superior anular (Z = hTotal, entre rInner y rOuter)
-  for (let i = 0; i < segments; i++) {
-    const a1 = (i / segments) * Math.PI * 2;
-    const a2 = ((i + 1) / segments) * Math.PI * 2;
-    const c1 = Math.cos(a1),
-      s1 = Math.sin(a1);
-    const c2 = Math.cos(a2),
-      s2 = Math.sin(a2);
-
-    const x1Out = c1 * rOuter,
-      y1Out = s1 * rOuter;
-    const x2Out = c2 * rOuter,
-      y2Out = s2 * rOuter;
-    const x1In = c1 * rInner,
-      y1In = s1 * rInner;
-    const x2In = c2 * rInner,
-      y2In = s2 * rInner;
-
-    addTri([x1In, y1In, hTotal], [x2In, y2In, hTotal], [x2Out, y2Out, hTotal]);
-    addTri([x1In, y1In, hTotal], [x2Out, y2Out, hTotal], [x1Out, y1Out, hTotal]);
-  }
-
-  // 4. Pared interior cilíndrica del alojamiento (de Z = hTotal a Z = hFloor, normal hacia adentro)
-  for (let i = 0; i < segments; i++) {
-    const a1 = (i / segments) * Math.PI * 2;
-    const a2 = ((i + 1) / segments) * Math.PI * 2;
-    const x1 = Math.cos(a1) * rInner;
-    const y1 = Math.sin(a1) * rInner;
-    const x2 = Math.cos(a2) * rInner;
-    const y2 = Math.sin(a2) * rInner;
-
-    addTri([x1, y1, hTotal], [x2, y2, hTotal], [x2, y2, hFloor]);
-    addTri([x1, y1, hTotal], [x2, y2, hFloor], [x1, y1, hFloor]);
-  }
-
-  // 5. Fondo interior del alojamiento (Z = hFloor, normal hacia arriba)
-  for (let i = 0; i < segments; i++) {
-    const a1 = (i / segments) * Math.PI * 2;
-    const a2 = ((i + 1) / segments) * Math.PI * 2;
-    const x1 = Math.cos(a1) * rInner;
-    const y1 = Math.sin(a1) * rInner;
-    const x2 = Math.cos(a2) * rInner;
-    const y2 = Math.sin(a2) * rInner;
-    addTri([0, 0, hFloor], [x1, y1, hFloor], [x2, y2, hFloor]);
-  }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-  geo.computeVertexNormals();
-  return geo;
+  // Fusión perfecta: cuerpo 100% sólido sin bordes abiertos ni normales invertidas
+  const trayGeo = mergeBufferGeometries([floorGeo, ringGeo]);
+  trayGeo.computeVertexNormals();
+  return trayGeo;
 }
 
 /**
@@ -355,35 +276,20 @@ function createSectorShape(
   const normalOffset = toleranceMm / 2;
 
   // Vértice central desplazado a lo largo de la bisectriz (+Y)
-  // En coordenadas polares simétricas respecto al eje +Y (90°):
   const rApex = normalOffset / Math.sin(halfTheta);
 
   // Ángulo inicial y final respecto al eje X
   const alpha1 = Math.PI / 2 - halfTheta;
   const alpha2 = Math.PI / 2 + halfTheta;
 
-  // Vectores unitarios de las caras radiales
   const u1x = Math.cos(alpha1);
   const u1y = Math.sin(alpha1);
-  const u2x = Math.cos(alpha2);
-  const u2y = Math.sin(alpha2);
-
-  // Normales hacia el interior del sector
-  // Para cara 1 (alpha1): rotación +90° = (-u1y, u1x)
-  const n1x = -u1y;
-  const n1y = u1x;
-  // Para cara 2 (alpha2): rotación -90° = (u2y, -u2x)
-  const n2x = u2y;
-  const n2y = -u2x;
 
   // Vértice central interior (punta recortada con holgura)
   const apexX = 0;
   const apexY = rApex;
 
-  // Esquina exterior 1: intersección de la recta radial retraída con el arco de radio rEff
-  // Recta 1: p(t) = (0, rApex) + t * (u1x, u1y)
-  // |p(t)|^2 = rEff^2
-  // t^2 + 2*t*(rApex*u1y) + rApex^2 - rEff^2 = 0
+  // Esquina exterior 1
   const b1 = 2 * rApex * u1y;
   const c1 = rApex * rApex - rEff * rEff;
   const disc1 = Math.sqrt(Math.max(0, b1 * b1 - 4 * c1));
@@ -402,7 +308,7 @@ function createSectorShape(
   // Arco circular desde (x1, y1) hasta (x2, y2)
   const arcStartAngle = Math.atan2(y1, x1);
   const arcEndAngle = Math.atan2(y2, x2);
-  const arcSegments = Math.max(16, Math.floor(48 / denominator));
+  const arcSegments = Math.max(20, Math.floor(64 / denominator));
 
   for (let s = 1; s <= arcSegments; s++) {
     const t = s / arcSegments;
@@ -490,12 +396,12 @@ function createBrailleDome(
 
 /**
  * Genera una sola pieza de fracción en 3D con marcado en bajo relieve o Braille
- * Bisectriz orientada en el eje +Y
+ * Retorna tanto la pieza física completa como la geometría separada de los grabados/puntos
  */
-export function createSinglePieceGeometry(
+export function createSinglePieceWithMarkings(
   config: FractionsConfig,
   customDenominator?: FractionDenominator
-): THREE.BufferGeometry {
+): { pieceGeo: THREE.BufferGeometry; markingsGeo: THREE.BufferGeometry | null } {
   const den = customDenominator || config.denominator;
   const rPocket = config.trayInnerDiameterMm / 2; // 30 mm
   const pieceThick = config.pieceThicknessMm; // 3 mm
@@ -505,6 +411,7 @@ export function createSinglePieceGeometry(
   const sectorShape = createSectorShape(den, rPocket, tol);
 
   let finalPieceGeo: THREE.BufferGeometry;
+  let markingsGeo: THREE.BufferGeometry | null = null;
 
   if (config.mode === 'numbers') {
     // =========================================================================
@@ -524,14 +431,10 @@ export function createSinglePieceGeometry(
     // 1.2 Capa superior con letras talladas como huecos (Z = 2.2 a 3.0 mm)
     const topSectorShape = createSectorShape(den, rPocket, tol);
 
-    // Texto: "1/N"
     const textStr = `1/${den}`;
-    // Tamaño de fuente ajustado según el ángulo disponible
     const fontSize = den <= 3 ? 7.2 : den === 4 ? 6.5 : 5.8;
-
     const shapes = helvetikerFont.generateShapes(textStr, fontSize);
 
-    // Calcular centro del texto para posicionarlo a ~18 mm del centro en la bisectriz (+Y)
     const bbox = new THREE.Box2();
     shapes.forEach((s) => {
       s.getPoints(12).forEach((p) => bbox.expandByPoint(p));
@@ -539,14 +442,13 @@ export function createSinglePieceGeometry(
     const textWidth = bbox.max.x - bbox.min.x;
     const textHeight = bbox.max.y - bbox.min.y;
 
-    // Posición del texto en el sector
     const targetY = rPocket * 0.60; // ~18 mm
     const textOffsetX = -bbox.min.x - textWidth / 2;
     const textOffsetY = targetY - bbox.min.y - textHeight / 2;
 
     const islandGeos: THREE.BufferGeometry[] = [];
+    const textCavityFloorGeos: THREE.BufferGeometry[] = [];
 
-    // Perforar contorno exterior de los números en la capa superior
     shapes.forEach((shape) => {
       const outerHole = new THREE.Path();
       const pts = shape.getPoints(16);
@@ -559,11 +461,32 @@ export function createSinglePieceGeometry(
       outerHole.closePath();
       topSectorShape.holes.push(outerHole);
 
-      // Islas interiores (counters de letras como '4', '6')
+      // Inlay grabado visual (piso de cavidad oscuro quemado para el visor)
+      const letterShape = new THREE.Shape();
+      pts.forEach((pt, i) => {
+        const tx = pt.x + textOffsetX;
+        const ty = pt.y + textOffsetY;
+        if (i === 0) letterShape.moveTo(tx, ty);
+        else letterShape.lineTo(tx, ty);
+      });
+      letterShape.closePath();
+
+      // Islas interiores
       if (shape.holes && shape.holes.length > 0) {
         shape.holes.forEach((innerHole) => {
-          const islandShape = new THREE.Shape();
+          const innerPath = new THREE.Path();
           const innerPts = innerHole.getPoints(16);
+          innerPts.forEach((ipt, i) => {
+            const tx = ipt.x + textOffsetX;
+            const ty = ipt.y + textOffsetY;
+            if (i === 0) innerPath.moveTo(tx, ty);
+            else innerPath.lineTo(tx, ty);
+          });
+          innerPath.closePath();
+          letterShape.holes.push(innerPath);
+
+          // Isla interior sólida para la pieza base
+          const islandShape = new THREE.Shape();
           innerPts.forEach((ipt, i) => {
             const tx = ipt.x + textOffsetX;
             const ty = ipt.y + textOffsetY;
@@ -580,6 +503,15 @@ export function createSinglePieceGeometry(
           islandGeos.push(islandGeo);
         });
       }
+
+      // Geometría fina quemada en el fondo del bajo relieve (Z = floorThick a floorThick + 0.15mm)
+      const cavityFloor = new THREE.ExtrudeGeometry(letterShape, {
+        depth: 0.15,
+        bevelEnabled: false,
+        curveSegments: 16
+      });
+      cavityFloor.translate(0, 0, floorThick);
+      textCavityFloorGeos.push(cavityFloor);
     });
 
     const topGeo = new THREE.ExtrudeGeometry(topSectorShape, {
@@ -590,6 +522,7 @@ export function createSinglePieceGeometry(
     topGeo.translate(0, 0, floorThick);
 
     finalPieceGeo = mergeBufferGeometries([floorGeo, topGeo, ...islandGeos]);
+    markingsGeo = mergeBufferGeometries(textCavityFloorGeos);
   } else {
     // =========================================================================
     // MODO BRAILLE: SOBRE RELIEVE (Puntos Ø 2 mm, Altura 1 mm en Z = 3.0 a 4.0 mm)
@@ -600,15 +533,9 @@ export function createSinglePieceGeometry(
       curveSegments: 24
     });
 
-    // Puntos Braille táctiles
     const brailleInfo = FRACTION_BRAILLE_CELLS[den];
     const cells = brailleInfo.cells;
 
-    // Disposición táctil centrada en la bisectriz (+Y)
-    // En cada celda Braille:
-    // Puntos 1, 2, 3 en columna izquierda (dx = -1.1 mm)
-    // Puntos 4, 5, 6 en columna derecha (dx = +1.1 mm)
-    // Separación vertical entre puntos: 2.2 mm
     const dotSpacing = 2.2;
     const colSpacing = 2.3;
     const cellSpacing = 5.2;
@@ -618,7 +545,6 @@ export function createSinglePieceGeometry(
 
     const dotGeos: THREE.BufferGeometry[] = [];
 
-    // Dependiendo del denominador, centramos horizontalmente las celdas
     const totalBrailleWidth = (cells.length - 1) * cellSpacing + colSpacing;
     const startX = -totalBrailleWidth / 2;
     const centerY = rPocket * 0.58; // ~17.4 mm de distancia radial
@@ -652,11 +578,21 @@ export function createSinglePieceGeometry(
       });
     });
 
+    markingsGeo = mergeBufferGeometries(dotGeos);
     finalPieceGeo = mergeBufferGeometries([baseGeo, ...dotGeos]);
   }
 
   finalPieceGeo.computeVertexNormals();
-  return finalPieceGeo;
+  if (markingsGeo) markingsGeo.computeVertexNormals();
+  return { pieceGeo: finalPieceGeo, markingsGeo };
+}
+
+export function createSinglePieceGeometry(
+  config: FractionsConfig,
+  customDenominator?: FractionDenominator
+): THREE.BufferGeometry {
+  const { pieceGeo } = createSinglePieceWithMarkings(config, customDenominator);
+  return pieceGeo;
 }
 
 /**
@@ -666,33 +602,40 @@ export function createSinglePieceGeometry(
 export function createAssembledPiecesGeometry(
   config: FractionsConfig,
   explodeDistanceMm = 0
-): THREE.BufferGeometry {
+): { piecesGeo: THREE.BufferGeometry; markingsGeo: THREE.BufferGeometry | null } {
   const den = config.denominator;
-  const singleGeo = createSinglePieceGeometry(config);
+  const { pieceGeo, markingsGeo: singleMarkingGeo } = createSinglePieceWithMarkings(config);
 
   const angleStep = (Math.PI * 2) / den;
   const pieceGeos: THREE.BufferGeometry[] = [];
+  const markingGeos: THREE.BufferGeometry[] = [];
 
   for (let i = 0; i < den; i++) {
-    const geo = singleGeo.clone();
-
-    // Rotación del sector alrededor del centro Z
-    // Como el sector fue diseñado con la bisectriz en +Y (90° = PI/2),
-    // para colocar la primera pieza orientada arriba o en ángulo i:
+    const pGeo = pieceGeo.clone();
     const rotZ = i * angleStep;
 
-    // Desplazamiento de explosión radial a lo largo de la bisectriz original (+Y)
     if (explodeDistanceMm > 0) {
-      geo.translate(0, explodeDistanceMm, 0);
+      pGeo.translate(0, explodeDistanceMm, 0);
     }
+    pGeo.rotateZ(rotZ);
+    pGeo.translate(0, 0, config.trayFloorThicknessMm);
+    pieceGeos.push(pGeo);
 
-    geo.rotateZ(rotZ);
-    // Colocar las piezas sobre el fondo del plato (Z = trayFloorThicknessMm = 2 mm)
-    geo.translate(0, 0, config.trayFloorThicknessMm);
-    pieceGeos.push(geo);
+    if (singleMarkingGeo) {
+      const mGeo = singleMarkingGeo.clone();
+      if (explodeDistanceMm > 0) {
+        mGeo.translate(0, explodeDistanceMm, 0);
+      }
+      mGeo.rotateZ(rotZ);
+      mGeo.translate(0, 0, config.trayFloorThicknessMm);
+      markingGeos.push(mGeo);
+    }
   }
 
-  return mergeBufferGeometries(pieceGeos);
+  return {
+    piecesGeo: mergeBufferGeometries(pieceGeos),
+    markingsGeo: markingGeos.length > 0 ? mergeBufferGeometries(markingGeos) : null
+  };
 }
 
 /**
@@ -712,7 +655,6 @@ export function createPrintBedLayoutGeometry(config: FractionsConfig): THREE.Buf
   for (let i = 0; i < config.denominator; i++) {
     const p = single.clone();
     p.rotateZ(i * angleStep);
-    // Desplazamiento a la derecha sobre la cama de impresión Z = 0
     p.translate(45, 0, 0);
     pieceGeos.push(p);
   }
@@ -721,11 +663,11 @@ export function createPrintBedLayoutGeometry(config: FractionsConfig): THREE.Buf
 }
 
 /**
- * Genera el archivo vectorial SVG exacto para Corte y Grabado Láser (LightBurn / RDWorks)
+ * Genera el archivo vectorial SVG exacto para Corte y Grabado Láser en MDF 3 mm (LightBurn / RDWorks)
  * Incluye:
- * 1. Plato Capa 1: Base sólida 70 mm (Corte Rojo)
- * 2. Plato Capa 2: Aro perimetral 70 mm ext, 60 mm int (Corte Rojo)
- * 3. Piezas de fracciones (Corte Rojo perimetral + Grabado Negro de la fracción)
+ * 1. Plato Capa 1: Base sólida 70 mm (Corte Rojo MDF 3 mm)
+ * 2. Plato Capa 2: Aro perimetral 70 mm ext, 60 mm int (Corte Rojo MDF 3 mm)
+ * 3. Piezas de fracciones (Corte Rojo MDF 3 mm perimetral + Grabado Negro de la fracción)
  */
 export function generateFractionsLaserSvg(config: FractionsConfig): string {
   const den = config.denominator;
@@ -734,24 +676,22 @@ export function generateFractionsLaserSvg(config: FractionsConfig): string {
   const tol = config.toleranceMm; // 0.2 mm
   const rEff = rPocket - tol; // 29.8 mm
 
-  const svgWidth = 220;
-  const svgHeight = 160;
+  const svgWidth = 230;
+  const svgHeight = 170;
 
   // Centro Plato Base Capa 1
-  const cx1 = 45;
-  const cy1 = 45;
+  const cx1 = 48;
+  const cy1 = 48;
 
   // Centro Plato Aro Capa 2
-  const cx2 = 125;
-  const cy2 = 45;
+  const cx2 = 135;
+  const cy2 = 48;
 
-  // Piezas de Fracción distribuidas abajo
   const angleStep = (Math.PI * 2) / den;
   const halfTheta = angleStep / 2;
   const normalOffset = tol / 2;
   const rApex = normalOffset / Math.sin(halfTheta);
 
-  // Generar contorno SVG de 1 pieza
   const alpha1 = Math.PI / 2 - halfTheta;
   const alpha2 = Math.PI / 2 + halfTheta;
   const u1x = Math.cos(alpha1);
@@ -764,32 +704,26 @@ export function generateFractionsLaserSvg(config: FractionsConfig): string {
   const p2x = -p1x;
   const p2y = p1y;
 
-  // Construir elementos SVG de las piezas
   let piecesSvg = '';
-  const pieceSpacing = 38;
-  const piecesStartX = Math.max(25, 110 - ((den - 1) * pieceSpacing) / 2);
-  const piecesY = 115;
+  const pieceSpacing = 36;
+  const piecesStartX = Math.max(22, 115 - ((den - 1) * pieceSpacing) / 2);
+  const piecesY = 125;
 
   for (let i = 0; i < den; i++) {
     const px = piecesStartX + i * pieceSpacing;
     const py = piecesY;
 
-    // Arco exterior SVG: de (p1x, p1y) a (p2x, p2y)
-    // El flag large-arc es 1 si theta > PI
     const largeArcFlag = angleStep > Math.PI ? 1 : 0;
-
     const pathData = `M ${px + 0} ${py - rApex} L ${px + p1x} ${py - p1y} A ${rEff} ${rEff} 0 ${largeArcFlag} 0 ${px + p2x} ${py - p2y} Z`;
 
-    // Marcado de texto o braille en el centro de la pieza
     let markingSvg = '';
     const markY = py - rPocket * 0.60;
 
     if (config.mode === 'numbers') {
       markingSvg = `
-      <!-- Grabado Láser Negro: Fracción 1/${den} -->
+      <!-- Grabado Láser Negro Quemado: Fracción 1/${den} -->
       <text x="${px}" y="${markY}" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="6.5" fill="#000000" text-anchor="middle" dominant-baseline="central">1/${den}</text>`;
     } else {
-      // Marcado Braille para taladrar / incrustar balines o punteado
       const brailleInfo = FRACTION_BRAILLE_CELLS[den];
       const cells = brailleInfo.cells;
       const colSpacing = 2.2;
@@ -818,12 +752,12 @@ export function generateFractionsLaserSvg(config: FractionsConfig): string {
       });
 
       markingSvg = `
-      <!-- Marcado Puntos Braille Ø 2mm -->
+      <!-- Puntos Braille Ø 2mm para Grabado Quemado Láser -->
       <g id="PUNTOS_BRAILLE_${i + 1}">${dotsSvg}</g>`;
     }
 
     piecesSvg += `
-    <!-- Pieza de Fracción ${i + 1}/${den} -->
+    <!-- Ficha de Fracción ${i + 1}/${den} (MDF 3 mm) -->
     <path d="${pathData}" fill="none" stroke="#FF0000" stroke-width="0.2" />
     ${markingSvg}`;
   }
@@ -835,32 +769,34 @@ export function generateFractionsLaserSvg(config: FractionsConfig): string {
   height="${svgHeight}mm"
   viewBox="0 0 ${svgWidth} ${svgHeight}"
   version="1.1">
-  <title>MakerBox - Fracciones Didácticas 1/${den} para LightBurn</title>
-  <desc>Corte Láser Rojo (#FF0000, 0.2mm). Grabado Láser Negro (#000000). Plato D=70mm, Cavidad D=60mm, Tolerancia=${tol}mm.</desc>
+  <title>MakerBox - Fracciones Didácticas 1/${den} en MDF 3 mm para LightBurn</title>
+  <desc>Material: Placa MDF 3 mm. Espesor total disco ensamblado = 6 mm. Tolerancia = ${tol} mm. Línea Roja (#FF0000, 0.2mm) = CORTE. Negro (#000000) = GRABADO.</desc>
 
   <!-- ========================================== -->
-  <!-- CAPA 1: PLATO - BASE SÓLIDA 70 mm (Corte Rojo) -->
+  <!-- CAPA 1: PLATO BASE MDF 3 mm (Corte Rojo)   -->
   <!-- ========================================== -->
-  <g id="PLATO_BASE_CAPA1">
+  <g id="PLATO_BASE_MDF_3MM">
     <circle cx="${cx1}" cy="${cy1}" r="${rOuter}" fill="none" stroke="#FF0000" stroke-width="0.2" />
-    <text x="${cx1}" y="${cy1}" font-family="Arial, sans-serif" font-size="3" fill="#000000" text-anchor="middle" dominant-baseline="central">Plato Base (2mm)</text>
+    <text x="${cx1}" y="${cy1 - 2}" font-family="Arial, sans-serif" font-weight="bold" font-size="3.2" fill="#000000" text-anchor="middle">Plato Base</text>
+    <text x="${cx1}" y="${cy1 + 2.5}" font-family="Arial, sans-serif" font-size="2.2" fill="#000000" text-anchor="middle">MDF 3 mm (Ø 70 mm)</text>
   </g>
 
   <!-- ========================================== -->
-  <!-- CAPA 2: PLATO - ARO PERIMETRAL 70/60 mm (Corte Rojo) -->
+  <!-- CAPA 2: ARO CAVIDAD MDF 3 mm (Corte Rojo)  -->
   <!-- ========================================== -->
-  <g id="PLATO_ARO_CAPA2">
+  <g id="PLATO_ARO_MDF_3MM">
     <!-- Diámetro exterior 70 mm -->
     <circle cx="${cx2}" cy="${cy2}" r="${rOuter}" fill="none" stroke="#FF0000" stroke-width="0.2" />
     <!-- Diámetro interior 60 mm (Cavidad) -->
     <circle cx="${cx2}" cy="${cy2}" r="${rPocket}" fill="none" stroke="#FF0000" stroke-width="0.2" />
-    <text x="${cx2}" y="${cy2}" font-family="Arial, sans-serif" font-size="3" fill="#000000" text-anchor="middle" dominant-baseline="central">Aro Cavidad (3mm)</text>
+    <text x="${cx2}" y="${cy2 - 2}" font-family="Arial, sans-serif" font-weight="bold" font-size="3.2" fill="#000000" text-anchor="middle">Aro Cavidad</text>
+    <text x="${cx2}" y="${cy2 + 2.5}" font-family="Arial, sans-serif" font-size="2.2" fill="#000000" text-anchor="middle">MDF 3 mm (70/60 mm)</text>
   </g>
 
   <!-- ========================================== -->
-  <!-- CAPA 3: PIEZAS DE FRACCIONES 1/${den} (Corte Rojo + Grabado) -->
+  <!-- CAPA 3: FICHAS FRACCIONES MDF 3 mm        -->
   <!-- ========================================== -->
-  <g id="PIEZAS_FRACCIONES_1_${den}">
+  <g id="FICHAS_FRACCIONES_1_${den}_MDF_3MM">
     ${piecesSvg}
   </g>
 </svg>`;
@@ -872,41 +808,40 @@ export function generateFractionsLaserSvg(config: FractionsConfig): string {
 export function generateFractions(config: FractionsConfig = DEFAULT_FRACTIONS_CONFIG): FractionsModelResult {
   const trayGeometry = createTrayGeometry(config);
   const singlePieceGeometry = createSinglePieceGeometry(config);
-  const piecesGeometry = createAssembledPiecesGeometry(config, config.explodeDistanceMm);
+  const { piecesGeo, markingsGeo } = createAssembledPiecesGeometry(config, config.explodeDistanceMm);
   const printLayoutGeometry = createPrintBedLayoutGeometry(config);
 
   // Exportaciones STL binarias
   const trayStlBuffer = exportBufferGeometryToBinaryStl(trayGeometry);
   const singlePieceStlBuffer = exportBufferGeometryToBinaryStl(singlePieceGeometry);
-  const piecesStlBuffer = exportBufferGeometryToBinaryStl(
-    createAssembledPiecesGeometry(config, 0)
-  );
+  const { piecesGeo: unexplodedPieces } = createAssembledPiecesGeometry(config, 0);
+  const piecesStlBuffer = exportBufferGeometryToBinaryStl(unexplodedPieces);
   const fullSetStlBuffer = exportBufferGeometryToBinaryStl(printLayoutGeometry);
 
-  // SVG para corte láser
+  // SVG para corte láser en MDF 3 mm
   const laserSvgContent = generateFractionsLaserSvg(config);
 
   // Crear archivo ZIP completo con todos los elementos
   const zipFiles: Record<string, Uint8Array> = {
-    [`1_Plato_Base_D70mm.stl`]: new Uint8Array(trayStlBuffer),
+    [`1_Plato_Base_D70mm_Espesor${config.trayTotalHeightMm}mm.stl`]: new Uint8Array(trayStlBuffer),
     [`2_Set_Completo_Fracciones_1_${config.denominator}_(x${config.denominator}).stl`]: new Uint8Array(piecesStlBuffer),
     [`3_Pieza_Individual_Fraccion_1_${config.denominator}.stl`]: new Uint8Array(singlePieceStlBuffer),
     [`4_Bandeja_Impresion_Completa_Plato_y_Piezas.stl`]: new Uint8Array(fullSetStlBuffer),
-    [`5_Corte_Laser_Plato_y_Fracciones_1_${config.denominator}.svg`]: strToU8(laserSvgContent)
+    [`5_Corte_Laser_MDF_3mm_Plato_y_Fracciones_1_${config.denominator}.svg`]: strToU8(laserSvgContent)
   };
   const zipBuffer = zipSync(zipFiles);
 
-  // Métricas para estimación
+  // Métricas
   const totalTriangles = (printLayoutGeometry.getAttribute('position').count / 3) | 0;
-  // Volumen aproximado en cm3 (plato ~12 cm3 + piezas ~8 cm3)
-  const estimatedVolumeCm3 = 19.5;
-  const estimatedWeightGrams = Math.round(estimatedVolumeCm3 * 1.24); // ~24 gramos de PLA
-  const estimatedPrintTimeMinutes = Math.round(estimatedWeightGrams * 2.8); // ~65 minutos a 50mm/s
+  const estimatedVolumeCm3 = config.materialStyle === 'mdf' ? 22.0 : 19.5;
+  const estimatedWeightGrams = Math.round(estimatedVolumeCm3 * 1.24);
+  const estimatedPrintTimeMinutes = Math.round(estimatedWeightGrams * 2.8);
 
   return {
     config,
     trayGeometry,
-    piecesGeometry,
+    piecesGeometry: piecesGeo,
+    markingsGeometry: markingsGeo,
     singlePieceGeometry,
     printLayoutGeometry,
     trayStlBuffer,
@@ -923,9 +858,6 @@ export function generateFractions(config: FractionsConfig = DEFAULT_FRACTIONS_CO
   };
 }
 
-/**
- * Descargador genérico para STL
- */
 export function downloadFractionsStl(buffer: ArrayBuffer, filename: string) {
   const blob = new Blob([buffer], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
@@ -938,9 +870,6 @@ export function downloadFractionsStl(buffer: ArrayBuffer, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-/**
- * Descargador genérico para SVG
- */
 export function downloadFractionsSvg(content: string, filename: string) {
   const blob = new Blob([content], { type: 'image/svg+xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -953,9 +882,6 @@ export function downloadFractionsSvg(content: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-/**
- * Descargador genérico para ZIP
- */
 export function downloadFractionsZip(buffer: Uint8Array, filename: string) {
   const blob = new Blob([buffer as any], { type: 'application/zip' });
   const url = URL.createObjectURL(blob);
