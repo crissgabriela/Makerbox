@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import {
   Plane,
   Download,
@@ -21,10 +22,15 @@ import {
   Wind,
   Target,
   AlertTriangle,
+  ArrowLeft,
 } from 'lucide-react';
 import { GliderMetrics, BASE_GLIDER_PARAMS, BALSA_DESIGN_LIMITS } from '@/types/glider';
 
-export const GliderSection: React.FC = () => {
+interface GliderSectionProps {
+  onBackToMenu?: () => void;
+}
+
+export const GliderSection: React.FC<GliderSectionProps> = ({ onBackToMenu }) => {
   // Parámetros de entrada para modelo a escala en madera de balsa de 300 x 100 x 3 mm
   const [fuselageLengthMm, setFuselageLengthMm] = useState<number>(BALSA_DESIGN_LIMITS.fuselage.default);
   const [wingspanMm, setWingspanMm] = useState<number>(BALSA_DESIGN_LIMITS.wingspan.default);
@@ -128,6 +134,38 @@ export const GliderSection: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-6 w-full animate-in fade-in duration-300">
+      {/* Barra Superior de Navegación */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-xs">
+        <div className="flex items-center gap-3">
+          {onBackToMenu ? (
+            <button
+              type="button"
+              onClick={onBackToMenu}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-sky-100 text-slate-700 hover:text-sky-900 font-bold text-xs sm:text-sm transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Volver al Menú Principal
+            </button>
+          ) : (
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-sky-100 text-slate-700 hover:text-sky-900 font-bold text-xs sm:text-sm transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Volver al Menú Principal
+            </Link>
+          )}
+          <span className="hidden sm:inline-block h-5 w-px bg-slate-200" />
+          <span className="text-xs font-bold text-sky-800 bg-sky-50 border border-sky-200 px-3 py-1 rounded-full">
+            ✈️ Taller 2 · Ingeniería de Vuelo (Planeadores)
+          </span>
+        </div>
+
+        <div className="text-xs text-slate-500 font-medium">
+          Material: <strong className="text-slate-700">Madera de Balsa 300 × 100 × 3 mm</strong>
+        </div>
+      </div>
+
       {/* Banner superior explicativo con foco en Madera de Balsa 300x100x3 mm */}
       <div className="rounded-3xl bg-gradient-to-r from-purple-900 via-indigo-900 to-sky-900 text-white p-6 sm:p-7 shadow-lg border border-purple-700/40 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
         <div className="flex flex-col gap-2 max-w-3xl">

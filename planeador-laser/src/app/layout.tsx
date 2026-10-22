@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Configurador Paramétrico de Planeador SVG | MakerBox UTalca',
+  title: 'Talleres de Fabricación Láser: Zoológico Low-Poly y Planeadores | MakerBox UTalca',
   description:
-    'Plataforma interactiva para modificar una plantilla SVG base de un planeador ajustando longitud del fuselaje, envergadura y ancho de ala manteniendo intactas las ranuras de ensamble para corte láser.',
+    'Plataforma multi-taller para estudiantes: Taller 1 (Zoológico Low-Poly con escalado y ranuras automáticas) y Taller 2 (Ingeniería de Vuelo - Planeadores paramétricos) para corte láser en madera de balsa de 300x100x3 mm.',
 };
 
 export default function RootLayout({
