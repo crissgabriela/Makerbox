@@ -9,14 +9,36 @@ Repositorio institucional de proyectos, módulos académicos y plataformas de in
 ```
 Makerbox/
 ├── index.html                  # Portal central de recursos y módulos académicos
-├── lengua-de-senas/            # Plataforma de traducción de texto a Lengua de Señas para Corte Láser
-│   ├── public/                 # Logos de MakerBox, UTalca y vectores de señas
+├── planeador-laser/            # Configurador Paramétrico de Planeador SVG para Corte Láser
+│   ├── public/                 # Plantilla vectorial estructurada (planeador-base.svg) y logos
+│   └── src/                    # Motor vectorial (svgson + svg-path-parser), API y visor en tiempo real
+├── lengua-de-senas/            # Plataforma de Fabricación Digital (Señas, Litofanía, Braille, Fracciones, Planeador)
+│   ├── public/                 # Logos de MakerBox, UTalca, vectores de señas y plantilla de planeador
 │   └── src/                    # Código fuente Next.js + React 19 + Tailwind CSS
 ├── plataforma_maker/           # Plataforma de Solicitudes y Gestión de Impresión 3D
 │   ├── public/                 # Logos de MakerBox y UTalca
 │   └── src/                    # Visor 3D WebGL, Formulario de pedidos, Panel Admin y Excel
 └── README.md                   # Documentación general
 ```
+
+---
+
+## ✈️ Proyecto: Configurador Paramétrico de Planeador SVG (Corte Láser)
+
+Ubicado en [`planeador-laser/`](./planeador-laser/) (y también integrado en [`lengua-de-senas/`](./lengua-de-senas/) bajo la ruta `/planeador`).
+
+Permite a los estudiantes modificar una plantilla SVG base de un planeador de 6 piezas ajustando parámetros geométricos en tiempo real sin perder la capacidad de ensamble:
+
+- **Entradas Paramétricas (`mm`):**
+  - **Largo del fuselaje (`mm`)** — Base en PDF: `546.10 mm` (`1548 pt` / `21.5 in`)
+  - **Envergadura de alas (`mm`)** — Base en PDF: `508.00 mm` (`254.00 mm` cada ala / `20 in` total)
+  - **Ancho del ala (`mm`)** — Base en PDF: `76.20 mm` (`216 pt` / `3.0 in`)
+  - **Espesor del material para las ranuras (`mm`) (Fijo)** — Base en PDF: `3.175 mm` (`9 pt` / `1/8 in`)
+- **Motor Vectorial en Backend (`/api/planeador`):**
+  - Utiliza `svgson` y `svg-path-parser` para cargar `public/templates/planeador-base.svg` y transformar por zonas los nodos de `#fuselaje`, `#ala-izquierda`, `#ala-derecha`, `#estabilizador-horizontal`, `#soporte-diedro` y `#soporte-trasero`, manteniendo **fijas e invariantes** todas las ranuras de ensamble (`3.175 mm` de ancho, `25.40 mm` de profundidad en alas, `12.70 mm` en cama del ala) y sincronizando la cama del ala en el fuselaje con el ancho del ala.
+
+### Despliegue en Vercel:
+En la configuración del proyecto en Vercel, establece **Root Directory** en `planeador-laser` (o accede directamente a `/planeador` en el despliegue de `lengua-de-senas`).
 
 ---
 
@@ -65,4 +87,3 @@ npm run dev
 
 ### Despliegue en Vercel:
 En la configuración del proyecto en Vercel, establece **Root Directory** en `plataforma_maker`.
-
