@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { processGliderSvg, BASE_GLIDER_PARAMS } from '@/lib/glider-svg-processor';
+import { processGliderSvg, BALSA_DESIGN_LIMITS } from '@/lib/glider-svg-processor';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const fuselageLengthMm = Number(searchParams.get('fuselageLengthMm')) || BASE_GLIDER_PARAMS.fuselageLengthMm;
-    const wingspanMm = Number(searchParams.get('wingspanMm')) || BASE_GLIDER_PARAMS.wingspanTotalMm;
-    const wingWidthMm = Number(searchParams.get('wingWidthMm')) || BASE_GLIDER_PARAMS.wingWidthMm;
-    const slotThicknessMm = Number(searchParams.get('slotThicknessMm')) || BASE_GLIDER_PARAMS.slotThicknessMm;
+    const fuselageLengthMm =
+      Number(searchParams.get('fuselageLengthMm')) || BALSA_DESIGN_LIMITS.fuselage.default;
+    const wingspanMm =
+      Number(searchParams.get('wingspanMm')) || BALSA_DESIGN_LIMITS.wingspan.default;
+    const wingWidthMm =
+      Number(searchParams.get('wingWidthMm')) || BALSA_DESIGN_LIMITS.wingWidth.default;
+    const slotThicknessMm =
+      Number(searchParams.get('slotThicknessMm')) || BALSA_DESIGN_LIMITS.slotThickness.default;
     const includeAnnotations = searchParams.get('annotations') === 'true';
+    const targetSheet = (searchParams.get('sheet') as 'all' | 'sheet1' | 'sheet2') || 'all';
     const format = searchParams.get('format') || 'json';
 
     const result = await processGliderSvg({
@@ -17,10 +22,11 @@ export async function GET(request: NextRequest) {
       wingWidthMm,
       slotThicknessMm,
       includeAnnotations,
+      targetSheet,
     });
 
     if (format === 'svg') {
-      const filename = `planeador-laser-${Math.round(fuselageLengthMm)}x${Math.round(wingspanMm)}mm.svg`;
+      const filename = `planeador-balsa-${targetSheet}-${Math.round(fuselageLengthMm)}x${Math.round(wingspanMm)}mm.svg`;
       return new NextResponse(result.svg, {
         status: 200,
         headers: {
@@ -45,11 +51,12 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const result = await processGliderSvg({
-      fuselageLengthMm: Number(body.fuselageLengthMm) || BASE_GLIDER_PARAMS.fuselageLengthMm,
-      wingspanMm: Number(body.wingspanMm) || BASE_GLIDER_PARAMS.wingspanTotalMm,
-      wingWidthMm: Number(body.wingWidthMm) || BASE_GLIDER_PARAMS.wingWidthMm,
-      slotThicknessMm: Number(body.slotThicknessMm) || BASE_GLIDER_PARAMS.slotThicknessMm,
+      fuselageLengthMm: Number(body.fuselageLengthMm) || BALSA_DESIGN_LIMITS.fuselage.default,
+      wingspanMm: Number(body.wingspanMm) || BALSA_DESIGN_LIMITS.wingspan.default,
+      wingWidthMm: Number(body.wingWidthMm) || BALSA_DESIGN_LIMITS.wingWidth.default,
+      slotThicknessMm: Number(body.slotThicknessMm) || BALSA_DESIGN_LIMITS.slotThickness.default,
       includeAnnotations: Boolean(body.includeAnnotations),
+      targetSheet: body.targetSheet || 'all',
       cutStrokeColor: body.cutStrokeColor || '#FF0000',
     });
 

@@ -6,11 +6,13 @@ import {
   GliderParams,
   GliderMetrics,
   ProcessedGliderResult,
+  AerodynamicData,
   BASE_GLIDER_PARAMS,
+  BALSA_DESIGN_LIMITS,
 } from '@/types/glider';
 
-export { BASE_GLIDER_PARAMS };
-export type { GliderParams, GliderMetrics, ProcessedGliderResult };
+export { BASE_GLIDER_PARAMS, BALSA_DESIGN_LIMITS };
+export type { GliderParams, GliderMetrics, ProcessedGliderResult, AerodynamicData };
 
 interface BoundingBox {
   minX: number;
@@ -19,8 +21,37 @@ interface BoundingBox {
   maxY: number;
 }
 
+/**
+ * Interpolación lineal por tramos estrictamente monótona (Homeomorfismo 1D).
+ * Garantiza matemáticamente que si s0 < s1 < ... < sn y t0 < t1 < ... < tn,
+ * entonces x1 < x2 => f(x1) < f(x2), impidiendo cualquier auto-intersección o cruce de líneas.
+ */
+function interpolateKnots(val: number, srcKnots: number[], dstKnots: number[]): number {
+  const n = srcKnots.length;
+  if (val <= srcKnots[0]) {
+    const slope = (dstKnots[1] - dstKnots[0]) / Math.max(1e-6, srcKnots[1] - srcKnots[0]);
+    return dstKnots[0] + (val - srcKnots[0]) * slope;
+  }
+  if (val >= srcKnots[n - 1]) {
+    const slope = (dstKnots[n - 1] - dstKnots[n - 2]) / Math.max(1e-6, srcKnots[n - 1] - srcKnots[n - 2]);
+    return dstKnots[n - 1] + (val - srcKnots[n - 1]) * slope;
+  }
+  for (let i = 0; i < n - 1; i++) {
+    if (val >= srcKnots[i] && val <= srcKnots[i + 1]) {
+      const span = srcKnots[i + 1] - srcKnots[i];
+      if (span < 1e-6) return dstKnots[i];
+      const t = (val - srcKnots[i]) / span;
+      return dstKnots[i] + t * (dstKnots[i + 1] - dstKnots[i]);
+    }
+  }
+  return dstKnots[n - 1];
+}
+
 function getCommandsBBox(cmds: Command[]): BoundingBox {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   const addPt = (x?: number, y?: number) => {
     if (typeof x === 'number' && typeof y === 'number') {
       if (x < minX) minX = x;
@@ -77,12 +108,23 @@ function mapCommandPoints(cmds: Command[], mapper: (x: number, y: number) => [nu
   });
 }
 
+function placeCommandsAt(cmds: Command[], targetMinX: number, targetMinY: number): Command[] {
+  const box = getCommandsBBox(cmds);
+  const dx = targetMinX - box.minX;
+  const dy = targetMinY - box.minY;
+  return mapCommandPoints(cmds, (x, y) => [x + dx, y + dy]);
+}
+
 /**
- * Transforma los nodos del Fuselaje manteniendo:
- * 1. El ancho de la cama del ala igual a `wingWidthMm` (para que el ala encaje al ras)
- * 2. El espesor exacto (`slotThicknessMm`) y la profundidad (`12.70 mm`) de la ranura vertical del ala
- * 3. La longitud (`44.45 mm`) de la cama trasera y la ranura vertical de cola (`slotThicknessMm` x `4.76 mm`)
- * 4. El largo total del fuselaje igual a `fuselageLengthMm`
+ * 1. Transformación estrictamente monótona del Fuselaje (Escala Balsa 300x100x3 mm)
+ * Coordenadas base en planeador-base.svg (300x100):
+ * - X_NOSE = 24.625 mm
+ * - X_SADDLE_START = 80.9063 mm
+ * - X_WING_SLOT_L = 100.8125 mm, X_WING_SLOT_R = 102.375 mm
+ * - X_SADDLE_END = 118.4063 mm (cama base = 37.50 mm)
+ * - X_TAIL_SADDLE_START = 271.5313 mm
+ * - X_TAIL_SLOT_L = 280.9063 mm, X_TAIL_SLOT_R = 282.4688 mm
+ * - X_TAIL_END = 293.4063 mm (cama cola base = 21.875 mm)
  */
 function transformFuselageCommands(
   cmds: Command[],
@@ -90,89 +132,87 @@ function transformFuselageCommands(
   wingWidthMm: number,
   slotThicknessMm: number
 ): Command[] {
-  // Coordenadas base en mm dentro de planeador-base.svg
-  const X_NOSE = 50.038; // 141.84 pt
-  const X_SADDLE_START = 164.4015; // 466.02 pt
-  const X_WING_SLOT_L = 204.851; // 580.68 pt
-  const X_WING_SLOT_R = 208.026; // 589.68 pt
-  const X_SADDLE_END = 240.6015; // 682.02 pt
-  const X_TAIL_SADDLE_START = 551.7515; // 1564.02 pt
-  const X_TAIL_SLOT_L = 570.8015; // 1618.02 pt
-  const X_TAIL_SLOT_R = 573.9765; // 1627.02 pt
-  const X_TAIL_END = 596.2015; // 1690.02 pt
+  const X_NOSE = 24.625;
+  const X_CANOPY_STEP = 79.2813;
+  const X_SADDLE_START = 80.9063;
+  const X_WING_SLOT_L = 100.8125;
+  const X_WING_SLOT_R = 102.375;
+  const X_SADDLE_END = 118.4063;
+  const X_TAIL_SADDLE_START = 271.5313;
+  const X_TAIL_SLOT_L = 280.9063;
+  const X_TAIL_SLOT_R = 282.4688;
+  const X_TAIL_END = 293.4063;
 
-  const Y_SPINE_TOP = 8.5725; // (576 - 551.70) * 25.4/72
-  const Y_WING_SADDLE = 11.811; // (576 - 542.52) * 25.4/72
-  const Y_TAIL_SADDLE = 11.7475; // (576 - 542.70) * 25.4/72
+  const Y_SPINE_TOP = 4.2188;
+  const Y_TAIL_SADDLE = 5.7813;
+  const Y_TAIL_SLOT_BOT = 8.125;
 
-  const L_NOSE_0 = X_SADDLE_START - X_NOSE; // 114.3635 mm
-  const L_BOOM_0 = X_TAIL_SADDLE_START - X_SADDLE_END; // 311.15 mm
-  const L_TAIL_0 = X_TAIL_END - X_TAIL_SADDLE_START; // 44.45 mm
-  const L_FREE_0 = L_NOSE_0 + L_BOOM_0; // 425.5135 mm
+  // Expandir ligeramente la cama de cola para compensar el aumento de ranura de 1.56 mm a 3.00 mm
+  const deltaSlot = Math.max(0, slotThicknessMm - 1.5625);
+  const L_TAIL = 21.875 + deltaSlot;
 
-  const targetFree = Math.max(80, fuselageLengthMm - wingWidthMm - L_TAIL_0);
+  const L_NOSE_0 = X_SADDLE_START - X_NOSE; // 56.2813 mm
+  const L_BOOM_0 = X_TAIL_SADDLE_START - X_SADDLE_END; // 153.125 mm
+  const L_FREE_0 = L_NOSE_0 + L_BOOM_0; // 209.4063 mm
+
+  const targetFree = Math.max(60, fuselageLengthMm - wingWidthMm - L_TAIL);
   const kx = targetFree / L_FREE_0;
 
-  const newSaddleStart = X_NOSE + L_NOSE_0 * kx;
-  const newSaddleEnd = newSaddleStart + wingWidthMm;
-  const newTailSaddleStart = newSaddleEnd + L_BOOM_0 * kx;
-  const newTailEnd = newTailSaddleStart + L_TAIL_0;
+  const dstNose = 0;
+  const dstSaddleStart = dstNose + L_NOSE_0 * kx;
+  const dstCanopyStep = Math.max(dstNose + 15, dstSaddleStart - 1.625);
+  const dstSaddleEnd = dstSaddleStart + wingWidthMm;
+  const dstWingSlotCenter = dstSaddleStart + 0.5525 * wingWidthMm;
+  const dstWingSlotL = dstWingSlotCenter - slotThicknessMm / 2;
+  const dstWingSlotR = dstWingSlotCenter + slotThicknessMm / 2;
 
-  // Posición proporcional del centro de la ranura en la cama del ala (55.25% desde el borde de ataque)
-  const SLOT_REL = 0.5525;
-  const newWingSlotCenter = newSaddleStart + SLOT_REL * wingWidthMm;
-  const newTailSlotCenter = newTailSaddleStart + ((X_TAIL_SLOT_L + X_TAIL_SLOT_R) / 2 - X_TAIL_SADDLE_START);
+  const dstTailSaddleStart = dstSaddleEnd + L_BOOM_0 * kx;
+  const dstTailEnd = dstTailSaddleStart + L_TAIL;
+  const dstTailSlotCenter = dstTailSaddleStart + 10.1563 + deltaSlot / 2;
+  const dstTailSlotL = dstTailSlotCenter - slotThicknessMm / 2;
+  const dstTailSlotR = dstTailSlotCenter + slotThicknessMm / 2;
+
+  // Nudos para el lomo superior (incluye ranuras y camas exactas)
+  const topSrcKnots = [
+    X_NOSE,
+    X_CANOPY_STEP,
+    X_SADDLE_START,
+    X_WING_SLOT_L,
+    X_WING_SLOT_R,
+    X_SADDLE_END,
+    X_TAIL_SADDLE_START,
+    X_TAIL_SLOT_L,
+    X_TAIL_SLOT_R,
+    X_TAIL_END,
+  ];
+  const topDstKnots = [
+    dstNose,
+    dstCanopyStep,
+    dstSaddleStart,
+    dstWingSlotL,
+    dstWingSlotR,
+    dstSaddleEnd,
+    dstTailSaddleStart,
+    dstTailSlotL,
+    dstTailSlotR,
+    dstTailEnd,
+  ];
+
+  // Nudos suaves para la panza inferior y curva del timón (sin escalones de ranura para preservar la curva limpia)
+  const botSrcKnots = [X_NOSE, X_SADDLE_START, X_SADDLE_END, X_TAIL_SADDLE_START, X_TAIL_END];
+  const botDstKnots = [dstNose, dstSaddleStart, dstSaddleEnd, dstTailSaddleStart, dstTailEnd];
 
   return mapCommandPoints(cmds, (x, y) => {
-    let nx = x;
+    const nx = y <= 14.5 ? interpolateKnots(x, topSrcKnots, topDstKnots) : interpolateKnots(x, botSrcKnots, botDstKnots);
     let ny = y;
 
-    // 1. Nodos de la ranura vertical del ala en el fuselaje (mantener ancho = slotThicknessMm y prof = 12.70 mm)
-    if (Math.abs(x - X_WING_SLOT_L) < 0.25 && y < 30) {
-      nx = newWingSlotCenter - slotThicknessMm / 2;
-      return [nx, ny];
-    }
-    if (Math.abs(x - X_WING_SLOT_R) < 0.25 && y < 30) {
-      nx = newWingSlotCenter + slotThicknessMm / 2;
-      return [nx, ny];
-    }
-
-    // 2. Nodos de la ranura vertical trasera de cola (mantener ancho = slotThicknessMm y prof = 4.7625 mm)
-    if (Math.abs(x - X_TAIL_SLOT_L) < 0.25 && y < 22) {
-      nx = newTailSlotCenter - slotThicknessMm / 2;
+    // Ajustar el escalón y profundidad de la ranura trasera de cola para madera de balsa de 3 mm
+    if (x >= X_TAIL_SADDLE_START - 0.2 && y <= 10.0) {
       if (Math.abs(y - Y_TAIL_SADDLE) < 0.2) {
         ny = Y_SPINE_TOP + slotThicknessMm;
+      } else if (Math.abs(y - Y_TAIL_SLOT_BOT) < 0.2) {
+        ny = Y_SPINE_TOP + slotThicknessMm + 3.0;
       }
-      return [nx, ny];
-    }
-    if (Math.abs(x - X_TAIL_SLOT_R) < 0.25 && y < 22) {
-      nx = newTailSlotCenter + slotThicknessMm / 2;
-      if (Math.abs(y - Y_TAIL_SADDLE) < 0.2) {
-        ny = Y_SPINE_TOP + slotThicknessMm;
-      }
-      return [nx, ny];
-    }
-
-    // Ajustar el escalón de la cama trasera de cola al espesor del material si aplica
-    if (x >= X_TAIL_SADDLE_START - 0.25 && Math.abs(y - Y_TAIL_SADDLE) < 0.2) {
-      ny = Y_SPINE_TOP + slotThicknessMm;
-    }
-
-    // 3. Transformación horizontal por zonas (monótona y continua)
-    if (x <= X_SADDLE_START + 0.05) {
-      // Zona 1: Nariz y cabina frontal
-      nx = X_NOSE + (x - X_NOSE) * kx;
-    } else if (x <= X_SADDLE_END + 0.05) {
-      // Zona 2: Cama del ala (escala exactamente a wingWidthMm)
-      const t = (x - X_SADDLE_START) / (X_SADDLE_END - X_SADDLE_START);
-      nx = newSaddleStart + t * wingWidthMm;
-    } else if (x <= X_TAIL_SADDLE_START + 0.05) {
-      // Zona 3: Cuerpo central del fuselaje
-      nx = newSaddleEnd + (x - X_SADDLE_END) * kx;
-    } else {
-      // Zona 4: Cama de cola trasera y timón (mantiene geometría exacta de ensamble de 44.45 mm)
-      const t = (x - X_TAIL_SADDLE_START) / L_TAIL_0;
-      nx = newTailSaddleStart + t * L_TAIL_0;
     }
 
     return [nx, ny];
@@ -180,10 +220,10 @@ function transformFuselageCommands(
 }
 
 /**
- * Transforma los nodos del Ala Izquierda manteniendo:
- * - Semienvergadura exacta = wingspanMm / 2
- * - Ancho (cuerda) exacto = wingWidthMm
- * - Ranura de ensamble en la raíz con profundidad fija (25.40 mm) y ancho fijo (slotThicknessMm)
+ * 2. Transformación estrictamente monótona del Ala Izquierda
+ * Base en planeador-base.svg (300x100):
+ * - X_TIP = 6.5938, X_SLOT_INNER = 119.0938, X_ROOT = 131.5938 (semienvergadura base = 125.00 mm, prof ranura = 12.50 mm)
+ * - Y_LEAD = 56.2188, Y_SLOT_TOP = 76.1563, Y_SLOT_BOT = 77.7188, Y_TRAIL = 93.7188 (ancho base = 37.50 mm)
  */
 function transformLeftWingCommands(
   cmds: Command[],
@@ -191,51 +231,39 @@ function transformLeftWingCommands(
   wingWidthMm: number,
   slotThicknessMm: number
 ): Command[] {
-  const X_TIP = 13.3985; // 37.98 pt
-  const X_SLOT_INNER = 241.9985; // 685.98 pt
-  const X_ROOT = 267.3985; // 757.98 pt
-  const BASE_SPAN = X_ROOT - X_TIP; // 254.00 mm
-  const SLOT_DEPTH = 25.40; // 72.00 pt (1.00 in fijo)
+  const X_TIP = 6.5938;
+  const X_SLOT_INNER = 119.0938;
+  const X_ROOT = 131.5938;
+  const SLOT_DEPTH = 12.5; // Profundidad fija de encastre con el soporte diedro
 
-  const Y_LEAD = 114.2365; // (576 - 252.18) * 25.4/72
-  const Y_SLOT_TOP = 154.7495; // (576 - 137.34) * 25.4/72
-  const Y_SLOT_BOT = 157.9245; // (576 - 128.34) * 25.4/72
-  const Y_TRAIL = 190.4365; // (576 - 36.18) * 25.4/72
-  const BASE_CHORD = Y_TRAIL - Y_LEAD; // 76.20 mm
+  const Y_LEAD = 56.2188;
+  const Y_SLOT_TOP = 76.1563;
+  const Y_SLOT_BOT = 77.7188;
+  const Y_TRAIL = 93.7188;
 
-  const SLOT_REL = 0.5525;
-  const newSlotCenterY = Y_LEAD + SLOT_REL * wingWidthMm;
+  const xSrcKnots = [X_TIP, X_SLOT_INNER, X_ROOT];
+  const xDstKnots = [0, singleWingSpanMm - SLOT_DEPTH, singleWingSpanMm];
+
+  const slotCenterY = 0.5525 * wingWidthMm;
+  const ySrcKnots = [Y_LEAD, Y_SLOT_TOP, Y_SLOT_BOT, Y_TRAIL];
+  const yDstKnots = [0, slotCenterY - slotThicknessMm / 2, slotCenterY + slotThicknessMm / 2, wingWidthMm];
 
   return mapCommandPoints(cmds, (x, y) => {
-    let nx: number;
-    let ny: number;
-
-    // Coordenada X: preservar profundidad exacta de 25.40 mm en el fondo de la ranura
-    const isSlotInnerX = Math.abs(x - X_SLOT_INNER) < 0.3 && y > Y_SLOT_TOP - 1 && y < Y_SLOT_BOT + 1;
-    if (isSlotInnerX) {
-      nx = X_ROOT - SLOT_DEPTH;
-    } else {
-      nx = X_ROOT - (X_ROOT - x) * (singleWingSpanMm / BASE_SPAN);
-    }
-
-    // Coordenada Y: preservar espesor exacto (slotThicknessMm) en los bordes de la ranura
-    if (Math.abs(y - Y_SLOT_TOP) < 0.3 && x > X_SLOT_INNER - 1) {
-      ny = newSlotCenterY - slotThicknessMm / 2;
-    } else if (Math.abs(y - Y_SLOT_BOT) < 0.3 && x > X_SLOT_INNER - 1) {
-      ny = newSlotCenterY + slotThicknessMm / 2;
-    } else {
-      ny = Y_LEAD + (y - Y_LEAD) * (wingWidthMm / BASE_CHORD);
-    }
-
+    // Solo los vértices de la ranura usan el nudo interno fijo en X; el borde de ataque/fuga exterior escala limpio
+    const isNearSlotY = y >= Y_SLOT_TOP - 0.4 && y <= Y_SLOT_BOT + 0.4;
+    const nx = isNearSlotY
+      ? interpolateKnots(x, xSrcKnots, xDstKnots)
+      : ((x - X_TIP) / (X_ROOT - X_TIP)) * singleWingSpanMm;
+    const ny = interpolateKnots(y, ySrcKnots, yDstKnots);
     return [nx, ny];
   });
 }
 
 /**
- * Transforma los nodos del Ala Derecha manteniendo:
- * - Semienvergadura exacta = wingspanMm / 2
- * - Ancho (cuerda) exacto = wingWidthMm
- * - Ranura de ensamble en la raíz con profundidad fija (25.40 mm) y ancho fijo (slotThicknessMm)
+ * 3. Transformación estrictamente monótona del Ala Derecha
+ * Base en planeador-base.svg (300x100):
+ * - X_ROOT = 143.7813, X_SLOT_INNER = 156.2813, X_TIP = 268.7813
+ * - Y_LEAD = 56.7813, Y_SLOT_TOP = 76.7188, Y_SLOT_BOT = 78.2813, Y_TRAIL = 94.2813
  */
 function transformRightWingCommands(
   cmds: Command[],
@@ -243,241 +271,584 @@ function transformRightWingCommands(
   wingWidthMm: number,
   slotThicknessMm: number
 ): Command[] {
-  const X_ROOT = 292.1635; // 828.18 pt
-  const X_SLOT_INNER = 317.5635; // 900.18 pt
-  const X_TIP = 546.1635; // 1548.18 pt
-  const BASE_SPAN = X_TIP - X_ROOT; // 254.00 mm
-  const SLOT_DEPTH = 25.40; // 72.00 pt (1.00 in fijo)
+  const X_ROOT = 143.7813;
+  const X_SLOT_INNER = 156.2813;
+  const X_TIP = 268.7813;
+  const SLOT_DEPTH = 12.5;
 
-  const Y_LEAD = 115.3795; // (576 - 248.94) * 25.4/72
-  const Y_SLOT_TOP = 155.8925; // (576 - 134.10) * 25.4/72
-  const Y_SLOT_BOT = 159.0675; // (576 - 125.10) * 25.4/72
-  const Y_TRAIL = 191.5795; // (576 - 32.94) * 25.4/72
-  const BASE_CHORD = Y_TRAIL - Y_LEAD; // 76.20 mm
+  const Y_LEAD = 56.7813;
+  const Y_SLOT_TOP = 76.7188;
+  const Y_SLOT_BOT = 78.2813;
+  const Y_TRAIL = 94.2813;
 
-  const SLOT_REL = 0.5525;
-  const newSlotCenterY = Y_LEAD + SLOT_REL * wingWidthMm;
+  const xSrcKnots = [X_ROOT, X_SLOT_INNER, X_TIP];
+  const xDstKnots = [0, SLOT_DEPTH, singleWingSpanMm];
+
+  const slotCenterY = 0.5525 * wingWidthMm;
+  const ySrcKnots = [Y_LEAD, Y_SLOT_TOP, Y_SLOT_BOT, Y_TRAIL];
+  const yDstKnots = [0, slotCenterY - slotThicknessMm / 2, slotCenterY + slotThicknessMm / 2, wingWidthMm];
 
   return mapCommandPoints(cmds, (x, y) => {
-    let nx: number;
-    let ny: number;
-
-    // Coordenada X: preservar profundidad exacta de 25.40 mm en el fondo de la ranura
-    const isSlotInnerX = Math.abs(x - X_SLOT_INNER) < 0.3 && y > Y_SLOT_TOP - 1 && y < Y_SLOT_BOT + 1;
-    if (isSlotInnerX) {
-      nx = X_ROOT + SLOT_DEPTH;
-    } else {
-      nx = X_ROOT + (x - X_ROOT) * (singleWingSpanMm / BASE_SPAN);
-    }
-
-    // Coordenada Y: preservar espesor exacto (slotThicknessMm) en los bordes de la ranura
-    if (Math.abs(y - Y_SLOT_TOP) < 0.3 && x < X_SLOT_INNER + 1) {
-      ny = newSlotCenterY - slotThicknessMm / 2;
-    } else if (Math.abs(y - Y_SLOT_BOT) < 0.3 && x < X_SLOT_INNER + 1) {
-      ny = newSlotCenterY + slotThicknessMm / 2;
-    } else {
-      ny = Y_LEAD + (y - Y_LEAD) * (wingWidthMm / BASE_CHORD);
-    }
-
+    const isNearSlotY = y >= Y_SLOT_TOP - 0.4 && y <= Y_SLOT_BOT + 0.4;
+    const nx = isNearSlotY
+      ? interpolateKnots(x, xSrcKnots, xDstKnots)
+      : ((x - X_ROOT) / (X_TIP - X_ROOT)) * singleWingSpanMm;
+    const ny = interpolateKnots(y, ySrcKnots, yDstKnots);
     return [nx, ny];
   });
 }
 
 /**
- * Transforma el Estabilizador Horizontal manteniendo el espesor exacto de sus 2 ranuras de ensamble
+ * 4. Transformación del Estabilizador Horizontal (100.03 x 25.00 mm)
+ * Ajusta la ranura rectangular central (18.75 x slotThicknessMm) y la muesca inferior (slotThicknessMm x 3.125 mm)
  */
 function transformStabilizerCommands(cmds: Command[], slotThicknessMm: number, isInnerSlot: boolean): Command[] {
   if (isInnerSlot) {
-    // Ranura rectangular central: X=[374.523..412.623] (38.10 mm), Y=[66.9925..70.1675] (3.175 mm)
-    const Y_CENTER = (66.9925 + 70.1675) / 2;
+    const Y_CENTER = (32.9688 + 34.5313) / 2;
     return mapCommandPoints(cmds, (x, y) => {
       const ny = y < Y_CENTER ? Y_CENTER - slotThicknessMm / 2 : Y_CENTER + slotThicknessMm / 2;
       return [x, ny];
     });
   } else {
-    // Contorno exterior con muesca inferior en X=[391.986..395.161] (3.175 mm)
-    const X_NOTCH_L = 391.986;
-    const X_NOTCH_R = 395.161;
-    const X_NOTCH_CENTER = (X_NOTCH_L + X_NOTCH_R) / 2;
-    return mapCommandPoints(cmds, (x, y) => {
-      if (Math.abs(x - X_NOTCH_L) < 0.25 && y > 88) {
-        return [X_NOTCH_CENTER - slotThicknessMm / 2, y];
-      }
-      if (Math.abs(x - X_NOTCH_R) < 0.25 && y > 88) {
-        return [X_NOTCH_CENTER + slotThicknessMm / 2, y];
-      }
-      return [x, y];
-    });
+    const X_LEFT = 143.6563;
+    const X_NOTCH_L = 192.9063;
+    const X_NOTCH_R = 194.4688;
+    const X_RIGHT = 243.6875;
+    const X_CENTER = (X_NOTCH_L + X_NOTCH_R) / 2;
+
+    const srcKnots = [X_LEFT, X_NOTCH_L, X_NOTCH_R, X_RIGHT];
+    const dstKnots = [X_LEFT, X_CENTER - slotThicknessMm / 2, X_CENTER + slotThicknessMm / 2, X_RIGHT];
+    return mapCommandPoints(cmds, (x, y) => [interpolateKnots(x, srcKnots, dstKnots), y]);
   }
 }
 
 /**
- * Transforma los soportes de unión (Diedro y Trasero) manteniendo el espesor exacto de su ranura central
+ * 5. Transformación sin cruces del Soporte Diedro (expande hombros del cuello junto con la ranura de 3 mm)
  */
-function transformBraceCommands(
-  cmds: Command[],
-  slotThicknessMm: number,
-  slotLeftX: number,
-  slotRightX: number
-): Command[] {
-  const center = (slotLeftX + slotRightX) / 2;
-  return mapCommandPoints(cmds, (x, y) => {
-    if (Math.abs(x - slotLeftX) < 0.2) {
-      return [center - slotThicknessMm / 2, y];
-    }
-    if (Math.abs(x - slotRightX) < 0.2) {
-      return [center + slotThicknessMm / 2, y];
-    }
-    return [x, y];
-  });
-}
+function transformDihedralBraceCommands(cmds: Command[], slotThicknessMm: number): Command[] {
+  const X_MIN = 6.9375;
+  const X_NECK_L = 19.9063;
+  const X_SLOT_L = 21.4688;
+  const X_SLOT_R = 23.0313;
+  const X_NECK_R = 24.5938;
+  const X_MAX = 37.5313;
+  const X_CENTER = (X_SLOT_L + X_SLOT_R) / 2; // 22.250 mm
 
-function translateCommands(cmds: Command[], dx: number, dy: number): Command[] {
-  if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return cmds;
-  return mapCommandPoints(cmds, (x, y) => [x + dx, y + dy]);
+  const halfSlot = slotThicknessMm / 2;
+  const neckWall = 2.0; // Pared lateral robusta de 2.0 mm a cada lado de la ranura en balsa
+
+  const srcX = [X_MIN, X_NECK_L, X_SLOT_L, X_SLOT_R, X_NECK_R, X_MAX];
+  const dstX = [
+    X_MIN,
+    X_CENTER - halfSlot - neckWall,
+    X_CENTER - halfSlot,
+    X_CENTER + halfSlot,
+    X_CENTER + halfSlot + neckWall,
+    X_MAX,
+  ];
+
+  // Ajustar la profundidad de la ranura central a 3.0 mm
+  const Y_TOP = 18.4688;
+  const Y_SLOT_BOT = 20.0313;
+  const Y_BOT = 27.875;
+  const srcY = [Y_TOP, Y_SLOT_BOT, Y_BOT];
+  const dstY = [Y_TOP, Y_TOP + 3.0, Y_BOT + 1.4];
+
+  return mapCommandPoints(cmds, (x, y) => [interpolateKnots(x, srcX, dstX), interpolateKnots(y, srcY, dstY)]);
 }
 
 /**
- * Carga la plantilla SVG estructurada `planeador-base.svg`, identifica los grupos vectoriales
- * de alas, fuselaje, estabilizador y soportes, y aplica las transformaciones paramétricas en los nodos
- * preservando las dimensiones exactas de las ranuras de ensamble.
+ * 6. Transformación sin cruces del Soporte Trasero (expande hombros junto con la ranura de 3 mm y mantiene pestaña de 18.75 mm)
  */
+function transformTailBraceCommands(cmds: Command[], slotThicknessMm: number): Command[] {
+  const X_MIN = 39.125;
+  const X_TAB_L = 40.7188;
+  const X_NECK_L = 47.681;
+  const X_SLOT_L = 49.3125;
+  const X_SLOT_R = 50.875;
+  const X_NECK_R = 52.481;
+  const X_TAB_R = 59.4688;
+  const X_MAX = 61.0313;
+  const X_CENTER = (X_SLOT_L + X_SLOT_R) / 2; // 50.0938 mm
+
+  const halfSlot = slotThicknessMm / 2;
+  const neckWall = 2.0;
+
+  const srcX = [X_MIN, X_TAB_L, X_NECK_L, X_SLOT_L, X_SLOT_R, X_NECK_R, X_TAB_R, X_MAX];
+  const dstX = [
+    X_MIN,
+    X_TAB_L,
+    X_CENTER - halfSlot - neckWall,
+    X_CENTER - halfSlot,
+    X_CENTER + halfSlot,
+    X_CENTER + halfSlot + neckWall,
+    X_TAB_R,
+    X_MAX,
+  ];
+
+  const Y_TOP = 25.375;
+  const Y_SLOT_BOT = 26.9375;
+  const Y_STEP = 29.2813;
+  const Y_BOT = 30.8438;
+  const srcY = [Y_TOP, Y_SLOT_BOT, Y_STEP, Y_BOT];
+  const dstY = [Y_TOP, Y_TOP + 3.0, Y_TOP + 5.2, Y_TOP + 5.2 + slotThicknessMm];
+
+  return mapCommandPoints(cmds, (x, y) => [interpolateKnots(x, srcX, dstX), interpolateKnots(y, srcY, dstY)]);
+}
+
+/**
+ * Verificación geométrica de no-cruce de segmentos (tanto auto-intersecciones como colisiones entre piezas)
+ */
+function segmentsProperlyIntersect(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+  dx: number,
+  dy: number
+): boolean {
+  const ccw = (p1x: number, p1y: number, p2x: number, p2y: number, p3x: number, p3y: number) =>
+    (p3y - p1y) * (p2x - p1x) > (p2y - p1y) * (p3x - p1x);
+  return (
+    ccw(ax, ay, cx, cy, dx, dy) !== ccw(bx, by, cx, cy, dx, dy) &&
+    ccw(ax, ay, bx, by, cx, cy) !== ccw(ax, ay, bx, by, dx, dy)
+  );
+}
+
+function commandsToSegments(cmds: Command[]): Array<[number, number, number, number]> {
+  const pts: Array<[number, number]> = [];
+  for (const c of cmds) {
+    if ('x' in c && 'y' in c && typeof c.x === 'number' && typeof c.y === 'number') {
+      if (pts.length === 0 || Math.hypot(c.x - pts[pts.length - 1][0], c.y - pts[pts.length - 1][1]) > 1e-3) {
+        pts.push([c.x, c.y]);
+      }
+    }
+  }
+  const segs: Array<[number, number, number, number]> = [];
+  for (let i = 0; i < pts.length; i++) {
+    const p1 = pts[i];
+    const p2 = pts[(i + 1) % pts.length];
+    if (Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) > 1e-3) {
+      segs.push([p1[0], p1[1], p2[0], p2[1]]);
+    }
+  }
+  return segs;
+}
+
+export function verifyNoCrossings(pathsMap: Record<string, Command[]>): boolean {
+  const allPieceSegs: Array<{ id: string; segs: Array<[number, number, number, number]> }> = [];
+  for (const [id, cmds] of Object.entries(pathsMap)) {
+    const segs = commandsToSegments(cmds);
+    // 1. Verificar auto-intersección dentro de la misma pieza
+    for (let i = 0; i < segs.length; i++) {
+      for (let j = i + 2; j < segs.length; j++) {
+        if (i === 0 && j === segs.length - 1) continue;
+        const s1 = segs[i];
+        const s2 = segs[j];
+        if (segmentsProperlyIntersect(s1[0], s1[1], s1[2], s1[3], s2[0], s2[1], s2[2], s2[3])) {
+          return false;
+        }
+      }
+    }
+    allPieceSegs.push({ id, segs });
+  }
+
+  // 2. Verificar que ninguna pieza cruce líneas con otra pieza
+  for (let a = 0; a < allPieceSegs.length; a++) {
+    for (let b = a + 1; b < allPieceSegs.length; b++) {
+      // La ranura central del estabilizador está legítimamente dentro del contorno del estabilizador, pero sin tocar su borde
+      for (const s1 of allPieceSegs[a].segs) {
+        for (const s2 of allPieceSegs[b].segs) {
+          if (segmentsProperlyIntersect(s1[0], s1[1], s1[2], s1[3], s2[0], s2[1], s2[2], s2[3])) {
+            return false;
+          }
+        }
+      }
+    }
+  }
+  return true;
+}
+
+/**
+ * Calcula los indicadores aerodinámicos y de diseño para toma de decisiones de los estudiantes
+ */
+export function computeAerodynamics(
+  fuselageLengthMm: number,
+  wingspanMm: number,
+  wingWidthMm: number,
+  slotThicknessMm: number
+): AerodynamicData {
+  // Factor de forma planform real de las alas elípticas del PDF = 0.892
+  const PLANFORM_FACTOR = 0.892;
+  const wingAreaMm2 = +(PLANFORM_FACTOR * wingspanMm * wingWidthMm).toFixed(1);
+  const wingAreaCm2 = +(wingAreaMm2 / 100).toFixed(2);
+
+  // Alargamiento (Aspect Ratio AR = b^2 / Sw)
+  const aspectRatio = +((wingspanMm * wingspanMm) / wingAreaMm2).toFixed(2);
+
+  // Relación Envergadura / Largo Fuselaje
+  const spanToFuselageRatio = +(wingspanMm / fuselageLengthMm).toFixed(2);
+  const finenessRatio = +(fuselageLengthMm / wingWidthMm).toFixed(2);
+
+  // Coeficiente de volumen de cola horizontal VH = (Sh * lt) / (Sw * c)
+  const stabilizerAreaMm2 = 2120; // ~21.2 cm² del óvalo de 100 x 25 mm
+  const tailArmMm = Math.max(65, (fuselageLengthMm - wingWidthMm - 22) * 0.72);
+  const tailVolumeCoefficient = +((stabilizerAreaMm2 * tailArmMm) / (wingAreaMm2 * wingWidthMm)).toFixed(2);
+
+  // Posición recomendada del Centro de Gravedad (CG) desde la nariz
+  const noseLengthMm = (fuselageLengthMm - wingWidthMm - 22) * (56.28 / 209.41);
+  const recommendedCgFromNoseMm = +(noseLengthMm + 0.30 * wingWidthMm).toFixed(1);
+
+  // Masa estimada en madera de balsa de 3 mm (densidad media balsa = 0.14 g/cm³)
+  const fuselageAreaCm2 = (fuselageLengthMm * 2.15) / 10;
+  const stabAreaCm2 = 21.2;
+  const bracesAreaCm2 = 4.2;
+  const totalBalsaAreaCm2 = wingAreaCm2 + fuselageAreaCm2 + stabAreaCm2 + bracesAreaCm2;
+  const totalVolumeCm3 = totalBalsaAreaCm2 * (slotThicknessMm / 10);
+  const estimatedWeightGrams = +(totalVolumeCm3 * 0.14).toFixed(2);
+
+  // Carga alar en g/dm² (1 dm² = 100 cm²)
+  const wingAreaDm2 = wingAreaCm2 / 100;
+  const wingLoadingGPerDm2 = +(estimatedWeightGrams / wingAreaDm2).toFixed(2);
+
+  // Velocidad teórica de planeo (m/s) y razón de planeo L/D
+  const estimatedGlideSpeedMs = +(1.15 * Math.sqrt(wingLoadingGPerDm2)).toFixed(2);
+  const estimatedGlideRatioLD = +(5.2 + 0.46 * aspectRatio - Math.abs(tailVolumeCoefficient - 0.48) * 3.2).toFixed(1);
+
+  // Evaluación pedagógica de equilibrio
+  let penalty = 0;
+  const warnings: string[] = [];
+
+  if (spanToFuselageRatio < 0.85) {
+    penalty += Math.round((0.85 - spanToFuselageRatio) * 80);
+    warnings.push('Envergadura corta respecto al fuselaje (mayor velocidad de descenso).');
+  } else if (spanToFuselageRatio > 1.22) {
+    penalty += Math.round((spanToFuselageRatio - 1.22) * 75);
+    warnings.push('Fuselaje corto respecto a la envergadura (menor brazo de palanca en la cola).');
+  }
+
+  if (aspectRatio < 5.6) {
+    penalty += Math.round((5.6 - aspectRatio) * 10);
+    warnings.push('Bajo alargamiento alar (mayor resistencia inducida en las puntas de ala).');
+  } else if (aspectRatio > 8.4) {
+    penalty += Math.round((aspectRatio - 8.4) * 10);
+    warnings.push('Alas muy esbeltas (excelente planeo, pero requiere lanzamiento muy suave).');
+  }
+
+  if (tailVolumeCoefficient < 0.34) {
+    penalty += 15;
+    warnings.push('Volumen de cola bajo (posible tendencia al cabeceo).');
+  } else if (tailVolumeCoefficient > 0.68) {
+    penalty += 10;
+    warnings.push('Estabilizador con mucho brazo (vuelo muy amortiguado).');
+  }
+
+  const balanceScore = Math.max(45, Math.min(100, 98 - penalty));
+  const balanceStatus: 'optimo' | 'estable' | 'advertencia' =
+    balanceScore >= 86 ? 'optimo' : balanceScore >= 70 ? 'estable' : 'advertencia';
+
+  const flightBehaviorSummary =
+    warnings.length === 0
+      ? 'Equilibrio aerodinámico óptimo: excelente sustentación, centro de gravedad estable y planeo largo y recto.'
+      : warnings.join(' ');
+
+  return {
+    wingAreaCm2,
+    wingAreaMm2,
+    aspectRatio,
+    spanToFuselageRatio,
+    finenessRatio,
+    tailVolumeCoefficient,
+    recommendedCgFromNoseMm,
+    estimatedWeightGrams,
+    wingLoadingGPerDm2,
+    estimatedGlideSpeedMs,
+    estimatedGlideRatioLD,
+    balanceScore,
+    balanceStatus,
+    flightBehaviorSummary,
+  };
+}
+
+/**
+ * Construye un nodo SVG para el borde guía de una lámina de balsa de 300 x 100 mm
+ */
+function createSheetGuideNode(sheetIndex: number, yOffset: number, label: string): INode {
+  return {
+    name: 'g',
+    type: 'element',
+    value: '',
+    attributes: {
+      id: `guia-lamina-${sheetIndex}`,
+      'data-layer': 'sheet-guide',
+    },
+    children: [
+      {
+        name: 'rect',
+        type: 'element',
+        value: '',
+        attributes: {
+          x: '0.5',
+          y: (yOffset + 0.5).toFixed(2),
+          width: '299',
+          height: '99',
+          rx: '2',
+          fill: 'none',
+          stroke: '#0284c7',
+          'stroke-width': '0.4',
+          'stroke-dasharray': '3,2',
+        },
+        children: [],
+      },
+      {
+        name: 'text',
+        type: 'element',
+        value: '',
+        attributes: {
+          x: '4',
+          y: (yOffset + 5.2).toFixed(2),
+          fill: '#0369a1',
+          'font-family': 'system-ui, sans-serif',
+          'font-size': '3.5',
+          'font-weight': 'bold',
+        },
+        children: [
+          {
+            name: '',
+            type: 'text',
+            value: label,
+            attributes: {},
+            children: [],
+          },
+        ],
+      },
+    ],
+  };
+}
+
 export async function processGliderSvg(params: GliderParams): Promise<ProcessedGliderResult> {
-  const fuselageLengthMm = Math.max(250, Math.min(1200, Number(params.fuselageLengthMm) || BASE_GLIDER_PARAMS.fuselageLengthMm));
-  const wingspanMm = Math.max(200, Math.min(1400, Number(params.wingspanMm) || BASE_GLIDER_PARAMS.wingspanTotalMm));
-  const wingWidthMm = Math.max(35, Math.min(200, Number(params.wingWidthMm) || BASE_GLIDER_PARAMS.wingWidthMm));
-  const slotThicknessMm = Math.max(1.5, Math.min(10, Number(params.slotThicknessMm) || BASE_GLIDER_PARAMS.slotThicknessMm));
+  // 1. Validar y acotar los parámetros dentro de los límites de las planchas de balsa 300x100x3 mm
+  const fuselageLengthMm = Math.max(
+    BALSA_DESIGN_LIMITS.fuselage.min,
+    Math.min(BALSA_DESIGN_LIMITS.fuselage.max, Number(params.fuselageLengthMm) || BALSA_DESIGN_LIMITS.fuselage.default)
+  );
+  const wingspanMm = Math.max(
+    BALSA_DESIGN_LIMITS.wingspan.min,
+    Math.min(BALSA_DESIGN_LIMITS.wingspan.max, Number(params.wingspanMm) || BALSA_DESIGN_LIMITS.wingspan.default)
+  );
+  const wingWidthMm = Math.max(
+    BALSA_DESIGN_LIMITS.wingWidth.min,
+    Math.min(BALSA_DESIGN_LIMITS.wingWidth.max, Number(params.wingWidthMm) || BALSA_DESIGN_LIMITS.wingWidth.default)
+  );
+  const slotThicknessMm = Math.max(
+    BALSA_DESIGN_LIMITS.slotThickness.min,
+    Math.min(
+      BALSA_DESIGN_LIMITS.slotThickness.max,
+      Number(params.slotThicknessMm) || BALSA_DESIGN_LIMITS.slotThickness.default
+    )
+  );
   const singleWingSpanMm = wingspanMm / 2;
   const cutStrokeColor = params.cutStrokeColor || '#FF0000';
 
   const templatePath = path.join(process.cwd(), 'public', 'templates', 'planeador-base.svg');
   const rawSvg = fs.readFileSync(templatePath, 'utf8');
-
-  // Parsear el árbol vectorial SVG mediante svgson
   const ast: INode = await parse(rawSvg);
 
-  // Diccionario de comandos procesados para calcular bounding boxes y evitar colisiones
-  const processedPaths: Record<string, Command[]> = {};
-
+  // 2. Transformar los nodos de las 6 piezas con funciones estrictamente monótonas
+  const rawPaths: Record<string, Command[]> = {};
   for (const group of ast.children) {
     if (group.name !== 'g') continue;
-    const groupId = group.attributes.id;
-    group.attributes.stroke = cutStrokeColor;
-
     for (const child of group.children) {
-      if (child.name !== 'path' || !child.attributes.d) continue;
-      const pathId = child.attributes.id || groupId;
-      const parsedCmds = parseSVG(child.attributes.d);
-
-      if (groupId === 'fuselaje') {
-        processedPaths[pathId] = transformFuselageCommands(
-          parsedCmds,
-          fuselageLengthMm,
-          wingWidthMm,
-          slotThicknessMm
-        );
-        group.attributes['data-current-length-mm'] = fuselageLengthMm.toFixed(2);
-        group.attributes['data-wing-saddle-mm'] = wingWidthMm.toFixed(2);
-        group.attributes['data-slot-width-mm'] = slotThicknessMm.toFixed(3);
-      } else if (groupId === 'ala-izquierda') {
-        processedPaths[pathId] = transformLeftWingCommands(
-          parsedCmds,
-          singleWingSpanMm,
-          wingWidthMm,
-          slotThicknessMm
-        );
-        group.attributes['data-current-semispan-mm'] = singleWingSpanMm.toFixed(2);
-        group.attributes['data-current-chord-mm'] = wingWidthMm.toFixed(2);
-        group.attributes['data-slot-width-mm'] = slotThicknessMm.toFixed(3);
-      } else if (groupId === 'ala-derecha') {
-        processedPaths[pathId] = transformRightWingCommands(
-          parsedCmds,
-          singleWingSpanMm,
-          wingWidthMm,
-          slotThicknessMm
-        );
-        group.attributes['data-current-semispan-mm'] = singleWingSpanMm.toFixed(2);
-        group.attributes['data-current-chord-mm'] = wingWidthMm.toFixed(2);
-        group.attributes['data-slot-width-mm'] = slotThicknessMm.toFixed(3);
-      } else if (groupId === 'estabilizador-horizontal') {
-        const isInner = pathId === 'estabilizador-ranura-central' || child.attributes['data-slot'] === 'true';
-        processedPaths[pathId] = transformStabilizerCommands(parsedCmds, slotThicknessMm, isInner);
-        group.attributes['data-slot-width-mm'] = slotThicknessMm.toFixed(3);
-      } else if (groupId === 'soporte-diedro') {
-        // Ranura central en X=[43.6245..46.7995]
-        processedPaths[pathId] = transformBraceCommands(parsedCmds, slotThicknessMm, 43.6245, 46.7995);
-        group.attributes['data-slot-width-mm'] = slotThicknessMm.toFixed(3);
-      } else if (groupId === 'soporte-trasero') {
-        // Ranura central en X=[100.203..103.378]
-        processedPaths[pathId] = transformBraceCommands(parsedCmds, slotThicknessMm, 100.203, 103.378);
-        group.attributes['data-slot-width-mm'] = slotThicknessMm.toFixed(3);
-      } else {
-        processedPaths[pathId] = parsedCmds;
+      if (child.name === 'path' && child.attributes.d) {
+        rawPaths[child.attributes.id || group.attributes.id] = parseSVG(child.attributes.d);
       }
     }
   }
 
-  // Reacomodar automáticamente las piezas en la lámina si crecen para evitar solapamientos o recortes fuera del área
-  const leftWingCmds = processedPaths['ala-izquierda-contorno'];
-  const rightWingCmds = processedPaths['ala-derecha-contorno'];
-  if (leftWingCmds && rightWingCmds) {
+  let fusCmds = transformFuselageCommands(
+    rawPaths['fuselaje-contorno'],
+    fuselageLengthMm,
+    wingWidthMm,
+    slotThicknessMm
+  );
+  let leftWingCmds = transformLeftWingCommands(
+    rawPaths['ala-izquierda-contorno'],
+    singleWingSpanMm,
+    wingWidthMm,
+    slotThicknessMm
+  );
+  let rightWingCmds = transformRightWingCommands(
+    rawPaths['ala-derecha-contorno'],
+    singleWingSpanMm,
+    wingWidthMm,
+    slotThicknessMm
+  );
+  let stabOuterCmds = transformStabilizerCommands(rawPaths['estabilizador-contorno'], slotThicknessMm, false);
+  let stabInnerCmds = transformStabilizerCommands(rawPaths['estabilizador-ranura-central'], slotThicknessMm, true);
+  let dihedralCmds = transformDihedralBraceCommands(rawPaths['soporte-diedro-contorno'], slotThicknessMm);
+  let tailBraceCmds = transformTailBraceCommands(rawPaths['soporte-trasero-contorno'], slotThicknessMm);
+
+  // 3. Decidir distribución óptima en 1 o 2 láminas de madera de balsa de 300 x 100 mm (SIN CRUCES JAMÁS)
+  // Criterio estricto de cajas disjuntas: cabe en 1 lámina solo si el estabilizador (100.03 mm) cabe a la derecha del fuselaje
+  // (fuselageLengthMm <= 182 mm) y las 2 alas caben debajo (wingWidthMm <= 42 mm). De lo contrario, se usan 2 láminas 300x100 mm.
+  const fitsInSingleSheet = fuselageLengthMm <= 182 && wingWidthMm <= 42 && wingspanMm <= 260;
+  const sheetsRequired: 1 | 2 = fitsInSingleSheet ? 1 : 2;
+
+  const stabBox0 = getCommandsBBox(stabOuterCmds);
+  const stabTargetX = fitsInSingleSheet ? 194.0 : 12.0;
+  const stabTargetY = fitsInSingleSheet ? 5.0 : 62.0;
+  const stabDx = stabTargetX - stabBox0.minX;
+  const stabDy = stabTargetY - stabBox0.minY;
+
+  stabOuterCmds = mapCommandPoints(stabOuterCmds, (x, y) => [x + stabDx, y + stabDy]);
+  stabInnerCmds = mapCommandPoints(stabInnerCmds, (x, y) => [x + stabDx, y + stabDy]);
+
+  if (fitsInSingleSheet) {
+    // 1 Sola Lámina de 300 x 100 mm (Cajas disjuntas garantizadas)
+    fusCmds = placeCommandsAt(fusCmds, 6.0, 4.0);
+    dihedralCmds = placeCommandsAt(dihedralCmds, 194.0, 35.0);
+    tailBraceCmds = placeCommandsAt(tailBraceCmds, 238.0, 37.0);
+    leftWingCmds = placeCommandsAt(leftWingCmds, 8.0, 53.0);
+    rightWingCmds = placeCommandsAt(rightWingCmds, 154.0, 53.0);
+  } else {
+    // 2 Láminas de 300 x 100 mm:
+    // Lámina 1 (Y: 0..100): Fuselaje arriba + Estabilizador y Soportes abajo
+    fusCmds = placeCommandsAt(fusCmds, 10.0, 6.5);
+    dihedralCmds = placeCommandsAt(dihedralCmds, 138.0, 68.0);
+    tailBraceCmds = placeCommandsAt(tailBraceCmds, 188.0, 70.0);
+
+    // Lámina 2 (Y: 112..212 en vista combinada, o Y: 0..100 en archivo individual de Lámina 2):
+    const sheet2OffsetY = 112.0;
+    const wingLocalY = Math.round((100 - wingWidthMm) / 2);
+    leftWingCmds = placeCommandsAt(leftWingCmds, 12.0, sheet2OffsetY + wingLocalY);
+    rightWingCmds = placeCommandsAt(rightWingCmds, 156.0, sheet2OffsetY + wingLocalY);
+  }
+
+  const processedPaths: Record<string, Command[]> = {
+    'fuselaje-contorno': fusCmds,
+    'ala-izquierda-contorno': leftWingCmds,
+    'ala-derecha-contorno': rightWingCmds,
+    'estabilizador-contorno': stabOuterCmds,
+    'estabilizador-ranura-central': stabInnerCmds,
+    'soporte-diedro-contorno': dihedralCmds,
+    'soporte-trasero-contorno': tailBraceCmds,
+  };
+
+  // Verificar matemáticamente que no exista ningún cruce de segmentos
+  const zeroCrossingsVerified = verifyNoCrossings(processedPaths);
+
+  // Actualizar el AST principal
+  for (const group of ast.children) {
+    if (group.name !== 'g') continue;
+    group.attributes.stroke = cutStrokeColor;
+    for (const child of group.children) {
+      if (child.name !== 'path') continue;
+      const pid = child.attributes.id || group.attributes.id;
+      if (processedPaths[pid]) {
+        child.attributes.d = serializeCommands(processedPaths[pid]);
+      }
+    }
+  }
+
+  // Generar también los SVGs individuales de Lámina 1 (300x100) y Lámina 2 (300x100) listos para cortar en cada tabla
+  const sheet1Groups = ast.children.filter(
+    (g) =>
+      g.name === 'g' &&
+      (fitsInSingleSheet ||
+        ['fuselaje', 'estabilizador-horizontal', 'soporte-diedro', 'soporte-trasero'].includes(g.attributes.id))
+  );
+  const sheet1Ast: INode = {
+    ...ast,
+    attributes: {
+      ...ast.attributes,
+      viewBox: '0 0 300 100',
+      width: '300mm',
+      height: '100mm',
+      'data-sheet': '1',
+    },
+    children: sheet1Groups,
+  };
+  const sheet1Svg = `<?xml version="1.0" encoding="UTF-8"?>\n${stringify(sheet1Ast)}`;
+
+  let sheet2Svg: string | null = null;
+  if (sheetsRequired === 2) {
+    const wingLocalY = Math.round((100 - wingWidthMm) / 2);
+    const s2Left = placeCommandsAt(leftWingCmds, 12.0, wingLocalY);
+    const s2Right = placeCommandsAt(rightWingCmds, 156.0, wingLocalY);
+    const sheet2Ast: INode = {
+      ...ast,
+      attributes: {
+        ...ast.attributes,
+        viewBox: '0 0 300 100',
+        width: '300mm',
+        height: '100mm',
+        'data-sheet': '2',
+      },
+      children: [
+        {
+          name: 'g',
+          type: 'element',
+          value: '',
+          attributes: { id: 'ala-izquierda', fill: 'none', stroke: cutStrokeColor, 'stroke-width': '0.25' },
+          children: [
+            {
+              name: 'path',
+              type: 'element',
+              value: '',
+              attributes: { id: 'ala-izquierda-contorno', d: serializeCommands(s2Left) },
+              children: [],
+            },
+          ],
+        },
+        {
+          name: 'g',
+          type: 'element',
+          value: '',
+          attributes: { id: 'ala-derecha', fill: 'none', stroke: cutStrokeColor, 'stroke-width': '0.25' },
+          children: [
+            {
+              name: 'path',
+              type: 'element',
+              value: '',
+              attributes: { id: 'ala-derecha-contorno', d: serializeCommands(s2Right) },
+              children: [],
+            },
+          ],
+        },
+      ],
+    };
+    sheet2Svg = `<?xml version="1.0" encoding="UTF-8"?>\n${stringify(sheet2Ast)}`;
+  }
+
+  const totalHeightMm = sheetsRequired === 1 ? 100 : 212;
+  ast.attributes.viewBox = `0 0 300 ${totalHeightMm}`;
+  ast.attributes.width = '300mm';
+  ast.attributes.height = `${totalHeightMm}mm`;
+
+  if (params.includeAnnotations) {
+    const fusBox = getCommandsBBox(fusCmds);
     const leftBox = getCommandsBBox(leftWingCmds);
     const rightBox = getCommandsBBox(rightWingCmds);
 
-    // Si el ala izquierda se sale por la izquierda (minX < 13.4 mm), desplazar ambas alas hacia la derecha
-    let leftShiftX = 0;
-    if (leftBox.minX < 13.3985) {
-      leftShiftX = 13.3985 - leftBox.minX;
+    // Agregar marcos guía de las tablas de balsa de 300 x 100 mm
+    ast.children.unshift(
+      createSheetGuideNode(
+        1,
+        0,
+        sheetsRequired === 1
+          ? 'Lámina Única de Balsa: 300 × 100 × 3 mm (6 piezas)'
+          : 'Lámina 1 de Balsa (300 × 100 × 3 mm): Fuselaje, Estabilizador y Soportes'
+      )
+    );
+    if (sheetsRequired === 2) {
+      ast.children.splice(
+        1,
+        0,
+        createSheetGuideNode(2, 112, 'Lámina 2 de Balsa (300 × 100 × 3 mm): Ala Izquierda y Ala Derecha')
+      );
     }
-    // Mantener una separación constante de 24.765 mm entre las raíces de ambas alas
-    const newLeftMaxX = leftBox.maxX + leftShiftX;
-    const targetRightMinX = newLeftMaxX + 24.765;
-    const rightShiftX = targetRightMinX - rightBox.minX;
-
-    // Si el fuselaje o estabilizador es más bajo por cambio de escala, asegurar margen vertical >= 16 mm
-    const fusBox = getCommandsBBox(processedPaths['fuselaje-contorno']);
-    const stabBox = getCommandsBBox(processedPaths['estabilizador-contorno']);
-    const upperMaxY = Math.max(fusBox.maxY, stabBox.maxY);
-    const currentWingsMinY = Math.min(leftBox.minY, rightBox.minY);
-    const wingShiftY = currentWingsMinY < upperMaxY + 14 ? (upperMaxY + 14) - currentWingsMinY : 0;
-
-    processedPaths['ala-izquierda-contorno'] = translateCommands(leftWingCmds, leftShiftX, wingShiftY);
-    processedPaths['ala-derecha-contorno'] = translateCommands(rightWingCmds, rightShiftX, wingShiftY);
-  }
-
-  // Volcar los comandos transformados de vuelta al AST de svgson y calcular el tamaño total de la lámina
-  let globalMaxX = 609.6;
-  let globalMaxY = 203.2;
-
-  for (const group of ast.children) {
-    if (group.name !== 'g') continue;
-    for (const child of group.children) {
-      if (child.name !== 'path') continue;
-      const pathId = child.attributes.id || group.attributes.id;
-      const cmds = processedPaths[pathId];
-      if (cmds) {
-        child.attributes.d = serializeCommands(cmds);
-        const bbox = getCommandsBBox(cmds);
-        if (bbox.maxX + 13.4 > globalMaxX) globalMaxX = +(bbox.maxX + 13.4).toFixed(2);
-        if (bbox.maxY + 11.6 > globalMaxY) globalMaxY = +(bbox.maxY + 11.6).toFixed(2);
-      }
-    }
-  }
-
-  // Actualizar metadatos y dimensiones de la lámina en el nodo raíz <svg>
-  ast.attributes.viewBox = `0 0 ${globalMaxX} ${globalMaxY}`;
-  ast.attributes.width = `${globalMaxX}mm`;
-  ast.attributes.height = `${globalMaxY}mm`;
-  ast.attributes['data-fuselage-length-mm'] = fuselageLengthMm.toFixed(2);
-  ast.attributes['data-wingspan-mm'] = wingspanMm.toFixed(2);
-  ast.attributes['data-wing-width-mm'] = wingWidthMm.toFixed(2);
-  ast.attributes['data-slot-thickness-mm'] = slotThicknessMm.toFixed(3);
-
-  // Si se solicita modo con anotaciones (para guía visual), agregar capa de cotas no cortable
-  if (params.includeAnnotations) {
-    const fusBox = getCommandsBBox(processedPaths['fuselaje-contorno']);
-    const leftBox = getCommandsBBox(processedPaths['ala-izquierda-contorno']);
-    const rightBox = getCommandsBBox(processedPaths['ala-derecha-contorno']);
 
     ast.children.push({
       name: 'g',
@@ -486,9 +857,8 @@ export async function processGliderSvg(params: GliderParams): Promise<ProcessedG
       attributes: {
         id: 'cotas-pedagogicas',
         'data-layer': 'annotations',
-        fill: '#1e293b',
         'font-family': 'system-ui, sans-serif',
-        'font-size': '5.2',
+        'font-size': '3.4',
         'font-weight': 'bold',
       },
       children: [
@@ -498,7 +868,7 @@ export async function processGliderSvg(params: GliderParams): Promise<ProcessedG
           value: '',
           attributes: {
             x: ((fusBox.minX + fusBox.maxX) / 2).toFixed(2),
-            y: Math.max(5.5, fusBox.minY - 2.2).toFixed(2),
+            y: (fusBox.maxY + 4.8).toFixed(2),
             'text-anchor': 'middle',
             fill: '#46247a',
           },
@@ -506,7 +876,7 @@ export async function processGliderSvg(params: GliderParams): Promise<ProcessedG
             {
               name: '',
               type: 'text',
-              value: `Fuselaje: ${fuselageLengthMm.toFixed(1)} mm (Cama de ala: ${wingWidthMm.toFixed(1)} mm | Ranura: ${slotThicknessMm.toFixed(2)} mm)`,
+              value: `Fuselaje: ${fuselageLengthMm.toFixed(0)} mm | Cama ala: ${wingWidthMm.toFixed(0)} mm | Ranuras: ${slotThicknessMm.toFixed(2)} mm`,
               attributes: {},
               children: [],
             },
@@ -518,7 +888,7 @@ export async function processGliderSvg(params: GliderParams): Promise<ProcessedG
           value: '',
           attributes: {
             x: ((leftBox.minX + leftBox.maxX) / 2).toFixed(2),
-            y: (leftBox.minY + (leftBox.maxY - leftBox.minY) / 2).toFixed(2),
+            y: (leftBox.minY + (leftBox.maxY - leftBox.minY) / 2 + 1).toFixed(2),
             'text-anchor': 'middle',
             fill: '#0284c7',
           },
@@ -526,7 +896,7 @@ export async function processGliderSvg(params: GliderParams): Promise<ProcessedG
             {
               name: '',
               type: 'text',
-              value: `Ala Izq: ${singleWingSpanMm.toFixed(1)} × ${wingWidthMm.toFixed(1)} mm (Ranura 25.4 × ${slotThicknessMm.toFixed(2)} mm)`,
+              value: `Ala Izq: ${singleWingSpanMm.toFixed(0)} × ${wingWidthMm.toFixed(0)} mm`,
               attributes: {},
               children: [],
             },
@@ -538,7 +908,7 @@ export async function processGliderSvg(params: GliderParams): Promise<ProcessedG
           value: '',
           attributes: {
             x: ((rightBox.minX + rightBox.maxX) / 2).toFixed(2),
-            y: (rightBox.minY + (rightBox.maxY - rightBox.minY) / 2).toFixed(2),
+            y: (rightBox.minY + (rightBox.maxY - rightBox.minY) / 2 + 1).toFixed(2),
             'text-anchor': 'middle',
             fill: '#0284c7',
           },
@@ -546,7 +916,7 @@ export async function processGliderSvg(params: GliderParams): Promise<ProcessedG
             {
               name: '',
               type: 'text',
-              value: `Ala Der: ${singleWingSpanMm.toFixed(1)} × ${wingWidthMm.toFixed(1)} mm (Ranura 25.4 × ${slotThicknessMm.toFixed(2)} mm)`,
+              value: `Ala Der: ${singleWingSpanMm.toFixed(0)} × ${wingWidthMm.toFixed(0)} mm`,
               attributes: {},
               children: [],
             },
@@ -556,31 +926,45 @@ export async function processGliderSvg(params: GliderParams): Promise<ProcessedG
     });
   }
 
-  const outputSvg = `<?xml version="1.0" encoding="UTF-8"?>\n${stringify(ast)}`;
+  const combinedSvg = `<?xml version="1.0" encoding="UTF-8"?>\n${stringify(ast)}`;
+  const aerodynamics = computeAerodynamics(fuselageLengthMm, wingspanMm, wingWidthMm, slotThicknessMm);
 
   const metrics: GliderMetrics = {
     fuselageLengthMm: +fuselageLengthMm.toFixed(2),
-    fuselageHeightMm: BASE_GLIDER_PARAMS.fuselageHeightMm,
+    fuselageHeightMm: 44.94,
     wingSaddleLengthMm: +wingWidthMm.toFixed(2),
     wingspanTotalMm: +wingspanMm.toFixed(2),
     singleWingLengthMm: +singleWingSpanMm.toFixed(2),
     wingWidthMm: +wingWidthMm.toFixed(2),
     slotThicknessMm: +slotThicknessMm.toFixed(3),
-    wingSlotDepthMm: BASE_GLIDER_PARAMS.wingSlotDepthMm,
-    fuselageWingSlotDepthMm: BASE_GLIDER_PARAMS.fuselageWingSlotDepthMm,
-    fuselageTailSlotDepthMm: BASE_GLIDER_PARAMS.fuselageTailSlotDepthMm,
-    stabilizerSpanMm: BASE_GLIDER_PARAMS.stabilizerSpanMm,
-    stabilizerChordMm: BASE_GLIDER_PARAMS.stabilizerChordMm,
-    stabilizerCenterSlotLengthMm: BASE_GLIDER_PARAMS.stabilizerCenterSlotLengthMm,
-    dihedralBraceWidthMm: BASE_GLIDER_PARAMS.dihedralBraceWidthMm,
-    dihedralAngleDeg: BASE_GLIDER_PARAMS.dihedralAngleDeg,
-    tailBraceWidthMm: BASE_GLIDER_PARAMS.tailBraceWidthMm,
-    sheetWidthMm: globalMaxX,
-    sheetHeightMm: globalMaxY,
+    wingSlotDepthMm: 12.5,
+    fuselageWingSlotDepthMm: 6.25,
+    fuselageTailSlotDepthMm: 3.0,
+    stabilizerSpanMm: 100.03,
+    stabilizerChordMm: 25.0,
+    stabilizerCenterSlotLengthMm: 18.75,
+    dihedralBraceWidthMm: 32.0,
+    dihedralAngleDeg: 7.5,
+    tailBraceWidthMm: 23.3,
+    balsaSheetWidthMm: 300.0,
+    balsaSheetHeightMm: 100.0,
+    balsaMaterialThicknessMm: 3.0,
+    sheetsRequired,
+    sheetWidthMm: 300.0,
+    sheetHeightMm: totalHeightMm,
+    zeroCrossingsVerified,
+    aerodynamics,
   };
 
   return {
-    svg: outputSvg,
+    svg:
+      params.targetSheet === 'sheet1'
+        ? sheet1Svg
+        : params.targetSheet === 'sheet2' && sheet2Svg
+        ? sheet2Svg
+        : combinedSvg,
+    sheet1Svg,
+    sheet2Svg,
     metrics,
     baseMetrics: BASE_GLIDER_PARAMS,
   };
