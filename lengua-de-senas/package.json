@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",
-    "@types/svg-path-parser": "^1.1.6",
     "@types/three": "^0.185.4",
     "canvas-confetti": "^1.9.4",
     "lucide-react": "^1.41.0",
@@ -20,11 +19,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "sharp": "^0.35.4",
-    "svg-path-parser": "^1.1.0",
-    "svgson": "^5.3.1",
-    "three": "^0.185.1",
-    "three-bvh-csg": "^0.0.18",
-    "three-mesh-bvh": "^0.9.15"
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

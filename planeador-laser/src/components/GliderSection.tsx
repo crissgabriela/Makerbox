@@ -16,7 +16,7 @@ import {
   FileCode2,
   Sliders,
 } from 'lucide-react';
-import { GliderMetrics, BASE_GLIDER_PARAMS } from '@/lib/glider-svg-processor';
+import { GliderMetrics, BASE_GLIDER_PARAMS } from '@/types/glider';
 
 export const GliderSection: React.FC = () => {
   // Parámetros de entrada del usuario (inicializados con los valores exactos identificados en el PDF)

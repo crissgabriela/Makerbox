@@ -5,8 +5,8 @@ import Image from 'next/image';
 import { BookOpen } from 'lucide-react';
 
 interface HeaderProps {
-  activeTool: 'laser' | 'lithophane' | 'braille' | 'fractions' | 'glider' | null;
-  onSelectTool: (tool: 'laser' | 'lithophane' | 'braille' | 'fractions' | 'glider' | null) => void;
+  activeTool: 'laser' | 'lithophane' | 'braille' | 'fractions' | null;
+  onSelectTool: (tool: 'laser' | 'lithophane' | 'braille' | 'fractions' | null) => void;
   onOpenGuide?: () => void;
   onOpenCustomSigns: () => void;
 }
@@ -18,6 +18,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   return (
     <header className="w-full bg-white border-b border-slate-200 text-slate-800 sticky top-0 z-30 shadow-xs backdrop-blur-md bg-white/95">
+      {/* Contenedor principal con 1cm (~12-14px) de margen por encima y por debajo */}
       <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 py-3 sm:py-3.5">
         <div className="flex flex-col md:flex-row items-center justify-between gap-3 sm:gap-4">
           {/* Logos e Identidad Institucional */}
@@ -54,10 +55,10 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Navegación entre las herramientas de Fabricación Digital */}
+          {/* Navegación entre las 4 herramientas de Fabricación Digital */}
           <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
-            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner flex-wrap justify-center">
-              {/* Botón Inicio / Menú */}
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner">
+              {/* Botón Inicio / Menú 2x2 */}
               <button
                 type="button"
                 onClick={() => onSelectTool(null)}
@@ -66,7 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
                     ? 'bg-slate-900 text-white shadow-sm'
                     : 'text-slate-700 hover:text-slate-950 hover:bg-white/80'
                 }`}
-                title="Volver a Selección de Herramientas"
+                title="Volver a Selección en Cuadrícula 2x2"
               >
                 <span>🏠 Inicio</span>
               </button>
@@ -117,18 +118,6 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 <span>🥧 Fracciones</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onSelectTool('glider')}
-                className={`flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-lg font-extrabold text-xs sm:text-sm transition-all active:scale-95 cursor-pointer ${
-                  activeTool === 'glider'
-                    ? 'bg-sky-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                }`}
-              >
-                <span>✈️ Planeador</span>
               </button>
             </div>
 

@@ -12,10 +12,9 @@ import { CustomSignUploader } from '@/components/CustomSignUploader';
 import { LithophaneSection } from '@/components/LithophaneSection';
 import { BrailleSection } from '@/components/BrailleSection';
 import { FractionsSection } from '@/components/FractionsSection';
-import { GliderSection } from '@/components/GliderSection';
 import { ToolsHub, ToolId } from '@/components/ToolsHub';
 import { LaserConfig } from '@/types';
-import { Sparkles, Maximize, Minimize, Award, ArrowLeft } from 'lucide-react';
+import { Sparkles, Maximize, Minimize, Heart, Award, ArrowLeft } from 'lucide-react';
 
 const DEFAULT_CONFIG: LaserConfig = {
   mode: 'capsule',
@@ -34,6 +33,7 @@ const DEFAULT_CONFIG: LaserConfig = {
 };
 
 export default function Home() {
+  // Estado de la herramienta activa. null = Menú 2x2 de selección
   const [activeTool, setActiveTool] = useState<ToolId | null>(null);
   const [text, setText] = useState('');
   const [secondaryText, setSecondaryText] = useState('');
@@ -45,6 +45,7 @@ export default function Home() {
 
   const MAX_CHARS = 10;
 
+  // Manejo de pantalla completa (Modo Kiosco para pantalla táctil)
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
@@ -84,6 +85,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans selection:bg-purple-200 selection:text-purple-900 pb-32">
+      {/* Cabecera institucional con logos claros y selector de herramientas */}
       <Header
         activeTool={activeTool}
         onSelectTool={setActiveTool}
@@ -91,8 +93,12 @@ export default function Home() {
         onOpenCustomSigns={() => setIsAlphabetOpen(true)}
       />
 
+      {/* Contenedor principal */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 flex flex-col gap-6 sm:gap-8">
         {activeTool === null ? (
+          /* ========================================================================= */
+          /* PANTALLA PRINCIPAL: SELECCIÓN EN CUADRÍCULA 2X2 EN EL CENTRO              */
+          /* ========================================================================= */
           <div className="flex flex-col items-center justify-center min-h-[60vh] w-full">
             <ToolsHub onSelectTool={setActiveTool} />
 
@@ -108,7 +114,11 @@ export default function Home() {
             </div>
           </div>
         ) : (
+          /* ========================================================================= */
+          /* HERRAMIENTA SELECCIONADA CON BOTÓN DE RETORNO AL INICIO 2X2               */
+          /* ========================================================================= */
           <>
+            {/* Barra superior de navegación para volver a la selección de herramientas */}
             <div className="flex items-center justify-between pb-1 flex-wrap gap-3">
               <button
                 type="button"
@@ -131,6 +141,7 @@ export default function Home() {
 
             {activeTool === 'laser' ? (
               <>
+                {/* Banner suave y acogedor de bienvenida (altura compacta) */}
                 <div className="rounded-2xl bg-gradient-to-r from-purple-100 via-pink-50 to-amber-50 border border-purple-200/80 px-5 py-3.5 sm:px-6 sm:py-4 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
@@ -148,6 +159,7 @@ export default function Home() {
                   </div>
                 </div>
 
+                {/* Paso 1: Entrada de texto */}
                 <TextInputSection
                   value={text}
                   onChange={setText}
@@ -161,6 +173,7 @@ export default function Home() {
                   onQuickWord={handleQuickWord}
                 />
 
+                {/* Paso 2: Visualización de las señas con ilustraciones chilenas */}
                 <SignDisplay
                   text={text}
                   secondaryText={secondaryText}
@@ -170,8 +183,10 @@ export default function Home() {
                   }}
                 />
 
+                {/* Paso 3: Opciones del llavero físico */}
                 <LaserControls config={laserConfig} onChange={setLaserConfig} />
 
+                {/* Paso 4: Vista previa y descarga para la cortadora láser */}
                 <LaserSvgGenerator
                   text={text}
                   secondaryText={secondaryText}
@@ -179,18 +194,20 @@ export default function Home() {
                 />
               </>
             ) : activeTool === 'lithophane' ? (
+              /* Herramienta 2: Imagen (Litofanía 3D y Grabado Láser MDF 8x8 cm) */
               <LithophaneSection />
             ) : activeTool === 'braille' ? (
+              /* Herramienta 3: Llaveros Braille 3D (Impresión 3D STL y OBJ) */
               <BrailleSection />
-            ) : activeTool === 'fractions' ? (
-              <FractionsSection />
             ) : (
-              <GliderSection />
+              /* Herramienta 4: Fracciones Didácticas (Impresión 3D STL y Corte Láser SVG) */
+              <FractionsSection />
             )}
           </>
         )}
       </main>
 
+      {/* Teclado táctil flotante (solo en modo corte láser) */}
       {activeTool === 'laser' && (
         <TouchKeyboard
           isOpen={isKeyboardOpen}
@@ -202,9 +219,11 @@ export default function Home() {
         />
       )}
 
+      {/* Modales informativos */}
       <StandGuideModal isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
       <CustomSignUploader isOpen={isAlphabetOpen} onClose={() => setIsAlphabetOpen(false)} />
 
+      {/* Pie de página suave */}
       <footer className="w-full bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500 mt-12">
         <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -214,9 +233,9 @@ export default function Home() {
             </span>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <span>Plataforma de Fabricación Digital</span>
+            <span>Festival de Ciencia y Tecnología 2026</span>
             <span>•</span>
-            <span className="text-purple-700 font-bold">Impresión 3D y Corte Láser</span>
+            <span className="text-purple-700 font-bold">Stand de Impresión 3D y Corte Láser</span>
           </div>
         </div>
       </footer>
