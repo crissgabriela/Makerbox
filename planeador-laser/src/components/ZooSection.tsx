@@ -29,7 +29,7 @@ import {
   UploadedSketchInput,
   ZooFusionResponse,
 } from '@/types/zoo';
-import { vectorizeRgbaImageWithPotrace } from '@/lib/potrace-vectorizer';
+import { extractOuterContourFromRgba } from '@/lib/potrace-vectorizer';
 import { buildPuzzleSvgFromTracedResult } from '@/lib/puzzle-clipper';
 
 interface ZooSectionProps {
@@ -37,10 +37,11 @@ interface ZooSectionProps {
 }
 
 /**
- * Vectoriza en alta resolución cualquier imagen rasterizada (devuelta por Gemini Image Generation
- * o subida directamente) aplicando umbralizado adaptativo, flood-fill exterior, Potrace y clipping booleano del puzzle.
+ * Procesa la imagen generada por Gemini para la Creality Falcon 10W:
+ * 1. Limpia el fondo dejando el dibujo como IMAGEN RASTER PNG de alto contraste (SIN vectorizar los trazos internos) para Grabado Láser.
+ * 2. Detecta y vectoriza ÚNICAMENTE el contorno exterior cerrado (#FF0000) y las líneas del rompecabezas (#FF0000) para Corte Láser.
  */
-async function traceRasterUrlToPuzzleSvgClient(
+async function buildFalconEngravingAndVectorCutClient(
   rasterUrl: string,
   puzzlePieces: PuzzlePieceCount,
   targetHeightMm: number,
@@ -49,9 +50,8 @@ async function traceRasterUrlToPuzzleSvgClient(
 ): Promise<{
   previewSvg: string;
   laserSvg: string;
-  cleanedRasterDataUrl: string;
+  cleanedEngravingPngUrl: string;
   outerNodes: number;
-  innerPathsCount: number;
   clippedSegmentsCount: number;
   widthMm: number;
   heightMm: number;
@@ -61,10 +61,10 @@ async function traceRasterUrlToPuzzleSvgClient(
     img.crossOrigin = 'anonymous';
     img.onerror = () => resolve(null);
     img.onload = () => {
-      const maxDim = 380;
+      const maxDim = 480;
       const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
-      const w = Math.max(120, Math.round(img.width * scale));
-      const h = Math.max(120, Math.round(img.height * scale));
+      const w = Math.max(160, Math.round(img.width * scale));
+      const h = Math.max(160, Math.round(img.height * scale));
 
       const canvas = document.createElement('canvas');
       canvas.width = w;
@@ -80,13 +80,12 @@ async function traceRasterUrlToPuzzleSvgClient(
       ctx.drawImage(img, 0, 0, w, h);
 
       const imgData = ctx.getImageData(0, 0, w, h);
-      const traced = vectorizeRgbaImageWithPotrace(
+      const { traced, inkMask } = extractOuterContourFromRgba(
         imgData.data,
         w,
         h,
         targetHeightMm,
         {
-          turdSize: 4,
           alphaMax: 0.88,
           optTolerance: 0.55,
         }
@@ -97,19 +96,58 @@ async function traceRasterUrlToPuzzleSvgClient(
         return;
       }
 
+      // Crear el PNG recortado exactamente al bounding box del contorno (alineación 1:1 milimétrica)
+      // con trazos negros puros (#000000) y fondo transparente para grabar en Creality Falcon 10W
+      const { minX, minY, widthPx, heightPx } = traced.cropBoxPx;
+      const cropCanvas = document.createElement('canvas');
+      cropCanvas.width = widthPx;
+      cropCanvas.height = heightPx;
+      const cropCtx = cropCanvas.getContext('2d');
+
+      if (cropCtx) {
+        const outData = cropCtx.createImageData(widthPx, heightPx);
+        for (let y = 0; y < heightPx; y++) {
+          for (let x = 0; x < widthPx; x++) {
+            const srcX = minX + x;
+            const srcY = minY + y;
+            const isInk =
+              srcX >= 0 &&
+              srcX < w &&
+              srcY >= 0 &&
+              srcY < h &&
+              inkMask[srcY * w + srcX] === 1;
+            const dstIdx = (y * widthPx + x) * 4;
+            if (isInk) {
+              outData.data[dstIdx + 0] = 0;
+              outData.data[dstIdx + 1] = 0;
+              outData.data[dstIdx + 2] = 0;
+              outData.data[dstIdx + 3] = 255;
+            } else {
+              outData.data[dstIdx + 0] = 255;
+              outData.data[dstIdx + 1] = 255;
+              outData.data[dstIdx + 2] = 255;
+              outData.data[dstIdx + 3] = 0;
+            }
+          }
+        }
+        cropCtx.putImageData(outData, 0, 0);
+      }
+
+      const cleanedEngravingPngUrl = cropCanvas.toDataURL('image/png');
+
       const built = buildPuzzleSvgFromTracedResult(
         traced,
         puzzlePieces,
         hybridTitle,
-        includeAnnotations
+        includeAnnotations,
+        cleanedEngravingPngUrl
       );
 
       resolve({
         previewSvg: built.previewSvg,
         laserSvg: built.laserSvg,
-        cleanedRasterDataUrl: canvas.toDataURL('image/png'),
+        cleanedEngravingPngUrl,
         outerNodes: traced.outerPolygon.length,
-        innerPathsCount: traced.innerPathsD.length,
         clippedSegmentsCount: built.puzzleResult.clippedPuzzlePathsD.length,
         widthMm: traced.widthMm,
         heightMm: traced.heightMm,
@@ -219,7 +257,6 @@ function createSampleHandDrawnSketches(): UploadedSketchInput[] {
         bottomDensity: 0.2,
       },
       draw: (ctx) => {
-        // Cabeza y orejas de gato
         ctx.beginPath();
         ctx.moveTo(60, 72);
         ctx.lineTo(56, 36);
@@ -231,7 +268,6 @@ function createSampleHandDrawnSketches(): UploadedSketchInput[] {
         ctx.quadraticCurveTo(90, 110, 70, 105);
         ctx.quadraticCurveTo(48, 95, 60, 72);
         ctx.stroke();
-        // Ojos, nariz y bigotes
         ctx.beginPath();
         ctx.arc(76, 76, 5, 0, Math.PI * 2);
         ctx.moveTo(109, 76);
@@ -248,7 +284,6 @@ function createSampleHandDrawnSketches(): UploadedSketchInput[] {
         ctx.lineTo(138, 82);
         ctx.moveTo(112, 92);
         ctx.lineTo(140, 92);
-        // Cuerpo regordete
         ctx.moveTo(68, 105);
         ctx.quadraticCurveTo(46, 138, 66, 162);
         ctx.quadraticCurveTo(90, 170, 114, 162);
@@ -294,7 +329,6 @@ function createSampleHandDrawnSketches(): UploadedSketchInput[] {
         bottomDensity: 0.92,
       },
       draw: (ctx) => {
-        // Cúpula superior y tentáculos ondulados
         ctx.beginPath();
         ctx.arc(90, 58, 38, Math.PI, 0, false);
         ctx.closePath();
@@ -350,7 +384,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
     {
       id: 'welcome-1',
       role: 'assistant',
-      text: '¡Hola creador! 👋 Soy el Agente Gemini de Fusión Creativa. Sube de 3 a 4 dibujos a mano alzada (JPG/PNG) y presiona "Fusionar Dibujos". También he precargado el ejemplo del Gato + Alas + Medusa (con 20 a 40 piezas de rompecabezas) para que veas el resultado al instante.',
+      text: '¡Hola creador! 👋 Sube de 3 a 4 dibujos a mano alzada (JPG/PNG) y presiona "Fusionar Dibujos". El dibujo generado se mantiene como IMAGEN para grabarlo en la Creality Falcon 10W, y solo el contorno exterior y las líneas del rompecabezas (20 a 40 piezas) se vectorizan para el corte.',
       timestamp: 'Ahora',
     },
   ]);
@@ -360,11 +394,11 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
   const [isFusing, setIsFusing] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [fusionResult, setFusionResult] = useState<ZooFusionResponse | null>(null);
+  const [cleanEngravingPngUrl, setCleanEngravingPngUrl] = useState<string>('');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const directFusedInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Cargar los 3 bocetos de demostración (Gato + Alas + Medusa) al inicio
   useEffect(() => {
     const samples = createSampleHandDrawnSketches();
     if (samples.length >= 3) {
@@ -407,27 +441,27 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
 
         const data: ZooFusionResponse & { error?: string } = await res.json();
         if (!res.ok) {
-          throw new Error(data.error || 'Error al fusionar y vectorizar los dibujos.');
+          throw new Error(data.error || 'Error al fusionar los dibujos.');
         }
 
-        // Si tenemos una imagen raster nativa de Gemini (o la imagen de demostración de Gemini),
-        // la vectorizamos en alta resolución con umbral adaptativo + flood-fill exterior + Potrace
-        if (data.hasNativeGeminiRaster && data.rasterDataUrl) {
-          const hiRes = await traceRasterUrlToPuzzleSvgClient(
+        // Mantener la imagen generada SIN vectorizar (en PNG limpio para grabado en Creality Falcon 10W)
+        // y vectorizar únicamente su contorno exterior + las líneas del rompecabezas
+        if (data.rasterDataUrl) {
+          const falconBuilt = await buildFalconEngravingAndVectorCutClient(
             data.rasterDataUrl,
             piecesCount,
             heightMm,
             data.hybridTitle,
             annotations
           );
-          if (hiRes) {
-            data.previewSvg = hiRes.previewSvg;
-            data.laserSvg = hiRes.laserSvg;
-            data.metrics.outerContourNodes = hiRes.outerNodes;
-            data.metrics.innerVectorPathsCount = hiRes.innerPathsCount;
-            data.metrics.clippedPuzzleSegmentsCount = hiRes.clippedSegmentsCount;
-            data.metrics.widthMm = hiRes.widthMm;
-            data.metrics.heightMm = hiRes.heightMm;
+          if (falconBuilt) {
+            data.previewSvg = falconBuilt.previewSvg;
+            data.laserSvg = falconBuilt.laserSvg;
+            data.metrics.outerContourNodes = falconBuilt.outerNodes;
+            data.metrics.clippedPuzzleSegmentsCount = falconBuilt.clippedSegmentsCount;
+            data.metrics.widthMm = falconBuilt.widthMm;
+            data.metrics.heightMm = falconBuilt.heightMm;
+            setCleanEngravingPngUrl(falconBuilt.cleanedEngravingPngUrl);
           }
         }
 
@@ -508,8 +542,9 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
   };
 
   /**
-   * Permite subir directamente una imagen ya fusionada por Gemini (por ejemplo desde un celular o tablet)
-   * para vectorizarla inmediatamente con Potrace y aplicarle el rompecabezas de 20 a 40 piezas.
+   * Permite subir directamente una imagen ya fusionada por Gemini:
+   * Conserva el dibujo como imagen PNG para grabar en la Creality Falcon 10W
+   * y vectoriza únicamente el contorno exterior y las líneas del rompecabezas.
    */
   const handleDirectFusedImageUpload = async (file: File) => {
     setIsFusing(true);
@@ -521,7 +556,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
         PUZZLE_PIECE_OPTIONS.find((o) => o.count === puzzlePieces) ||
         PUZZLE_PIECE_OPTIONS[1];
       const title = `Fusión Gemini (${file.name.replace(/\.[^.]+$/, '')})`;
-      const hiRes = await traceRasterUrlToPuzzleSvgClient(
+      const falconBuilt = await buildFalconEngravingAndVectorCutClient(
         dataUrl,
         puzzlePieces,
         targetHeightMm,
@@ -529,13 +564,14 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
         showAnnotations
       );
 
-      if (hiRes) {
+      if (falconBuilt) {
+        setCleanEngravingPngUrl(falconBuilt.cleanedEngravingPngUrl);
         setFusionResult({
-          previewSvg: hiRes.previewSvg,
-          laserSvg: hiRes.laserSvg,
+          previewSvg: falconBuilt.previewSvg,
+          laserSvg: falconBuilt.laserSvg,
           rasterDataUrl: dataUrl,
           hasNativeGeminiRaster: true,
-          assistantMessage: `¡Excelente dibujo fusionado! Vectoricé tu imagen "${file.name}" eliminando el fondo con umbral adaptativo, tracé sus líneas con Potrace y recorté el rompecabezas de ${puzzlePieces} piezas (${option.cols}×${option.rows}) exactamente a su silueta exterior.`,
+          assistantMessage: `¡Listo para la Creality Falcon 10W! Tu imagen "${file.name}" se conservó en formato de imagen sin vectorizar para el grabado láser, y se vectorizó únicamente su contorno exterior junto con las líneas del rompecabezas de ${puzzlePieces} piezas (${option.cols}×${option.rows}).`,
           hybridTitle: title,
           internalPromptUsed: AI_FUSION_INTERNAL_PROMPT,
           metrics: {
@@ -543,17 +579,17 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
             puzzlePieces,
             gridCols: option.cols,
             gridRows: option.rows,
-            widthMm: hiRes.widthMm,
-            heightMm: hiRes.heightMm,
-            outerContourNodes: hiRes.outerNodes,
-            innerVectorPathsCount: hiRes.innerPathsCount,
-            clippedPuzzleSegmentsCount: hiRes.clippedSegmentsCount,
-            vectorizerEngine: 'Potrace High-Res Adaptive Threshold + Moore-Neighbor',
-            aiModelUsed: 'Gemini Image Direct Vectorizer',
+            widthMm: falconBuilt.widthMm,
+            heightMm: falconBuilt.heightMm,
+            outerContourNodes: falconBuilt.outerNodes,
+            innerVectorPathsCount: 1,
+            clippedPuzzleSegmentsCount: falconBuilt.clippedSegmentsCount,
+            vectorizerEngine: 'Imagen PNG (Grabado Falcon 10W) + Contorno y Puzzle Vectorizados',
+            aiModelUsed: 'Gemini Image + Creality Falcon 10W Processor',
           },
         });
       } else {
-        setErrorMsg('No se pudo extraer el contorno de la imagen subida.');
+        setErrorMsg('No se pudo extraer el contorno exterior de la imagen subida.');
       }
       setIsFusing(false);
     };
@@ -581,7 +617,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
       {
         id: `sample-msg-${Date.now()}`,
         role: 'assistant',
-        text: '¡He cargado los 3 bocetos de demostración (Gato sentado + Alas de dragón + Medusa con tentáculos) junto con su fusión de Gemini Image! Prueba cambiar entre 20, 25, 30 y 40 piezas.',
+        text: '¡He cargado el ejemplo de Gemini (Gato + Alas + Medusa)! La ilustración se mantiene como imagen para grabar en la Creality Falcon 10W y solo el contorno y el rompecabezas están vectorizados.',
         timestamp: 'Ahora',
       },
     ]);
@@ -619,11 +655,22 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `rompecabezas-gemini-${puzzlePieces}piezas-corte-laser.svg`;
+    a.download = `falcon10w-grabado-y-corte-puzzle-${puzzlePieces}piezas.svg`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadEngravingPngOnly = () => {
+    const targetUrl = cleanEngravingPngUrl || fusionResult?.rasterDataUrl;
+    if (!targetUrl) return;
+    const a = document.createElement('a');
+    a.href = targetUrl;
+    a.download = `falcon10w-imagen-grabado-${puzzlePieces}piezas.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const hasValidImageCount = images.length >= 3 && images.length <= 4;
@@ -653,7 +700,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
           )}
           <span className="hidden sm:inline-block h-5 w-px bg-slate-200" />
           <span className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
-            🧩 Taller 1 · Agente Gemini Image Fusion + Potrace + Rompecabezas (20–40 Piezas)
+            🧩 Taller 1 · Creality Falcon 10W (Imagen de Grabado + Contorno/Puzzle Vectorizados)
           </span>
         </div>
 
@@ -669,7 +716,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
         </div>
       </div>
 
-      {/* Configuración de API Key de Google Gemini (habilita gemini-2.5-flash-image en vivo) */}
+      {/* Configuración de API Key de Google Gemini */}
       {showApiConfig && (
         <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
           <div className="space-y-1 max-w-2xl">
@@ -677,7 +724,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
               Agente Nativo Google Gemini Image Generation (`gemini-2.5-flash-image` / `gemini-2.0-flash-preview-image-generation`)
             </div>
             <p className="text-amber-900 leading-relaxed">
-              Ingresa tu <strong>Google Gemini API Key</strong> (o configúrala como variable <code className="font-mono bg-white px-1 rounded">GEMINI_API_KEY</code> en Vercel) para que el botón <strong>&ldquo;Fusionar Dibujos&rdquo;</strong> invoque en vivo el mismo generador de imágenes de Gemini que usaste en tu prueba.
+              Ingresa tu <strong>Google Gemini API Key</strong> aquí o configúrala como variable de entorno <code className="font-mono bg-white px-1 rounded">GEMINI_API_KEY</code> en Vercel.
             </p>
           </div>
           <input
@@ -697,16 +744,15 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
           <div className="space-y-2 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 text-amber-100 text-xs font-bold uppercase tracking-wider">
               <Sparkles className="w-3.5 h-3.5" />
-              Taller 1 · Fusión Multimodal Estilo Gemini + Rompecabezas de 20 a 40 Piezas
+              Optimizado para Creality Falcon 10W · Imagen de Grabado + Corte Vectorial
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Fusión de Dibujos a Mano Alzada + Rompecabezas Láser 🧩
+              Fusión IA para Grabado + Rompecabezas Vectorial (20–40 Piezas) 🧩
             </h1>
             <p className="text-amber-50 text-sm sm:text-base leading-relaxed">
-              Sube de <strong>3 a 4 dibujos a mano alzada (JPG/PNG)</strong>. El motor{' '}
-              <strong>Gemini Image Generation</strong> crea el dibujo lineal híbrido en blanco y negro, el algoritmo{' '}
-              <strong>Potrace</strong> vectoriza sus trazos y aplica una intersección booleana con un patrón de{' '}
-              <strong>20, 25, 30 o 40 piezas</strong>.
+              Sube de <strong>3 a 4 dibujos a mano alzada (JPG/PNG)</strong>. La imagen híbrida generada se mantiene en{' '}
+              <strong>formato de imagen (sin vectorizar) para grabarla en la Creality Falcon 10W</strong>, mientras que{' '}
+              <strong>el contorno exterior y las líneas del rompecabezas (20 a 40 piezas) se vectorizan</strong> para el corte láser.
             </p>
           </div>
 
@@ -714,24 +760,24 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
             <div className="grid grid-cols-2 gap-2.5 bg-slate-950/30 backdrop-blur-md p-3.5 rounded-2xl border border-white/15 shrink-0">
               <div className="px-3 py-2 rounded-xl bg-white/10">
                 <div className="text-[10px] uppercase tracking-wider text-amber-200 font-bold">
-                  Vectorizado Potrace
+                  Dibujo Interior
                 </div>
-                <div className="text-lg font-black text-white">
-                  {fusionResult.metrics.innerVectorPathsCount} Trazos
+                <div className="text-base font-black text-white">
+                  Imagen PNG (Grabado)
                 </div>
                 <div className="text-[10px] text-amber-100">
-                  Silueta: {fusionResult.metrics.outerContourNodes} nodos
+                  Sin vectorizar · Creality Falcon 10W
                 </div>
               </div>
               <div className="px-3 py-2 rounded-xl bg-white/10">
                 <div className="text-[10px] uppercase tracking-wider text-amber-200 font-bold">
-                  Rompecabezas Láser
+                  Contorno + Puzzle
                 </div>
-                <div className="text-lg font-black text-white">
-                  {fusionResult.metrics.puzzlePieces} Piezas ({fusionResult.metrics.gridCols}×{fusionResult.metrics.gridRows})
+                <div className="text-base font-black text-white">
+                  {fusionResult.metrics.puzzlePieces} Piezas Vectorizadas
                 </div>
                 <div className="text-[10px] text-emerald-200 font-semibold">
-                  ✓ Recortado al contorno
+                  ✓ Corte #FF0000 recortado al borde
                 </div>
               </div>
             </div>
@@ -761,7 +807,6 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
               </span>
             </div>
 
-            {/* Zona Drag & Drop Múltiple */}
             <div
               onDragOver={(e) => {
                 e.preventDefault();
@@ -795,7 +840,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                 Arrastra aquí <span className="text-amber-600 underline">3 o 4 dibujos JPG/PNG</span> o haz clic para buscarlos
               </p>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Ej: 1) Gato · 2) Alas · 3) Medusa (se fusionarán en un solo personaje lineal)
+                Ej: 1) Gato · 2) Alas · 3) Medusa (se fusionarán en una imagen para grabar)
               </p>
             </div>
 
@@ -884,10 +929,9 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
               className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-600 to-rose-600 hover:from-amber-600 hover:via-orange-700 hover:to-rose-700 text-white font-black text-sm sm:text-base shadow-lg hover:shadow-xl active:scale-[0.99] transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50"
             >
               <Wand2 className={`w-5 h-5 ${isFusing ? 'animate-spin' : ''}`} />
-              <span>{isFusing ? 'Fusionando y Vectorizando...' : 'Fusionar Dibujos'}</span>
+              <span>{isFusing ? 'Generando Imagen y Contorno...' : 'Fusionar Dibujos'}</span>
             </button>
 
-            {/* Opción adicional: subir directamente una imagen ya fusionada */}
             <div className="pt-2 border-t border-slate-100">
               <input
                 ref={directFusedInputRef}
@@ -918,7 +962,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                 2. Cantidad de Piezas (20 a 40 Piezas)
               </label>
               <span className="text-[11px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-full">
-                4 Niveles
+                Corte Vectorial #FF0000
               </span>
             </div>
 
@@ -953,7 +997,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
             {/* Control de Altura Final del Rompecabezas */}
             <div className="pt-2 border-t border-slate-100 space-y-1.5">
               <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                <span>Altura del Rompecabezas para Corte Láser:</span>
+                <span>Altura Final para Creality Falcon 10W:</span>
                 <span className="text-amber-800 font-black">{targetHeightMm} mm</span>
               </div>
               <input
@@ -968,7 +1012,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
               <div className="flex justify-between text-[10px] text-slate-400">
                 <span>80 mm</span>
                 <span className="text-emerald-700 font-semibold">
-                  120 mm (Tamaño recomendado para 20–40 piezas)
+                  120 mm (Recomendado 20–40 piezas)
                 </span>
                 <span>180 mm</span>
               </div>
@@ -1039,12 +1083,11 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-base sm:text-lg font-extrabold text-slate-900">
-                  {fusionResult?.hybridTitle || 'Previsualización del Diseño Híbrido y Rompecabezas'}
+                  {fusionResult?.hybridTitle || 'Previsualización para Creality Falcon 10W'}
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Líneas <strong className="text-red-600">rojas (#FF0000)</strong>: corte láser exterior y rompecabezas de{' '}
-                  <strong>{puzzlePieces} piezas</strong> recortado al contorno ·{' '}
-                  <strong className="text-blue-600">Azul/Negro (#0000FF)</strong>: dibujo híbrido vectorizado
+                  <strong>Imagen Interior (PNG sin vectorizar)</strong>: Grabado láser ·{' '}
+                  <strong className="text-red-600">Vectores Rojos (#FF0000)</strong>: Corte de contorno exterior y {puzzlePieces} piezas
                 </p>
               </div>
 
@@ -1058,7 +1101,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  🧩 Vector SVG + {puzzlePieces} Piezas
+                  🧩 Imagen + Corte {puzzlePieces} Piezas
                 </button>
                 <button
                   type="button"
@@ -1069,7 +1112,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  🖼️ Resultado Gemini (Imagen Base)
+                  🖼️ Solo Imagen de Grabado
                 </button>
               </div>
             </div>
@@ -1094,26 +1137,26 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
 
               {isFusing && (
                 <div className="absolute top-3 right-3 px-3 py-1 rounded-full bg-amber-500 text-slate-950 text-xs font-black animate-pulse z-10">
-                  ⚡ Vectorizando con Potrace y recortando {puzzlePieces} piezas...
+                  ⚡ Preparando Imagen de Grabado + Vectores de Corte ({puzzlePieces} piezas)...
                 </div>
               )}
 
               {fusionResult ? (
                 activePreviewTab === 'vector-puzzle' ? (
                   <div
-                    className="w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[450px] [&>svg]:bg-amber-50/95 [&>svg]:rounded-xl [&>svg]:p-3 [&>svg]:shadow-lg"
+                    className="w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[450px] [&>svg]:bg-white [&>svg]:rounded-xl [&>svg]:p-3 [&>svg]:shadow-lg"
                     dangerouslySetInnerHTML={{ __html: fusionResult.previewSvg }}
                   />
                 ) : (
                   <div className="flex flex-col items-center gap-3">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={fusionResult.rasterDataUrl}
-                      alt="Dibujo lineal en blanco y negro generado por Gemini antes de vectorizar"
-                      className="max-h-[390px] w-auto rounded-xl border-2 border-slate-700 bg-white p-2 shadow-lg"
+                      src={cleanEngravingPngUrl || fusionResult.rasterDataUrl}
+                      alt="Imagen para grabar en Creality Falcon 10W (sin vectorizar)"
+                      className="max-h-[390px] w-auto rounded-xl border-2 border-slate-700 bg-white p-3 shadow-lg"
                     />
                     <span className="text-xs text-slate-300 font-medium text-center">
-                      Imagen lineal generada por Gemini antes de la extracción de silueta y trazado vectorial Potrace
+                      Imagen raster limpia (sin vectorizar) lista para modo Grabado de Imagen en Creality Falcon 10W
                     </span>
                   </div>
                 )
@@ -1125,7 +1168,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
               )}
             </div>
 
-            {/* Controles inferiores y Botón Descargar SVG para Corte Láser */}
+            {/* Controles inferiores y Botones de Descarga */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
               <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
                 <input
@@ -1135,44 +1178,57 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                   className="w-4 h-4 rounded accent-amber-600"
                 />
                 <Eye className="w-3.5 h-3.5 text-slate-500" />
-                <span>Mostrar marco de referencia y leyenda en vista previa</span>
+                <span>Mostrar marco de referencia en vista previa</span>
               </label>
 
-              <button
-                type="button"
-                disabled={!fusionResult || isFusing}
-                onClick={handleDownloadLaserSvg}
-                className="py-3.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                <Download className="w-4 h-4" />
-                <span>Descargar SVG para Corte Láser ({puzzlePieces} Piezas)</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!fusionResult || isFusing}
+                  onClick={handleDownloadEngravingPngOnly}
+                  className="py-3 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  title="Descargar únicamente la imagen PNG limpia para grabado"
+                >
+                  <FileImage className="w-4 h-4 text-slate-700" />
+                  <span>Solo Imagen PNG (Grabado)</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={!fusionResult || isFusing}
+                  onClick={handleDownloadLaserSvg}
+                  className="py-3.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Descargar SVG para Corte Láser (Falcon 10W)</span>
+                </button>
+              </div>
             </div>
 
-            {/* Resumen Técnico del Pipeline */}
+            {/* Resumen Técnico del Pipeline para Creality Falcon 10W */}
             {fusionResult && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
-                  <div className="text-[10px] font-extrabold text-slate-400 uppercase">
-                    1. Motor IA Multimodal
+                  <div className="text-[10px] font-extrabold text-slate-500 uppercase">
+                    1. Dibujo Híbrido (Grabado)
                   </div>
-                  <div className="text-xs font-extrabold text-slate-800 mt-1">
-                    Gemini Image Generation
+                  <div className="text-xs font-extrabold text-slate-900 mt-1">
+                    Imagen PNG Incrustada (No Vectorizada)
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5 truncate" title={fusionResult.metrics.aiModelUsed}>
-                    {fusionResult.metrics.aiModelUsed}
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    Modo Image Engrave en Creality Falcon 10W
                   </div>
                 </div>
 
                 <div className="p-3 rounded-2xl bg-amber-50/60 border border-amber-200">
                   <div className="text-[10px] font-extrabold text-amber-800 uppercase">
-                    2. Vectorización Potrace
+                    2. Contorno Exterior (Corte)
                   </div>
                   <div className="text-xs font-extrabold text-amber-950 mt-1">
-                    {fusionResult.metrics.outerContourNodes} nodos + {fusionResult.metrics.innerVectorPathsCount} trazos
+                    Vectorizado Cerrado ({fusionResult.metrics.outerContourNodes} nodos)
                   </div>
                   <div className="text-[11px] text-amber-800 mt-0.5">
-                    Umbral adaptativo + Flood-Fill exterior
+                    Trazo rojo #FF0000 alrededor de la figura
                   </div>
                 </div>
 
@@ -1182,7 +1238,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                   </div>
                   <div className="text-xs font-extrabold text-emerald-900 mt-1 flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    {fusionResult.metrics.clippedPuzzleSegmentsCount} cortes recortados al borde
+                    {fusionResult.metrics.clippedPuzzleSegmentsCount} vectores recortados
                   </div>
                   <div className="text-[11px] text-emerald-700 mt-0.5">
                     Tamaño final: {fusionResult.metrics.widthMm} × {fusionResult.metrics.heightMm} mm

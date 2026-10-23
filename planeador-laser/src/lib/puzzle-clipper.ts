@@ -317,14 +317,17 @@ export function generateAndClipPuzzlePattern(
 }
 
 /**
- * Ensambla el archivo SVG de previsualización y el archivo SVG limpio para corte láser
- * a partir del resultado vectorizado por Potrace y el patrón de rompecabezas recortado.
+ * Ensambla el archivo SVG de previsualización y el archivo SVG limpio para corte/grabado en Creality Falcon 10W:
+ * - CAPA 1 (IMAGEN RASTER NO VECTORIZADA): <image> incrustada con fondo limpio para grabado de imagen en Falcon 10W.
+ * - CAPA 2 (VECTORES DE CORTE #FF0000): Líneas del rompecabezas (20–40 piezas) recortadas booleanamente al contorno.
+ * - CAPA 3 (VECTOR DE CORTE EXTERIOR #FF0000): Contorno exterior cerrado vectorizado alrededor de la figura.
  */
 export function buildPuzzleSvgFromTracedResult(
   traced: TracedVectorResult,
   puzzlePieces: PuzzlePieceCount,
   hybridTitle: string,
-  includePreviewAnnotations: boolean
+  includePreviewAnnotations: boolean,
+  customEngravingImageUrl?: string
 ): {
   previewSvg: string;
   laserSvg: string;
@@ -332,6 +335,8 @@ export function buildPuzzleSvgFromTracedResult(
 } {
   const outerPolygon = traced.outerPolygon;
   const outerContourD = traced.outerPathD;
+  const engravingHref =
+    customEngravingImageUrl || traced.engravingImageDataUrl || '';
 
   let minX = Infinity;
   let minY = Infinity;
@@ -358,7 +363,7 @@ export function buildPuzzleSvgFromTracedResult(
     const lines: string[] = [];
     lines.push(`<?xml version="1.0" encoding="UTF-8"?>`);
     lines.push(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${sheetW}mm" height="${sheetH}mm" viewBox="0 0 ${sheetW} ${sheetH}">`
+      `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${sheetW}mm" height="${sheetH}mm" viewBox="0 0 ${sheetW} ${sheetH}">`
     );
 
     lines.push(`  <defs>`);
@@ -369,27 +374,29 @@ export function buildPuzzleSvgFromTracedResult(
 
     if (withAnnotations) {
       lines.push(
-        `  <rect x="1" y="1" width="${(sheetW - 2).toFixed(1)}" height="${(sheetH - 2).toFixed(1)}" rx="3" fill="#FFFBEB" stroke="#D97706" stroke-width="0.4" stroke-dasharray="2.5,2.5" />`
+        `  <rect x="1" y="1" width="${(sheetW - 2).toFixed(1)}" height="${(sheetH - 2).toFixed(1)}" rx="3" fill="#FFFFFF" stroke="#D97706" stroke-width="0.4" stroke-dasharray="2.5,2.5" />`
       );
       lines.push(
-        `  <text x="${(sheetW / 2).toFixed(1)}" y="4.8" text-anchor="middle" font-family="sans-serif" font-size="2.8" font-weight="bold" fill="#92400E">${hybridTitle} · Rompecabezas ${puzzlePieces} Piezas (${puzzleResult.cols}×${puzzleResult.rows}) · ${traced.widthMm}×${traced.heightMm} mm</text>`
+        `  <text x="${(sheetW / 2).toFixed(1)}" y="4.8" text-anchor="middle" font-family="sans-serif" font-size="2.7" font-weight="bold" fill="#92400E">${hybridTitle} · Creality Falcon 10W (${puzzlePieces} Piezas · ${traced.widthMm}×${traced.heightMm} mm)</text>`
       );
     }
 
     lines.push(`  <g transform="translate(${marginMm}, ${marginMm})">`);
 
-    // CAPA 1: Grabado/Marcado Láser (Azul #0000FF en archivo láser, Negro #111827 en vista previa)
-    lines.push(
-      `    <g id="CAPA-GRABADO-DIBUJO-HIBRIDO" clip-path="url(#hybrid-outer-contour-clip)" fill="none" stroke="${withAnnotations ? '#111827' : '#0000FF'}" stroke-width="${withAnnotations ? '0.62' : '0.32'}" stroke-linecap="round" stroke-linejoin="round">`
-    );
-    for (let i = 0; i < traced.innerPathsD.length; i++) {
-      lines.push(`      <path id="trazo-hibrido-${i + 1}" d="${traced.innerPathsD[i]}" />`);
+    // CAPA 1: IMAGEN RASTER PARA GRABADO LÁSER EN CREALITY FALCON 10W (NO VECTORIZADA)
+    if (engravingHref) {
+      lines.push(
+        `    <g id="CAPA-IMAGEN-GRABADO-FALCON-10W" clip-path="url(#hybrid-outer-contour-clip)">`
+      );
+      lines.push(
+        `      <image x="0" y="0" width="${traced.widthMm}" height="${traced.heightMm}" preserveAspectRatio="none" href="${engravingHref}" xlink:href="${engravingHref}" />`
+      );
+      lines.push(`    </g>`);
     }
-    lines.push(`    </g>`);
 
-    // CAPA 2: Corte Láser Interior (Rojo #FF0000) — Líneas de Rompecabezas recortadas booleanamente al contorno
+    // CAPA 2: CORTE LÁSER VECTORIAL INTERIOR (Rojo #FF0000) — Líneas de Rompecabezas recortadas al contorno
     lines.push(
-      `    <g id="CAPA-CORTE-ROMPECABEZAS-CLIPPED" clip-path="url(#hybrid-outer-contour-clip)" fill="none" stroke="#FF0000" stroke-width="${withAnnotations ? '0.45' : '0.22'}" stroke-linecap="round" stroke-linejoin="round">`
+      `    <g id="CAPA-CORTE-ROMPECABEZAS-VECTORIZADO" clip-path="url(#hybrid-outer-contour-clip)" fill="none" stroke="#FF0000" stroke-width="${withAnnotations ? '0.45' : '0.20'}" stroke-linecap="round" stroke-linejoin="round">`
     );
     for (let i = 0; i < puzzleResult.clippedPuzzlePathsD.length; i++) {
       lines.push(
@@ -398,18 +405,18 @@ export function buildPuzzleSvgFromTracedResult(
     }
     lines.push(`    </g>`);
 
-    // CAPA 3: Corte Láser Exterior (Rojo #FF0000) — Contorno Cerrado Principal del Dibujo Híbrido
+    // CAPA 3: CORTE LÁSER VECTORIAL EXTERIOR (Rojo #FF0000) — Contorno Cerrado Vectorizado
     lines.push(
-      `    <g id="CAPA-CORTE-CONTORNO-EXTERIOR" fill="none" stroke="#FF0000" stroke-width="${withAnnotations ? '0.75' : '0.25'}" stroke-linecap="round" stroke-linejoin="round">`
+      `    <g id="CAPA-CORTE-CONTORNO-EXTERIOR-VECTORIZADO" fill="none" stroke="#FF0000" stroke-width="${withAnnotations ? '0.75' : '0.22'}" stroke-linecap="round" stroke-linejoin="round">`
     );
-    lines.push(`      <path id="contorno-exterior-cerrado" d="${outerContourD}" />`);
+    lines.push(`      <path id="contorno-exterior-vectorizado" d="${outerContourD}" />`);
     lines.push(`    </g>`);
 
     lines.push(`  </g>`);
 
     if (withAnnotations) {
       lines.push(
-        `  <text x="${(sheetW / 2).toFixed(1)}" y="${(sheetH - 1.8).toFixed(1)}" text-anchor="middle" font-family="sans-serif" font-size="2.3" fill="#B91C1C">Rojo (#FF0000): Corte Láser (Silueta + ${puzzlePieces} Piezas Recortadas) · Negro/Azul (#0000FF): Dibujo Híbrido Vectorizado</text>`
+        `  <text x="${(sheetW / 2).toFixed(1)}" y="${(sheetH - 1.8).toFixed(1)}" text-anchor="middle" font-family="sans-serif" font-size="2.3" fill="#B91C1C">Imagen PNG incrustada: Grabado Creality Falcon 10W · Vectores Rojos (#FF0000): Corte de Contorno + ${puzzlePieces} Piezas</text>`
       );
     }
 

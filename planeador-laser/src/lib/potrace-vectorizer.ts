@@ -4,29 +4,32 @@ export interface Point2D {
 }
 
 export interface PotraceOptions {
-  /** Eliminación de manchas/ruido menores a esta longitud (por defecto 5) */
-  turdSize?: number;
-  /** Umbral de suavizado de esquinas Potrace (por defecto 0.9) */
+  /** Umbral de suavizado de esquinas Potrace para el contorno exterior (por defecto 0.9) */
   alphaMax?: number;
-  /** Tolerancia de simplificación poligonal Douglas-Peucker (por defecto 0.75) */
+  /** Tolerancia de simplificación poligonal Douglas-Peucker para el contorno (por defecto 0.65) */
   optTolerance?: number;
 }
 
 export interface TracedVectorResult {
-  /** Polígono cerrado exterior en coordenadas en mm */
+  /** Polígono cerrado exterior vectorizado en coordenadas en mm */
   outerPolygon: Point2D[];
-  /** Atributo d="" del contorno exterior suavizado con curvas Bézier estilo Potrace */
+  /** Atributo d="" del contorno exterior vectorizado y suavizado con curvas Bézier */
   outerPathD: string;
-  /** Polilíneas/contornos internos para grabado láser */
-  innerPolylines: Point2D[][];
-  /** Atributos d="" de los trazos internos vectorizados con curvas Potrace */
-  innerPathsD: string[];
-  /** Cantidad total de nodos vectoriales generados */
-  totalNodes: number;
-  /** Ancho efectivo en mm del dibujo escalado */
+  /** Cantidad de nodos vectoriales del contorno exterior */
+  outerContourNodes: number;
+  /** Ancho efectivo en mm del diseño escalado */
   widthMm: number;
-  /** Alto efectivo en mm del dibujo escalado */
+  /** Alto efectivo en mm del diseño escalado */
   heightMm: number;
+  /** Caja de recorte en píxeles (para alinear 1:1 la imagen de grabado con el contorno vectorizado) */
+  cropBoxPx: {
+    minX: number;
+    minY: number;
+    widthPx: number;
+    heightPx: number;
+  };
+  /** Imagen BMP/PNG en base64 limpia y recortada al bounding box para grabado en Creality Falcon 10W */
+  engravingImageDataUrl?: string;
 }
 
 /**
@@ -105,7 +108,7 @@ export function polygonToPotraceBezierPath(
 }
 
 /**
- * Simplificación poligonal Ramer-Douglas-Peucker para limpieza de vectores Potrace
+ * Simplificación poligonal Ramer-Douglas-Peucker para limpieza de vectores del contorno exterior
  */
 export function simplifyPolylineRDP(points: Point2D[], epsilon: number): Point2D[] {
   if (points.length <= 3) return points;
@@ -143,21 +146,24 @@ export function simplifyPolylineRDP(points: Point2D[], epsilon: number): Point2D
 }
 
 /**
- * Algoritmo de Umbralizado Adaptativo (Imagen Integral) + Flood-Fill Exterior + Moore-Neighbor Contour
- * + Trazado Vectorial Potrace a partir de una matriz RGBA de una imagen generada por Gemini o fotografiada.
+ * Extrae y vectoriza ÚNICAMENTE el contorno exterior cerrado de la imagen generada
+ * (mediante umbral adaptativo + dilatación morfológica + Flood-Fill exterior + Moore-Neighbor + Potrace),
+ * dejando el dibujo interior como imagen raster limpia de alto contraste para grabar en la Creality Falcon 10W.
  */
-export function vectorizeRgbaImageWithPotrace(
+export function extractOuterContourFromRgba(
   rgbaData: Uint8ClampedArray | Uint8Array,
   width: number,
   height: number,
   targetHeightMm: number,
   options: PotraceOptions = {}
-): TracedVectorResult {
-  const turdSize = options.turdSize ?? 5;
+): {
+  traced: TracedVectorResult;
+  inkMask: Uint8Array;
+} {
   const alphaMax = options.alphaMax ?? 0.9;
   const optTolerance = options.optTolerance ?? 0.65;
 
-  // 1. Convertir a luminancia y calcular imagen integral para umbral adaptativo (elimina sombras de fotos)
+  // 1. Luminancia e imagen integral para eliminar sombras de fondo y aislar el dibujo en blanco y negro
   const lum = new Float32Array(width * height);
   const integral = new Float64Array((width + 1) * (height + 1));
 
@@ -177,10 +183,10 @@ export function vectorizeRgbaImageWithPotrace(
     }
   }
 
-  // 2. Binarización adaptativa (1 = tinta negra del dibujo, 0 = fondo blanco)
+  // 2. Binarización adaptativa (1 = trazo negro del dibujo para grabado láser, 0 = fondo blanco)
   const inkMask = new Uint8Array(width * height);
   const winR = Math.max(8, Math.round(Math.min(width, height) * 0.04));
-  const marginIgnore = 6; // Ignorar posibles bordes oscuros en los últimos píxeles de una fotografía
+  const marginIgnore = 6;
 
   let minInkX = width;
   let minInkY = height;
@@ -202,8 +208,7 @@ export function vectorizeRgbaImageWithPotrace(
       const localMean = sum / area;
       const pixelLum = lum[y * width + x];
 
-      // Es tinta si es significativamente más oscuro que su vecindario local
-      if (pixelLum < localMean - 24 && pixelLum < 195) {
+      if (pixelLum < localMean - 22 && pixelLum < 198) {
         inkMask[y * width + x] = 1;
         if (x < minInkX) minInkX = x;
         if (y < minInkY) minInkY = y;
@@ -213,7 +218,6 @@ export function vectorizeRgbaImageWithPotrace(
     }
   }
 
-  // Fallback seguro si la imagen estaba vacía
   if (minInkX >= maxInkX || minInkY >= maxInkY) {
     minInkX = Math.floor(width * 0.15);
     maxInkX = Math.floor(width * 0.85);
@@ -221,8 +225,8 @@ export function vectorizeRgbaImageWithPotrace(
     maxInkY = Math.floor(height * 0.85);
   }
 
-  // 3. Dilatación morfológica para construir una silueta exterior continua (une bigotes/tentáculos cercanos)
-  const dilateRadius = Math.max(5, Math.round(Math.min(width, height) * 0.022));
+  // 3. Dilatación morfológica para crear un margen de corte continuo alrededor de la figura
+  const dilateRadius = Math.max(6, Math.round(Math.min(width, height) * 0.024));
   const dilated = new Uint8Array(width * height);
   for (let y = minInkY; y <= maxInkY; y++) {
     for (let x = minInkX; x <= maxInkX; x++) {
@@ -243,7 +247,7 @@ export function vectorizeRgbaImageWithPotrace(
     }
   }
 
-  // 4. Flood-Fill desde los bordes exteriores de la imagen para identificar todo el interior cerrado del dibujo
+  // 4. Flood-Fill desde los bordes exteriores para obtener la silueta sólida cerrada
   const exterior = new Uint8Array(width * height);
   const queue = new Int32Array(width * height);
   let qHead = 0;
@@ -276,7 +280,6 @@ export function vectorizeRgbaImageWithPotrace(
     if (cy < height - 1) pushExterior(cx, cy + 1);
   }
 
-  // Todo píxel con exterior[idx] === 0 forma parte de la silueta sólida de la figura híbrida
   const solidSilhouette = new Uint8Array(width * height);
   for (let i = 0; i < width * height; i++) {
     if (exterior[i] === 0) {
@@ -284,7 +287,6 @@ export function vectorizeRgbaImageWithPotrace(
     }
   }
 
-  // Calcular caja delimitadora de la silueta sólida para escalar proporcionalmente a targetHeightMm
   let silMinX = width;
   let silMinY = height;
   let silMaxX = 0;
@@ -310,7 +312,7 @@ export function vectorizeRgbaImageWithPotrace(
     y: Number(((py - silMinY) * scaleMmPerPx).toFixed(2)),
   });
 
-  // 5. Seguimiento de contorno de Moore-Neighbor para obtener el polígono exterior cerrado exacto
+  // 5. Vectorizar ÚNICAMENTE el contorno exterior con Moore-Neighbor + Potrace Bézier
   const outerContourPx = traceMooreOuterContour(solidSilhouette, width, height);
   const outerPolygonRaw = outerContourPx.map((p) => toMm(p.x, p.y));
   const outerPolygon =
@@ -323,91 +325,21 @@ export function vectorizeRgbaImageWithPotrace(
 
   const outerPathD = polygonToPotraceBezierPath(outerPolygon, true, alphaMax);
 
-  // 6. Trazado Potrace de todas las líneas internas de tinta negra (inkMask)
-  const visited = new Uint8Array(width * height);
-  const innerPolylines: Point2D[][] = [];
-  const dirs = [
-    [1, 0],
-    [1, 1],
-    [0, 1],
-    [-1, 1],
-    [-1, 0],
-    [-1, -1],
-    [0, -1],
-    [1, -1],
-  ];
-
-  for (let y = silMinY; y <= silMaxY; y++) {
-    for (let x = silMinX; x <= silMaxX; x++) {
-      const idx = y * width + x;
-      if (inkMask[idx] === 1 && !visited[idx]) {
-        const chain: Point2D[] = [];
-        let cx = x;
-        let cy = y;
-
-        while (chain.length < 450) {
-          visited[cy * width + cx] = 1;
-          // Limpiar radio pequeño de grosor de línea para obtener trazo único central (centerline)
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              const nx = cx + dx;
-              const ny = cy + dy;
-              if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                visited[ny * width + nx] = 1;
-              }
-            }
-          }
-
-          chain.push(toMm(cx, cy));
-
-          let found = false;
-          // Buscar a distancia 2 o 1 en las 8 direcciones
-          for (const step of [2, 1]) {
-            for (const [dx, dy] of dirs) {
-              const nx = cx + dx * step;
-              const ny = cy + dy * step;
-              if (nx >= silMinX && nx <= silMaxX && ny >= silMinY && ny <= silMaxY) {
-                const nIdx = ny * width + nx;
-                if (inkMask[nIdx] === 1 && !visited[nIdx]) {
-                  cx = nx;
-                  cy = ny;
-                  found = true;
-                  break;
-                }
-              }
-            }
-            if (found) break;
-          }
-
-          if (!found) break;
-        }
-
-        if (chain.length >= turdSize) {
-          const simp = simplifyPolylineRDP(chain, optTolerance * 0.55);
-          if (simp.length >= 2) {
-            innerPolylines.push(simp);
-          }
-        }
-      }
-    }
-  }
-
-  const innerPathsD = innerPolylines.map((poly) =>
-    polygonToPotraceBezierPath(poly, false, alphaMax)
-  );
-
-  const totalNodes =
-    outerPolygon.length +
-    innerPolylines.reduce((acc, poly) => acc + poly.length, 0);
-
   return {
-    outerPolygon,
-    outerPathD,
-    innerPolylines,
-    innerPathsD,
-    totalNodes,
-    widthMm: targetWidthMm,
-    heightMm: targetHeightMm,
+    traced: {
+      outerPolygon,
+      outerPathD,
+      outerContourNodes: outerPolygon.length,
+      widthMm: targetWidthMm,
+      heightMm: targetHeightMm,
+      cropBoxPx: {
+        minX: silMinX,
+        minY: silMinY,
+        widthPx: bboxW,
+        heightPx: bboxH,
+      },
+    },
+    inkMask,
   };
 }
 
@@ -419,7 +351,6 @@ function traceMooreOuterContour(
   width: number,
   height: number
 ): Point2D[] {
-  // Encontrar el primer píxel activo desde arriba
   let startX = -1;
   let startY = -1;
   for (let y = 1; y < height - 1; y++) {
@@ -435,7 +366,6 @@ function traceMooreOuterContour(
 
   if (startX === -1) return [];
 
-  // 8 vecinos en sentido horario comenzando desde el oeste
   const cwDirs = [
     [-1, 0],
     [-1, -1],
@@ -450,7 +380,7 @@ function traceMooreOuterContour(
   const contour: Point2D[] = [{ x: startX, y: startY }];
   let cx = startX;
   let cy = startY;
-  let backtrackDir = 0; // Venimos desde el oeste (-1, 0)
+  let backtrackDir = 0;
   const maxIter = width * height;
 
   for (let iter = 0; iter < maxIter; iter++) {
@@ -463,7 +393,6 @@ function traceMooreOuterContour(
         if (mask[ny * width + nx] === 1) {
           cx = nx;
           cy = ny;
-          // El nuevo backtrack apunta al vecino anterior al que acabamos de entrar
           backtrackDir = (dirIdx + 5) % 8;
           foundNext = true;
           break;
@@ -484,48 +413,20 @@ function traceMooreOuterContour(
 }
 
 /**
- * Traza un mapa de bits sintético del servidor usando Potrace
+ * En el servidor: genera una imagen raster B/N limpia para grabado en la Creality Falcon 10W
+ * y devuelve el contorno exterior vectorizado con Potrace.
  */
-export function traceBitmapWithPotrace(
-  bitmap: Uint8Array,
-  width: number,
-  height: number,
-  targetWidthMm: number,
-  targetHeightMm: number,
-  options: PotraceOptions = {}
-): TracedVectorResult {
-  const rgba = new Uint8Array(width * height * 4);
-  for (let i = 0; i < width * height; i++) {
-    const isInk = bitmap[i] > 0;
-    const val = isInk ? 10 : 255;
-    rgba[i * 4 + 0] = val;
-    rgba[i * 4 + 1] = val;
-    rgba[i * 4 + 2] = val;
-    rgba[i * 4 + 3] = 255;
-  }
-  return vectorizeRgbaImageWithPotrace(
-    rgba,
-    width,
-    height,
-    targetHeightMm,
-    options
-  );
-}
-
-/**
- * Rasteriza polilíneas a un bitmap en blanco y negro y genera un Data URL BMP B/N
- */
-export function rasterizeLineArtToBitmap(
+export function buildServerRasterAndOuterContour(
   outerPolygon: Point2D[],
   innerPolylines: Point2D[][],
   domainWidth: number,
   domainHeight: number,
-  rasterWidth = 360,
-  rasterHeight = 320
-): { bitmap: Uint8Array; rasterDataUrl: string } {
+  rasterWidth = 420,
+  rasterHeight = 380
+): TracedVectorResult {
   const bitmap = new Uint8Array(rasterWidth * rasterHeight);
 
-  const drawSegment = (p1: Point2D, p2: Point2D, code: 1 | 2, thickness = 1) => {
+  const drawSegment = (p1: Point2D, p2: Point2D, thickness = 1) => {
     const x0 = Math.round((p1.x / domainWidth) * (rasterWidth - 1));
     const y0 = Math.round((p1.y / domainHeight) * (rasterHeight - 1));
     const x1 = Math.round((p2.x / domainWidth) * (rasterWidth - 1));
@@ -541,25 +442,20 @@ export function rasterizeLineArtToBitmap(
           const nx = cx + dx;
           const ny = cy + dy;
           if (nx >= 0 && nx < rasterWidth && ny >= 0 && ny < rasterHeight) {
-            bitmap[ny * rasterWidth + nx] = code;
+            bitmap[ny * rasterWidth + nx] = 1;
           }
         }
       }
     }
   };
 
-  for (let i = 0; i < outerPolygon.length; i++) {
-    const a = outerPolygon[i];
-    const b = outerPolygon[(i + 1) % outerPolygon.length];
-    drawSegment(a, b, 2, 1);
-  }
-
   for (const poly of innerPolylines) {
     for (let i = 0; i < poly.length - 1; i++) {
-      drawSegment(poly[i], poly[i + 1], 1, 1);
+      drawSegment(poly[i], poly[i + 1], 1);
     }
   }
 
+  // Codificar la imagen de grabado en formato BMP de 24 bits (blanco puro #FFFFFF y trazo negro #000000)
   const rowStride = Math.ceil((rasterWidth * 3) / 4) * 4;
   const pixelDataSize = rowStride * rasterHeight;
   const fileSize = 54 + pixelDataSize;
@@ -579,7 +475,7 @@ export function rasterizeLineArtToBitmap(
   for (let y = 0; y < rasterHeight; y++) {
     for (let x = 0; x < rasterWidth; x++) {
       const isInk = bitmap[y * rasterWidth + x] > 0;
-      const val = isInk ? 20 : 255;
+      const val = isInk ? 0 : 255;
       buf[offset + x * 3 + 0] = val;
       buf[offset + x * 3 + 1] = val;
       buf[offset + x * 3 + 2] = val;
@@ -587,6 +483,21 @@ export function rasterizeLineArtToBitmap(
     offset += rowStride;
   }
 
-  const rasterDataUrl = `data:image/bmp;base64,${buf.toString('base64')}`;
-  return { bitmap, rasterDataUrl };
+  const engravingImageDataUrl = `data:image/bmp;base64,${buf.toString('base64')}`;
+  const outerPathD = polygonToPotraceBezierPath(outerPolygon, true, 0.88);
+
+  return {
+    outerPolygon,
+    outerPathD,
+    outerContourNodes: outerPolygon.length,
+    widthMm: domainWidth,
+    heightMm: domainHeight,
+    cropBoxPx: {
+      minX: 0,
+      minY: 0,
+      widthPx: rasterWidth,
+      heightPx: rasterHeight,
+    },
+    engravingImageDataUrl,
+  };
 }
