@@ -7,9 +7,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const images = Array.isArray(body.images) ? body.images : [];
-    const puzzlePieces = (Number(body.puzzlePieces) || 6) as PuzzlePieceCount;
+    const puzzlePieces = (Number(body.puzzlePieces) || 25) as PuzzlePieceCount;
     const studentPrompt = typeof body.studentPrompt === 'string' ? body.studentPrompt : '';
-    const targetHeightMm = Number(body.targetHeightMm) || 92;
+    const targetHeightMm = Number(body.targetHeightMm) || 120;
     const includeAnnotations =
       body.includeAnnotations === undefined ? true : Boolean(body.includeAnnotations);
     const customApiKey =

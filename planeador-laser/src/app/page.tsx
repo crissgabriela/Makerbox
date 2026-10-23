@@ -77,7 +77,7 @@ export default function HomePage() {
               </div>
 
               <p className="text-sm text-slate-600 leading-relaxed">
-                Sube de <strong>3 a 4 dibujos a mano alzada (JPG/PNG)</strong>, conversa con el <strong>Asistente IA para niños y jóvenes</strong> para fusionarlos en un trazo lineal limpio, vectorízalo con <strong>Potrace</strong> y superpón un patrón de <strong>rompecabezas (4, 6, 9 o 12 piezas)</strong> recortado exactamente a la silueta exterior.
+                Sube de <strong>3 a 4 dibujos a mano alzada (JPG/PNG)</strong>, utiliza el <strong>Agente Gemini Image Generation</strong> para fusionarlos en una ilustración lineal en blanco y negro, vectorízala con <strong>Potrace</strong> y superpón un patrón de <strong>rompecabezas de 20, 25, 30 o 40 piezas</strong> recortado exactamente a la silueta exterior.
               </p>
 
               <ul className="space-y-2 text-xs font-semibold text-slate-700 bg-amber-50/60 border border-amber-200/80 rounded-2xl p-4">
@@ -87,11 +87,11 @@ export default function HomePage() {
                 </li>
                 <li className="flex items-center gap-2">
                   <Ruler className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>IA Generativa Multimodal + Vectorización automática tipo Potrace</span>
+                  <span>Agente Gemini Multimodal Image Gen + Vectorización Potrace de alta precisión</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Scissors className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Patrón de rompecabezas (4 opciones de piezas) con recorte booleano exacto</span>
+                  <span>Patrón de rompecabezas de 20, 25, 30 o 40 piezas con recorte booleano exacto</span>
                 </li>
               </ul>
             </div>

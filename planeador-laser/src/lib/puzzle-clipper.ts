@@ -1,4 +1,8 @@
-import { Point2D, polygonToPotraceBezierPath } from './potrace-vectorizer';
+import {
+  Point2D,
+  polygonToPotraceBezierPath,
+  TracedVectorResult,
+} from './potrace-vectorizer';
 import { PuzzlePieceCount, PUZZLE_PIECE_OPTIONS } from '@/types/zoo';
 
 export interface ClippedPuzzleResult {
@@ -8,7 +12,7 @@ export interface ClippedPuzzleResult {
   clippedPuzzlePolylines: Point2D[][];
   /** Comandos SVG d="" de las líneas de corte del rompecabezas recortadas al contorno */
   clippedPuzzlePathsD: string[];
-  /** Comandos SVG d="" del patrón completo (para usar también con <clipPath> si se desea) */
+  /** Comandos SVG d="" del patrón completo */
   rawPuzzlePathsD: string[];
 }
 
@@ -33,7 +37,6 @@ export function isPointInPolygon(pt: Point2D, polygon: Point2D[]): boolean {
 
 /**
  * Calcula la intersección exacta entre dos segmentos [p1, p2] y [p3, p4]
- * Devuelve el parámetro t en (0, 1) sobre [p1, p2] y el punto de intersección.
  */
 function intersectSegments(
   p1: Point2D,
@@ -82,7 +85,6 @@ export function clipPolylineToPolygon(
     const a = polyline[i];
     const b = polyline[i + 1];
 
-    // Buscar todas las intersecciones de este segmento con las aristas del polígono exterior
     const hits: { t: number; point: Point2D }[] = [
       { t: 0, point: a },
       { t: 1, point: b },
@@ -99,7 +101,6 @@ export function clipPolylineToPolygon(
 
     hits.sort((h1, h2) => h1.t - h2.t);
 
-    // Evaluar cada sub-segmento entre intersecciones consecutivas
     for (let k = 0; k < hits.length - 1; k++) {
       const pStart = hits[k].point;
       const pEnd = hits[k + 1].point;
@@ -144,22 +145,19 @@ function generateClassicJigsawEdgePoints(
   pStart: Point2D,
   pEnd: Point2D,
   tabDirection: 1 | -1,
-  samplesPerSegment = 28
+  samplesPerSegment = 24
 ): Point2D[] {
   const dx = pEnd.x - pStart.x;
   const dy = pEnd.y - pStart.y;
   const length = Math.hypot(dx, dy);
   if (length < 1e-3) return [pStart, pEnd];
 
-  // Vector tangente unitario T y normal unitaria N
   const tx = dx / length;
   const ty = dy / length;
   const nx = -ty * tabDirection;
   const ny = tx * tabDirection;
 
-  // Coordenadas locales (u a lo largo del borde 0..1, v perpendicular al borde)
-  // Diseño clásico de lengüeta de rompecabezas con cuello estrecho (para encastre mecánico firme)
-  const tabHeight = 0.21; // Altura de la lengüeta respecto al largo de la celda
+  const tabHeight = 0.20;
 
   const cubicBezier = (
     p0: [number, number],
@@ -182,11 +180,6 @@ function generateClassicJigsawEdgePoints(
     return [u, v];
   };
 
-  // 4 tramos de Bézier que forman una lengüeta de rompecabezas clásico:
-  // 1) hombro izquierdo y entrada al cuello
-  // 2) lóbulo izquierdo de la cabeza circular
-  // 3) lóbulo derecho de la cabeza circular
-  // 4) salida del cuello y hombro derecho
   const segments: [[number, number], [number, number], [number, number], [number, number]][] = [
     [
       [0.0, 0.0],
@@ -215,7 +208,7 @@ function generateClassicJigsawEdgePoints(
   ];
 
   const points: Point2D[] = [];
-  const subSamples = Math.max(6, Math.floor(samplesPerSegment / segments.length));
+  const subSamples = Math.max(5, Math.floor(samplesPerSegment / segments.length));
 
   for (let sIdx = 0; sIdx < segments.length; sIdx++) {
     const [b0, b1, b2, b3] = segments[sIdx];
@@ -234,7 +227,7 @@ function generateClassicJigsawEdgePoints(
 }
 
 /**
- * Construye el patrón completo de rompecabezas clásico para la cantidad de piezas seleccionada (4, 6, 9 o 12)
+ * Construye el patrón completo de rompecabezas clásico para la cantidad de piezas seleccionada (20, 25, 30 o 40)
  * y aplica la operación booleana de intersección contra el contorno exterior del dibujo híbrido.
  */
 export function generateAndClipPuzzlePattern(
@@ -244,7 +237,7 @@ export function generateAndClipPuzzlePattern(
 ): ClippedPuzzleResult {
   const option =
     PUZZLE_PIECE_OPTIONS.find((o) => o.count === pieceCount) ||
-    PUZZLE_PIECE_OPTIONS[1];
+    PUZZLE_PIECE_OPTIONS[0];
   const { cols, rows } = option;
 
   const width = bbox.maxX - bbox.minX;
@@ -254,7 +247,6 @@ export function generateAndClipPuzzlePattern(
 
   const rawDividers: Point2D[][] = [];
 
-  // Líneas divisorias verticales internas (c = 1 .. cols - 1)
   for (let c = 1; c < cols; c++) {
     const x = bbox.minX + c * cellW;
     const verticalCurve: Point2D[] = [];
@@ -266,7 +258,7 @@ export function generateAndClipPuzzlePattern(
         { x, y: y0 },
         { x, y: y1 },
         dir,
-        36
+        24
       );
       if (r > 0) edgePts.shift();
       verticalCurve.push(...edgePts);
@@ -274,7 +266,6 @@ export function generateAndClipPuzzlePattern(
     rawDividers.push(verticalCurve);
   }
 
-  // Líneas divisorias horizontales internas (r = 1 .. rows - 1)
   for (let r = 1; r < rows; r++) {
     const y = bbox.minY + r * cellH;
     const horizontalCurve: Point2D[] = [];
@@ -286,7 +277,7 @@ export function generateAndClipPuzzlePattern(
         { x: x0, y },
         { x: x1, y },
         dir,
-        36
+        24
       );
       if (c > 0) edgePts.shift();
       horizontalCurve.push(...edgePts);
@@ -294,7 +285,6 @@ export function generateAndClipPuzzlePattern(
     rawDividers.push(horizontalCurve);
   }
 
-  // Aplicar operación booleana de intersección para recortar cada línea del puzzle al contorno exterior
   const clippedPuzzlePolylines: Point2D[][] = [];
   for (const divider of rawDividers) {
     const clippedSegments = clipPolylineToPolygon(divider, outerPolygon);
@@ -323,5 +313,113 @@ export function generateAndClipPuzzlePattern(
     clippedPuzzlePolylines,
     clippedPuzzlePathsD,
     rawPuzzlePathsD,
+  };
+}
+
+/**
+ * Ensambla el archivo SVG de previsualización y el archivo SVG limpio para corte láser
+ * a partir del resultado vectorizado por Potrace y el patrón de rompecabezas recortado.
+ */
+export function buildPuzzleSvgFromTracedResult(
+  traced: TracedVectorResult,
+  puzzlePieces: PuzzlePieceCount,
+  hybridTitle: string,
+  includePreviewAnnotations: boolean
+): {
+  previewSvg: string;
+  laserSvg: string;
+  puzzleResult: ClippedPuzzleResult;
+} {
+  const outerPolygon = traced.outerPolygon;
+  const outerContourD = traced.outerPathD;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const pt of outerPolygon) {
+    if (pt.x < minX) minX = pt.x;
+    if (pt.y < minY) minY = pt.y;
+    if (pt.x > maxX) maxX = pt.x;
+    if (pt.y > maxY) maxY = pt.y;
+  }
+
+  const puzzleResult = generateAndClipPuzzlePattern(
+    outerPolygon,
+    { minX, minY, maxX, maxY },
+    puzzlePieces
+  );
+
+  const marginMm = 7;
+  const sheetW = Number((traced.widthMm + marginMm * 2).toFixed(1));
+  const sheetH = Number((traced.heightMm + marginMm * 2).toFixed(1));
+
+  const renderSvg = (withAnnotations: boolean): string => {
+    const lines: string[] = [];
+    lines.push(`<?xml version="1.0" encoding="UTF-8"?>`);
+    lines.push(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${sheetW}mm" height="${sheetH}mm" viewBox="0 0 ${sheetW} ${sheetH}">`
+    );
+
+    lines.push(`  <defs>`);
+    lines.push(`    <clipPath id="hybrid-outer-contour-clip">`);
+    lines.push(`      <path d="${outerContourD}" />`);
+    lines.push(`    </clipPath>`);
+    lines.push(`  </defs>`);
+
+    if (withAnnotations) {
+      lines.push(
+        `  <rect x="1" y="1" width="${(sheetW - 2).toFixed(1)}" height="${(sheetH - 2).toFixed(1)}" rx="3" fill="#FFFBEB" stroke="#D97706" stroke-width="0.4" stroke-dasharray="2.5,2.5" />`
+      );
+      lines.push(
+        `  <text x="${(sheetW / 2).toFixed(1)}" y="4.8" text-anchor="middle" font-family="sans-serif" font-size="2.8" font-weight="bold" fill="#92400E">${hybridTitle} · Rompecabezas ${puzzlePieces} Piezas (${puzzleResult.cols}×${puzzleResult.rows}) · ${traced.widthMm}×${traced.heightMm} mm</text>`
+      );
+    }
+
+    lines.push(`  <g transform="translate(${marginMm}, ${marginMm})">`);
+
+    // CAPA 1: Grabado/Marcado Láser (Azul #0000FF en archivo láser, Negro #111827 en vista previa)
+    lines.push(
+      `    <g id="CAPA-GRABADO-DIBUJO-HIBRIDO" clip-path="url(#hybrid-outer-contour-clip)" fill="none" stroke="${withAnnotations ? '#111827' : '#0000FF'}" stroke-width="${withAnnotations ? '0.62' : '0.32'}" stroke-linecap="round" stroke-linejoin="round">`
+    );
+    for (let i = 0; i < traced.innerPathsD.length; i++) {
+      lines.push(`      <path id="trazo-hibrido-${i + 1}" d="${traced.innerPathsD[i]}" />`);
+    }
+    lines.push(`    </g>`);
+
+    // CAPA 2: Corte Láser Interior (Rojo #FF0000) — Líneas de Rompecabezas recortadas booleanamente al contorno
+    lines.push(
+      `    <g id="CAPA-CORTE-ROMPECABEZAS-CLIPPED" clip-path="url(#hybrid-outer-contour-clip)" fill="none" stroke="#FF0000" stroke-width="${withAnnotations ? '0.45' : '0.22'}" stroke-linecap="round" stroke-linejoin="round">`
+    );
+    for (let i = 0; i < puzzleResult.clippedPuzzlePathsD.length; i++) {
+      lines.push(
+        `      <path id="corte-puzzle-${i + 1}" d="${puzzleResult.clippedPuzzlePathsD[i]}" />`
+      );
+    }
+    lines.push(`    </g>`);
+
+    // CAPA 3: Corte Láser Exterior (Rojo #FF0000) — Contorno Cerrado Principal del Dibujo Híbrido
+    lines.push(
+      `    <g id="CAPA-CORTE-CONTORNO-EXTERIOR" fill="none" stroke="#FF0000" stroke-width="${withAnnotations ? '0.75' : '0.25'}" stroke-linecap="round" stroke-linejoin="round">`
+    );
+    lines.push(`      <path id="contorno-exterior-cerrado" d="${outerContourD}" />`);
+    lines.push(`    </g>`);
+
+    lines.push(`  </g>`);
+
+    if (withAnnotations) {
+      lines.push(
+        `  <text x="${(sheetW / 2).toFixed(1)}" y="${(sheetH - 1.8).toFixed(1)}" text-anchor="middle" font-family="sans-serif" font-size="2.3" fill="#B91C1C">Rojo (#FF0000): Corte Láser (Silueta + ${puzzlePieces} Piezas Recortadas) · Negro/Azul (#0000FF): Dibujo Híbrido Vectorizado</text>`
+      );
+    }
+
+    lines.push(`</svg>`);
+    return lines.join('\n');
+  };
+
+  return {
+    previewSvg: renderSvg(includePreviewAnnotations),
+    laserSvg: renderSvg(false),
+    puzzleResult,
   };
 }

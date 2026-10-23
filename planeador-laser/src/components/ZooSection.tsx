@@ -18,6 +18,7 @@ import {
   Layers,
   Send,
   KeyRound,
+  FileImage,
 } from 'lucide-react';
 import {
   AI_FUSION_INTERNAL_PROMPT,
@@ -28,15 +29,98 @@ import {
   UploadedSketchInput,
   ZooFusionResponse,
 } from '@/types/zoo';
+import { vectorizeRgbaImageWithPotrace } from '@/lib/potrace-vectorizer';
+import { buildPuzzleSvgFromTracedResult } from '@/lib/puzzle-clipper';
 
 interface ZooSectionProps {
   onBackToMenu?: () => void;
 }
 
 /**
- * Analiza en el cliente (Canvas 2D) un archivo JPG/PNG de un dibujo a mano alzada:
- * normaliza su tamaño y extrae densidades morfológicas y trazos principales
- * para alimentar el motor multimodal y el vectorizador Potrace.
+ * Vectoriza en alta resolución cualquier imagen rasterizada (devuelta por Gemini Image Generation
+ * o subida directamente) aplicando umbralizado adaptativo, flood-fill exterior, Potrace y clipping booleano del puzzle.
+ */
+async function traceRasterUrlToPuzzleSvgClient(
+  rasterUrl: string,
+  puzzlePieces: PuzzlePieceCount,
+  targetHeightMm: number,
+  hybridTitle: string,
+  includeAnnotations: boolean
+): Promise<{
+  previewSvg: string;
+  laserSvg: string;
+  cleanedRasterDataUrl: string;
+  outerNodes: number;
+  innerPathsCount: number;
+  clippedSegmentsCount: number;
+  widthMm: number;
+  heightMm: number;
+} | null> {
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    img.crossOrigin = 'anonymous';
+    img.onerror = () => resolve(null);
+    img.onload = () => {
+      const maxDim = 380;
+      const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
+      const w = Math.max(120, Math.round(img.width * scale));
+      const h = Math.max(120, Math.round(img.height * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(null);
+        return;
+      }
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const traced = vectorizeRgbaImageWithPotrace(
+        imgData.data,
+        w,
+        h,
+        targetHeightMm,
+        {
+          turdSize: 4,
+          alphaMax: 0.88,
+          optTolerance: 0.55,
+        }
+      );
+
+      if (traced.outerPolygon.length < 6) {
+        resolve(null);
+        return;
+      }
+
+      const built = buildPuzzleSvgFromTracedResult(
+        traced,
+        puzzlePieces,
+        hybridTitle,
+        includeAnnotations
+      );
+
+      resolve({
+        previewSvg: built.previewSvg,
+        laserSvg: built.laserSvg,
+        cleanedRasterDataUrl: canvas.toDataURL('image/png'),
+        outerNodes: traced.outerPolygon.length,
+        innerPathsCount: traced.innerPathsD.length,
+        clippedSegmentsCount: built.puzzleResult.clippedPuzzlePathsD.length,
+        widthMm: traced.widthMm,
+        heightMm: traced.heightMm,
+      });
+    };
+    img.src = rasterUrl;
+  });
+}
+
+/**
+ * Analiza en el cliente (Canvas 2D) un archivo JPG/PNG de un dibujo a mano alzada
  */
 async function analyzeAndNormalizeSketchFile(
   file: File
@@ -49,7 +133,7 @@ async function analyzeAndNormalizeSketchFile(
       img.onerror = () => reject(new Error('Formato de imagen no válido.'));
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const size = 180;
+        const size = 240;
         canvas.width = size;
         canvas.height = size;
         const ctx = canvas.getContext('2d');
@@ -73,8 +157,6 @@ async function analyzeAndNormalizeSketchFile(
         let centerInk = 0;
         let bottomInk = 0;
 
-        const strokePts: { x: number; y: number }[] = [];
-
         for (let y = 0; y < size; y += 3) {
           for (let x = 0; x < size; x += 3) {
             const idx = (y * size + x) * 4;
@@ -87,13 +169,6 @@ async function analyzeAndNormalizeSketchFile(
               else if (y > size * 0.68) bottomInk++;
               else if (x < size * 0.28 || x > size * 0.72) sideInk++;
               else centerInk++;
-
-              if (strokePts.length < 24 && (x + y) % 9 === 0) {
-                strokePts.push({
-                  x: Number((x / size).toFixed(2)),
-                  y: Number((y / size).toFixed(2)),
-                });
-              }
             }
           }
         }
@@ -104,7 +179,6 @@ async function analyzeAndNormalizeSketchFile(
           sideDensity: Number((sideInk / totalSampled).toFixed(2)),
           centerDensity: Number((centerInk / totalSampled).toFixed(2)),
           bottomDensity: Number((bottomInk / totalSampled).toFixed(2)),
-          innerStrokes: strokePts.length >= 4 ? [strokePts.slice(0, 8)] : [],
         };
 
         const normalizedDataUrl = canvas.toDataURL('image/png');
@@ -123,152 +197,115 @@ async function analyzeAndNormalizeSketchFile(
 }
 
 /**
- * Genera 4 dibujos a mano alzada en formato PNG (en Canvas) para que los niños o docentes
- * puedan probar inmediatamente la fusión de 4 bocetos sin necesidad de tener archivos externos.
+ * Genera los 3 dibujos a mano alzada en formato PNG que dan origen a la fusión de ejemplo de Gemini:
+ * 1. Gato sentado con bigotes
+ * 2. Alas puntiagudas de murciélago/dragón
+ * 3. Medusa con tentáculos ondulados
  */
 function createSampleHandDrawnSketches(): UploadedSketchInput[] {
   if (typeof document === 'undefined') return [];
 
   const presets: {
     name: string;
-    title: string;
     draw: (ctx: CanvasRenderingContext2D) => void;
     analysis: SketchFeatureAnalysis;
   }[] = [
     {
-      name: 'dibujo1-cabeza-felino.png',
-      title: 'Cabeza y Corona',
+      name: 'boceto1-gato-sentado.png',
       analysis: {
         topDensity: 0.75,
         sideDensity: 0.35,
-        centerDensity: 0.5,
+        centerDensity: 0.6,
         bottomDensity: 0.2,
-        innerStrokes: [
-          [
-            { x: 0.35, y: 0.35 },
-            { x: 0.5, y: 0.25 },
-            { x: 0.65, y: 0.35 },
-          ],
-        ],
       },
       draw: (ctx) => {
+        // Cabeza y orejas de gato
         ctx.beginPath();
-        ctx.moveTo(45, 120);
-        ctx.lineTo(35, 65);
-        ctx.lineTo(50, 28);
-        ctx.lineTo(75, 52);
-        ctx.lineTo(90, 24);
-        ctx.lineTo(105, 52);
-        ctx.lineTo(130, 28);
-        ctx.lineTo(145, 65);
-        ctx.lineTo(135, 120);
-        ctx.closePath();
+        ctx.moveTo(60, 72);
+        ctx.lineTo(56, 36);
+        ctx.lineTo(78, 52);
+        ctx.quadraticCurveTo(90, 48, 102, 52);
+        ctx.lineTo(124, 36);
+        ctx.lineTo(120, 72);
+        ctx.quadraticCurveTo(132, 95, 110, 105);
+        ctx.quadraticCurveTo(90, 110, 70, 105);
+        ctx.quadraticCurveTo(48, 95, 60, 72);
         ctx.stroke();
-        // Ojos y hocico a mano alzada
+        // Ojos, nariz y bigotes
         ctx.beginPath();
-        ctx.arc(68, 78, 8, 0, Math.PI * 2);
-        ctx.moveTo(120, 78);
-        ctx.arc(112, 78, 8, 0, Math.PI * 2);
-        ctx.moveTo(75, 102);
-        ctx.quadraticCurveTo(90, 115, 105, 102);
+        ctx.arc(76, 76, 5, 0, Math.PI * 2);
+        ctx.moveTo(109, 76);
+        ctx.arc(104, 76, 5, 0, Math.PI * 2);
+        ctx.moveTo(85, 88);
+        ctx.lineTo(95, 88);
+        ctx.lineTo(90, 94);
+        ctx.closePath();
+        ctx.moveTo(42, 82);
+        ctx.lineTo(68, 86);
+        ctx.moveTo(40, 92);
+        ctx.lineTo(68, 92);
+        ctx.moveTo(112, 86);
+        ctx.lineTo(138, 82);
+        ctx.moveTo(112, 92);
+        ctx.lineTo(140, 92);
+        // Cuerpo regordete
+        ctx.moveTo(68, 105);
+        ctx.quadraticCurveTo(46, 138, 66, 162);
+        ctx.quadraticCurveTo(90, 170, 114, 162);
+        ctx.quadraticCurveTo(134, 138, 112, 105);
         ctx.stroke();
       },
     },
     {
-      name: 'dibujo2-alas-dragon.png',
-      title: 'Alas Desplegadas',
+      name: 'boceto2-alas-dragon.png',
       analysis: {
-        topDensity: 0.3,
-        sideDensity: 0.85,
-        centerDensity: 0.4,
-        bottomDensity: 0.25,
-        innerStrokes: [
-          [
-            { x: 0.2, y: 0.4 },
-            { x: 0.5, y: 0.5 },
-            { x: 0.8, y: 0.4 },
-          ],
-        ],
-      },
-      draw: (ctx) => {
-        ctx.beginPath();
-        ctx.moveTo(85, 85);
-        ctx.lineTo(22, 32);
-        ctx.lineTo(16, 78);
-        ctx.lineTo(34, 118);
-        ctx.lineTo(85, 108);
-        ctx.moveTo(95, 85);
-        ctx.lineTo(158, 32);
-        ctx.lineTo(164, 78);
-        ctx.lineTo(146, 118);
-        ctx.lineTo(95, 108);
-        ctx.stroke();
-      },
-    },
-    {
-      name: 'dibujo3-escudo-caparazon.png',
-      title: 'Torso y Escudo',
-      analysis: {
-        topDensity: 0.25,
-        sideDensity: 0.4,
-        centerDensity: 0.85,
-        bottomDensity: 0.35,
-        innerStrokes: [
-          [
-            { x: 0.4, y: 0.4 },
-            { x: 0.6, y: 0.4 },
-            { x: 0.5, y: 0.65 },
-            { x: 0.4, y: 0.4 },
-          ],
-        ],
-      },
-      draw: (ctx) => {
-        ctx.beginPath();
-        ctx.moveTo(90, 28);
-        ctx.lineTo(142, 65);
-        ctx.lineTo(126, 142);
-        ctx.lineTo(54, 142);
-        ctx.lineTo(38, 65);
-        ctx.closePath();
-        ctx.moveTo(90, 48);
-        ctx.lineTo(118, 82);
-        ctx.lineTo(90, 122);
-        ctx.lineTo(62, 82);
-        ctx.closePath();
-        ctx.stroke();
-      },
-    },
-    {
-      name: 'dibujo4-patas-y-cola.png',
-      title: 'Garras y Cola',
-      analysis: {
-        topDensity: 0.15,
-        sideDensity: 0.45,
+        topDensity: 0.4,
+        sideDensity: 0.88,
         centerDensity: 0.35,
-        bottomDensity: 0.88,
-        innerStrokes: [
-          [
-            { x: 0.3, y: 0.75 },
-            { x: 0.5, y: 0.88 },
-            { x: 0.7, y: 0.75 },
-          ],
-        ],
+        bottomDensity: 0.2,
       },
       draw: (ctx) => {
         ctx.beginPath();
-        ctx.moveTo(55, 55);
-        ctx.lineTo(42, 148);
-        ctx.lineTo(75, 148);
-        ctx.lineTo(82, 95);
-        ctx.lineTo(98, 95);
-        ctx.lineTo(105, 148);
-        ctx.lineTo(138, 148);
-        ctx.lineTo(125, 55);
-        // Cola lateral
-        ctx.moveTo(128, 92);
-        ctx.quadraticCurveTo(168, 70, 162, 128);
-        ctx.lineTo(132, 118);
+        ctx.moveTo(35, 115);
+        ctx.lineTo(115, 25);
+        ctx.lineTo(108, 52);
+        ctx.lineTo(122, 52);
+        ctx.lineTo(114, 72);
+        ctx.lineTo(165, 42);
+        ctx.lineTo(142, 82);
+        ctx.lineTo(155, 96);
+        ctx.lineTo(130, 108);
+        ctx.lineTo(142, 128);
+        ctx.lineTo(118, 130);
+        ctx.lineTo(122, 152);
+        ctx.lineTo(98, 140);
+        ctx.lineTo(90, 156);
+        ctx.lineTo(52, 138);
+        ctx.closePath();
         ctx.stroke();
+      },
+    },
+    {
+      name: 'boceto3-medusa-tentaculos.png',
+      analysis: {
+        topDensity: 0.2,
+        sideDensity: 0.35,
+        centerDensity: 0.4,
+        bottomDensity: 0.92,
+      },
+      draw: (ctx) => {
+        // Cúpula superior y tentáculos ondulados
+        ctx.beginPath();
+        ctx.arc(90, 58, 38, Math.PI, 0, false);
+        ctx.closePath();
+        ctx.stroke();
+        const xs = [60, 72, 84, 96, 108, 120];
+        for (const x of xs) {
+          ctx.beginPath();
+          ctx.moveTo(x, 60);
+          ctx.bezierCurveTo(x - 14, 92, x + 14, 124, x - 6, 164);
+          ctx.stroke();
+        }
       },
     },
   ];
@@ -282,7 +319,7 @@ function createSampleHandDrawnSketches(): UploadedSketchInput[] {
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, 180, 180);
       ctx.strokeStyle = '#1E293B';
-      ctx.lineWidth = 4.5;
+      ctx.lineWidth = 3.5;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       p.draw(ctx);
@@ -299,8 +336,8 @@ function createSampleHandDrawnSketches(): UploadedSketchInput[] {
 
 export function ZooSection({ onBackToMenu }: ZooSectionProps) {
   const [images, setImages] = useState<UploadedSketchInput[]>([]);
-  const [puzzlePieces, setPuzzlePieces] = useState<PuzzlePieceCount>(6);
-  const [targetHeightMm, setTargetHeightMm] = useState<number>(92);
+  const [puzzlePieces, setPuzzlePieces] = useState<PuzzlePieceCount>(25);
+  const [targetHeightMm, setTargetHeightMm] = useState<number>(120);
   const [showAnnotations, setShowAnnotations] = useState<boolean>(true);
   const [activePreviewTab, setActivePreviewTab] = useState<'vector-puzzle' | 'ai-raster'>('vector-puzzle');
 
@@ -313,7 +350,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
     {
       id: 'welcome-1',
       role: 'assistant',
-      text: '¡Hola creador! 👋 Soy RoboMaker IA. Sube de 3 a 4 dibujos hechos a mano (en JPG o PNG) y presiona "Fusionar Dibujos". También puedes decirme aquí qué partes quieres combinar y luego elegir cuántas piezas tendrá tu rompecabezas láser.',
+      text: '¡Hola creador! 👋 Soy el Agente Gemini de Fusión Creativa. Sube de 3 a 4 dibujos a mano alzada (JPG/PNG) y presiona "Fusionar Dibujos". También he precargado el ejemplo del Gato + Alas + Medusa (con 20 a 40 piezas de rompecabezas) para que veas el resultado al instante.',
       timestamp: 'Ahora',
     },
   ]);
@@ -325,11 +362,12 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
   const [fusionResult, setFusionResult] = useState<ZooFusionResponse | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const directFusedInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Cargar los 4 bocetos de demostración al inicio para que la previsualización esté activa de inmediato
+  // Cargar los 3 bocetos de demostración (Gato + Alas + Medusa) al inicio
   useEffect(() => {
     const samples = createSampleHandDrawnSketches();
-    if (samples.length === 4) {
+    if (samples.length >= 3) {
       setImages(samples);
     }
   }, []);
@@ -345,7 +383,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
     ) => {
       if (imgsToFuse.length < 3 || imgsToFuse.length > 4) {
         setErrorMsg(
-          `Debes tener entre 3 y 4 imágenes cargadas (actualmente tienes ${imgsToFuse.length}).`
+          `Debes tener entre 3 y 4 imágenes cargadas para fusionar (actualmente tienes ${imgsToFuse.length}).`
         );
         return;
       }
@@ -370,6 +408,27 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
         const data: ZooFusionResponse & { error?: string } = await res.json();
         if (!res.ok) {
           throw new Error(data.error || 'Error al fusionar y vectorizar los dibujos.');
+        }
+
+        // Si tenemos una imagen raster nativa de Gemini (o la imagen de demostración de Gemini),
+        // la vectorizamos en alta resolución con umbral adaptativo + flood-fill exterior + Potrace
+        if (data.hasNativeGeminiRaster && data.rasterDataUrl) {
+          const hiRes = await traceRasterUrlToPuzzleSvgClient(
+            data.rasterDataUrl,
+            piecesCount,
+            heightMm,
+            data.hybridTitle,
+            annotations
+          );
+          if (hiRes) {
+            data.previewSvg = hiRes.previewSvg;
+            data.laserSvg = hiRes.laserSvg;
+            data.metrics.outerContourNodes = hiRes.outerNodes;
+            data.metrics.innerVectorPathsCount = hiRes.innerPathsCount;
+            data.metrics.clippedPuzzleSegmentsCount = hiRes.clippedSegmentsCount;
+            data.metrics.widthMm = hiRes.widthMm;
+            data.metrics.heightMm = hiRes.heightMm;
+          }
         }
 
         setFusionResult(data);
@@ -402,7 +461,6 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
     [customApiKey]
   );
 
-  // Ejecutar automáticamente cuando ya hay entre 3 y 4 imágenes y cambia el patrón de puzzle o altura
   useEffect(() => {
     if (images.length >= 3 && images.length <= 4) {
       const timer = setTimeout(() => {
@@ -439,16 +497,67 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
       );
 
       setImages((prev) => {
-        // Si los actuales son todos de ejemplo ('sample-*'), reemplazarlos por los del usuario
         const areAllSamples = prev.every((img) => img.id.startsWith('sample-'));
         const base = areAllSamples ? [] : prev;
-        const merged = [...base, ...analyzed].slice(0, 4);
-        return merged;
+        return [...base, ...analyzed].slice(0, 4);
       });
     } catch (err) {
       console.error(err);
       setErrorMsg('No se pudieron procesar algunas de las imágenes seleccionadas.');
     }
+  };
+
+  /**
+   * Permite subir directamente una imagen ya fusionada por Gemini (por ejemplo desde un celular o tablet)
+   * para vectorizarla inmediatamente con Potrace y aplicarle el rompecabezas de 20 a 40 piezas.
+   */
+  const handleDirectFusedImageUpload = async (file: File) => {
+    setIsFusing(true);
+    setErrorMsg(null);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = String(reader.result);
+      const option =
+        PUZZLE_PIECE_OPTIONS.find((o) => o.count === puzzlePieces) ||
+        PUZZLE_PIECE_OPTIONS[1];
+      const title = `Fusión Gemini (${file.name.replace(/\.[^.]+$/, '')})`;
+      const hiRes = await traceRasterUrlToPuzzleSvgClient(
+        dataUrl,
+        puzzlePieces,
+        targetHeightMm,
+        title,
+        showAnnotations
+      );
+
+      if (hiRes) {
+        setFusionResult({
+          previewSvg: hiRes.previewSvg,
+          laserSvg: hiRes.laserSvg,
+          rasterDataUrl: dataUrl,
+          hasNativeGeminiRaster: true,
+          assistantMessage: `¡Excelente dibujo fusionado! Vectoricé tu imagen "${file.name}" eliminando el fondo con umbral adaptativo, tracé sus líneas con Potrace y recorté el rompecabezas de ${puzzlePieces} piezas (${option.cols}×${option.rows}) exactamente a su silueta exterior.`,
+          hybridTitle: title,
+          internalPromptUsed: AI_FUSION_INTERNAL_PROMPT,
+          metrics: {
+            imagesCount: images.length,
+            puzzlePieces,
+            gridCols: option.cols,
+            gridRows: option.rows,
+            widthMm: hiRes.widthMm,
+            heightMm: hiRes.heightMm,
+            outerContourNodes: hiRes.outerNodes,
+            innerVectorPathsCount: hiRes.innerPathsCount,
+            clippedPuzzleSegmentsCount: hiRes.clippedSegmentsCount,
+            vectorizerEngine: 'Potrace High-Res Adaptive Threshold + Moore-Neighbor',
+            aiModelUsed: 'Gemini Image Direct Vectorizer',
+          },
+        });
+      } else {
+        setErrorMsg('No se pudo extraer el contorno de la imagen subida.');
+      }
+      setIsFusing(false);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
@@ -472,7 +581,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
       {
         id: `sample-msg-${Date.now()}`,
         role: 'assistant',
-        text: '¡He cargado 4 dibujos a mano alzada de prueba (Cabeza, Alas, Escudo y Patas/Cola)! Presiona "Fusionar Dibujos" para crear un nuevo híbrido.',
+        text: '¡He cargado los 3 bocetos de demostración (Gato sentado + Alas de dragón + Medusa con tentáculos) junto con su fusión de Gemini Image! Prueba cambiar entre 20, 25, 30 y 40 piezas.',
         timestamp: 'Ahora',
       },
     ]);
@@ -499,16 +608,6 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
 
     if (images.length >= 3 && images.length <= 4) {
       executeFusion(images, puzzlePieces, text, targetHeightMm, showAnnotations, true);
-    } else {
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `warn-${Date.now()}`,
-          role: 'assistant',
-          text: `¡Guardé tu idea "${text}"! Ahora asegúrate de subir entre 3 y 4 dibujos en JPG/PNG para poder fusionarlos.`,
-          timestamp: 'Ahora',
-        },
-      ]);
     }
   };
 
@@ -520,7 +619,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `rompecabezas-hibrido-ia-${puzzlePieces}piezas-corte-laser.svg`;
+    a.download = `rompecabezas-gemini-${puzzlePieces}piezas-corte-laser.svg`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -554,7 +653,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
           )}
           <span className="hidden sm:inline-block h-5 w-px bg-slate-200" />
           <span className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
-            🧩 Taller 1 · Fusión IA + Vectorización Potrace + Rompecabezas Láser
+            🧩 Taller 1 · Agente Gemini Image Fusion + Potrace + Rompecabezas (20–40 Piezas)
           </span>
         </div>
 
@@ -562,32 +661,30 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
           <button
             type="button"
             onClick={() => setShowApiConfig((v) => !v)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
-            title="Configurar API Key Multimodal opcional (Google Gemini)"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 text-xs font-extrabold transition-colors cursor-pointer"
           >
-            <KeyRound className="w-3.5 h-3.5 text-amber-600" />
-            <span>Motor IA Multimodal</span>
+            <KeyRound className="w-3.5 h-3.5 text-amber-700" />
+            <span>Configurar API Key Gemini Image</span>
           </button>
         </div>
       </div>
 
-      {/* Configuración opcional de API Key de Gemini para el Docente */}
+      {/* Configuración de API Key de Google Gemini (habilita gemini-2.5-flash-image en vivo) */}
       {showApiConfig && (
-        <div className="bg-amber-50/90 border border-amber-300 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-          <div className="space-y-1">
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+          <div className="space-y-1 max-w-2xl">
             <div className="font-extrabold text-amber-950">
-              Conexión API de Visión y Generación Multimodal (Opcional)
+              Agente Nativo Google Gemini Image Generation (`gemini-2.5-flash-image` / `gemini-2.0-flash-preview-image-generation`)
             </div>
-            <p className="text-amber-800">
-              El taller incluye un motor multimodal autónomo listo para usar sin claves. Si cuentas con una clave de{' '}
-              <strong>Google Gemini API</strong>, puedes ingresarla aquí o en <code className="font-mono">GEMINI_API_KEY</code>.
+            <p className="text-amber-900 leading-relaxed">
+              Ingresa tu <strong>Google Gemini API Key</strong> (o configúrala como variable <code className="font-mono bg-white px-1 rounded">GEMINI_API_KEY</code> en Vercel) para que el botón <strong>&ldquo;Fusionar Dibujos&rdquo;</strong> invoque en vivo el mismo generador de imágenes de Gemini que usaste en tu prueba.
             </p>
           </div>
           <input
             type="password"
             value={customApiKey}
             onChange={(e) => setCustomApiKey(e.target.value)}
-            placeholder="AIzaSy... (Gemini API Key opcional)"
+            placeholder="AIzaSy... (Google Gemini API Key)"
             className="w-full sm:w-72 px-3 py-2 rounded-xl bg-white border border-amber-300 text-slate-800 font-mono text-xs"
           />
         </div>
@@ -600,15 +697,16 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
           <div className="space-y-2 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 text-amber-100 text-xs font-bold uppercase tracking-wider">
               <Sparkles className="w-3.5 h-3.5" />
-              Taller 1 · Creación Colectiva con IA Generativa y Corte Láser
+              Taller 1 · Fusión Multimodal Estilo Gemini + Rompecabezas de 20 a 40 Piezas
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
               Fusión de Dibujos a Mano Alzada + Rompecabezas Láser 🧩
             </h1>
             <p className="text-amber-50 text-sm sm:text-base leading-relaxed">
-              Sube de <strong>3 a 4 dibujos a mano alzada (JPG/PNG)</strong> hechos por tu equipo. Nuestra{' '}
-              <strong>IA Generativa</strong> creará un diseño híbrido en trazo simple blanco y negro, lo vectorizará automáticamente con{' '}
-              <strong>Potrace</strong> y recortará un patrón de <strong>rompecabezas clásico</strong> sobre su silueta exterior.
+              Sube de <strong>3 a 4 dibujos a mano alzada (JPG/PNG)</strong>. El motor{' '}
+              <strong>Gemini Image Generation</strong> crea el dibujo lineal híbrido en blanco y negro, el algoritmo{' '}
+              <strong>Potrace</strong> vectoriza sus trazos y aplica una intersección booleana con un patrón de{' '}
+              <strong>20, 25, 30 o 40 piezas</strong>.
             </p>
           </div>
 
@@ -616,24 +714,24 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
             <div className="grid grid-cols-2 gap-2.5 bg-slate-950/30 backdrop-blur-md p-3.5 rounded-2xl border border-white/15 shrink-0">
               <div className="px-3 py-2 rounded-xl bg-white/10">
                 <div className="text-[10px] uppercase tracking-wider text-amber-200 font-bold">
-                  Dibujos Fusionados
+                  Vectorizado Potrace
                 </div>
                 <div className="text-lg font-black text-white">
-                  {fusionResult.metrics.imagesCount} Bocetos
+                  {fusionResult.metrics.innerVectorPathsCount} Trazos
                 </div>
                 <div className="text-[10px] text-amber-100">
-                  {fusionResult.metrics.innerVectorPathsCount} trazos Potrace
+                  Silueta: {fusionResult.metrics.outerContourNodes} nodos
                 </div>
               </div>
               <div className="px-3 py-2 rounded-xl bg-white/10">
                 <div className="text-[10px] uppercase tracking-wider text-amber-200 font-bold">
-                  Rompecabezas Recortado
+                  Rompecabezas Láser
                 </div>
                 <div className="text-lg font-black text-white">
                   {fusionResult.metrics.puzzlePieces} Piezas ({fusionResult.metrics.gridCols}×{fusionResult.metrics.gridRows})
                 </div>
                 <div className="text-[10px] text-emerald-200 font-semibold">
-                  ✓ Clipping booleano exacto
+                  ✓ Recortado al contorno
                 </div>
               </div>
             </div>
@@ -641,12 +739,12 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
         </div>
       </div>
 
-      {/* Grilla Principal: Columna Izquierda (Inputs + Asistente IA) y Columna Derecha (Previsualización + Descarga) */}
+      {/* Grilla Principal */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* COLUMNA IZQUIERDA (5 cols) */}
         <div className="lg:col-span-5 space-y-5">
           {/* Tarjeta 1: Zona de Carga Múltiple (3 a 4 dibujos JPG/PNG) + Botón "Fusionar Dibujos" */}
-          <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-5">
+          <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between gap-2">
               <label className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
                 <Upload className="w-4 h-4 text-amber-600" />
@@ -694,10 +792,10 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                 <ImageIcon className="w-5 h-5" />
               </div>
               <p className="text-xs sm:text-sm font-bold text-slate-800">
-                Arrastra aquí <span className="text-amber-600 underline">3 o 4 imágenes JPG/PNG</span> o haz clic para seleccionarlas
+                Arrastra aquí <span className="text-amber-600 underline">3 o 4 dibujos JPG/PNG</span> o haz clic para buscarlos
               </p>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Fotografías o escaneos de dibujos hechos a mano por los integrantes del equipo
+                Ej: 1) Gato · 2) Alas · 3) Medusa (se fusionarán en un solo personaje lineal)
               </p>
             </div>
 
@@ -750,19 +848,19 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
               })}
             </div>
 
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
               <button
                 type="button"
                 onClick={handleLoadSampleDrawings}
-                className="text-xs font-bold text-amber-700 hover:text-amber-900 underline cursor-pointer"
+                className="font-bold text-amber-700 hover:text-amber-900 underline cursor-pointer"
               >
-                🎨 Cargar 4 dibujos a mano alzada de ejemplo
+                🐱🦇🪼 Cargar ejemplo Gemini (Gato + Alas + Medusa)
               </button>
               {images.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setImages([])}
-                  className="text-xs font-semibold text-slate-400 hover:text-red-600 cursor-pointer"
+                  className="font-semibold text-slate-400 hover:text-red-600 cursor-pointer"
                 >
                   Limpiar todos
                 </button>
@@ -788,17 +886,39 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
               <Wand2 className={`w-5 h-5 ${isFusing ? 'animate-spin' : ''}`} />
               <span>{isFusing ? 'Fusionando y Vectorizando...' : 'Fusionar Dibujos'}</span>
             </button>
+
+            {/* Opción adicional: subir directamente una imagen ya fusionada */}
+            <div className="pt-2 border-t border-slate-100">
+              <input
+                ref={directFusedInputRef}
+                type="file"
+                accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleDirectFusedImageUpload(file);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => directFusedInputRef.current?.click()}
+                className="w-full py-2 px-3 rounded-xl bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-900 border border-slate-200 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                <FileImage className="w-4 h-4 text-amber-600" />
+                <span>¿Ya tienes una imagen fusionada por Gemini? Súbela directo aquí</span>
+              </button>
+            </div>
           </div>
 
-          {/* Tarjeta 2: Selector de Patrón de Rompecabezas (4 Cantidades Distintas de Piezas) */}
+          {/* Tarjeta 2: Selector de Patrón de Rompecabezas (20, 25, 30 o 40 Piezas) */}
           <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
               <label className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
                 <Puzzle className="w-4 h-4 text-amber-600" />
-                2. Cantidad de Piezas del Rompecabezas
+                2. Cantidad de Piezas (20 a 40 Piezas)
               </label>
               <span className="text-[11px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-full">
-                Recorte Booleano Activo
+                4 Niveles
               </span>
             </div>
 
@@ -830,51 +950,48 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
               })}
             </div>
 
-            {/* Control de Tamaño Final para Plancha Láser */}
+            {/* Control de Altura Final del Rompecabezas */}
             <div className="pt-2 border-t border-slate-100 space-y-1.5">
               <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                <span>Altura del Rompecabezas en Plancha Láser:</span>
+                <span>Altura del Rompecabezas para Corte Láser:</span>
                 <span className="text-amber-800 font-black">{targetHeightMm} mm</span>
               </div>
               <input
                 type="range"
-                min={60}
-                max={140}
-                step={2}
+                min={80}
+                max={180}
+                step={5}
                 value={targetHeightMm}
                 onChange={(e) => setTargetHeightMm(Number(e.target.value))}
                 className="w-full accent-amber-600 cursor-pointer"
               />
               <div className="flex justify-between text-[10px] text-slate-400">
-                <span>60 mm (Compacto)</span>
+                <span>80 mm</span>
                 <span className="text-emerald-700 font-semibold">
-                  92 mm (Ideal Balsa 300×100 mm)
+                  120 mm (Tamaño recomendado para 20–40 piezas)
                 </span>
-                <span>140 mm</span>
+                <span>180 mm</span>
               </div>
             </div>
           </div>
 
-          {/* Tarjeta 3: Asistente IA Creativo para Niños y Jóvenes */}
+          {/* Tarjeta 3: Asistente IA Creativo */}
           <div className="bg-white rounded-3xl border border-purple-200 p-5 shadow-xs space-y-3.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-xs">
-                  <Bot className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-extrabold text-slate-900">
-                    Asistente IA para Niños y Jóvenes
-                  </h3>
-                  <p className="text-[11px] text-purple-700 font-semibold">
-                    ¡Cuéntale cómo quieres que fusione tus dibujos!
-                  </p>
-                </div>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-xs">
+                <Bot className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-900">
+                  Asistente IA para Niños y Jóvenes
+                </h3>
+                <p className="text-[11px] text-purple-700 font-semibold">
+                  Pídele cómo combinar los rasgos de tus dibujos
+                </p>
               </div>
             </div>
 
-            {/* Historial del Asistente */}
-            <div className="max-h-44 overflow-y-auto space-y-2 pr-1 bg-slate-50 rounded-2xl p-3 border border-slate-200/80">
+            <div className="max-h-40 overflow-y-auto space-y-2 pr-1 bg-slate-50 rounded-2xl p-3 border border-slate-200/80">
               {chatMessages.map((msg) => (
                 <div
                   key={msg.id}
@@ -885,7 +1002,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                   }`}
                 >
                   <div className="flex items-center justify-between text-[10px] opacity-75 mb-0.5 font-bold">
-                    <span>{msg.role === 'assistant' ? '🤖 RoboMaker IA' : '🎨 Tu Equipo'}</span>
+                    <span>{msg.role === 'assistant' ? '🤖 Agente Gemini IA' : '🎨 Tu Equipo'}</span>
                     <span>{msg.timestamp}</span>
                   </div>
                   <p>{msg.text}</p>
@@ -893,25 +1010,6 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
               ))}
             </div>
 
-            {/* Chips rápidos de ideas para niños */}
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                '¡Que tenga alas gigantes y corona!',
-                '¡Con estilo robot guardián!',
-                '¡Que sea una criatura marina alada!',
-              ].map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  onClick={() => handleSendStudentInstruction(suggestion)}
-                  className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 transition-colors cursor-pointer"
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
-
-            {/* Input de chat */}
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -920,7 +1018,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleSendStudentInstruction();
                 }}
-                placeholder="Ej: Usa las orejas del dibujo 1 y las alas del 2..."
+                placeholder="Ej: Ponle cuerpo de gato, alas de dragón y tentáculos..."
                 className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
               <button
@@ -944,12 +1042,12 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                   {fusionResult?.hybridTitle || 'Previsualización del Diseño Híbrido y Rompecabezas'}
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Líneas <strong className="text-red-600">rojas (#FF0000)</strong>: corte láser exterior y rompecabezas recortado al contorno ·{' '}
+                  Líneas <strong className="text-red-600">rojas (#FF0000)</strong>: corte láser exterior y rompecabezas de{' '}
+                  <strong>{puzzlePieces} piezas</strong> recortado al contorno ·{' '}
                   <strong className="text-blue-600">Azul/Negro (#0000FF)</strong>: dibujo híbrido vectorizado
                 </p>
               </div>
 
-              {/* Selector de vista: Vectorizado + Puzzle vs Raster B/N de la IA */}
               <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
                 <button
                   type="button"
@@ -960,7 +1058,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  🧩 Vector SVG + Puzzle
+                  🧩 Vector SVG + {puzzlePieces} Piezas
                 </button>
                 <button
                   type="button"
@@ -971,7 +1069,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  🖼️ Trazo IA (B/N Raster)
+                  🖼️ Resultado Gemini (Imagen Base)
                 </button>
               </div>
             </div>
@@ -984,7 +1082,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
             )}
 
             {/* Lienzo de Previsualización */}
-            <div className="relative w-full min-h-[380px] sm:min-h-[430px] rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center p-4 overflow-hidden shadow-inner">
+            <div className="relative w-full min-h-[400px] sm:min-h-[460px] rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center p-4 overflow-hidden shadow-inner">
               <div
                 className="absolute inset-0 opacity-15 pointer-events-none"
                 style={{
@@ -996,14 +1094,14 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
 
               {isFusing && (
                 <div className="absolute top-3 right-3 px-3 py-1 rounded-full bg-amber-500 text-slate-950 text-xs font-black animate-pulse z-10">
-                  ⚡ Ejecutando IA + Potrace + Clipping Booleano...
+                  ⚡ Vectorizando con Potrace y recortando {puzzlePieces} piezas...
                 </div>
               )}
 
               {fusionResult ? (
                 activePreviewTab === 'vector-puzzle' ? (
                   <div
-                    className="w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[430px] [&>svg]:bg-amber-50/95 [&>svg]:rounded-xl [&>svg]:p-3 [&>svg]:shadow-lg"
+                    className="w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[450px] [&>svg]:bg-amber-50/95 [&>svg]:rounded-xl [&>svg]:p-3 [&>svg]:shadow-lg"
                     dangerouslySetInnerHTML={{ __html: fusionResult.previewSvg }}
                   />
                 ) : (
@@ -1011,23 +1109,23 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={fusionResult.rasterDataUrl}
-                      alt="Dibujo lineal en blanco y negro generado por la IA antes de vectorizar"
-                      className="max-h-[360px] w-auto rounded-xl border-2 border-slate-700 bg-white p-2 shadow-lg"
+                      alt="Dibujo lineal en blanco y negro generado por Gemini antes de vectorizar"
+                      className="max-h-[390px] w-auto rounded-xl border-2 border-slate-700 bg-white p-2 shadow-lg"
                     />
-                    <span className="text-xs text-slate-300 font-medium">
-                      Imagen rasterizada en blanco y negro generada por la IA antes de pasar por Potrace
+                    <span className="text-xs text-slate-300 font-medium text-center">
+                      Imagen lineal generada por Gemini antes de la extracción de silueta y trazado vectorial Potrace
                     </span>
                   </div>
                 )
               ) : (
                 <div className="text-slate-400 text-sm text-center max-w-sm">
                   Sube de 3 a 4 dibujos en formato JPG/PNG y presiona{' '}
-                  <strong className="text-white">&ldquo;Fusionar Dibujos&rdquo;</strong> para generar tu rompecabezas láser.
+                  <strong className="text-white">&ldquo;Fusionar Dibujos&rdquo;</strong>.
                 </div>
               )}
             </div>
 
-            {/* Controles inferiores del visor y Botón Descargar SVG para Corte Láser */}
+            {/* Controles inferiores y Botón Descargar SVG para Corte Láser */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
               <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
                 <input
@@ -1047,19 +1145,19 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                 className="py-3.5 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <Download className="w-4 h-4" />
-                <span>Descargar SVG para Corte Láser</span>
+                <span>Descargar SVG para Corte Láser ({puzzlePieces} Piezas)</span>
               </button>
             </div>
 
-            {/* Resumen Técnico del Pipeline: IA Generativa -> Potrace -> Clipping Booleano */}
+            {/* Resumen Técnico del Pipeline */}
             {fusionResult && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
                   <div className="text-[10px] font-extrabold text-slate-400 uppercase">
-                    1. IA Generativa Multimodal
+                    1. Motor IA Multimodal
                   </div>
                   <div className="text-xs font-extrabold text-slate-800 mt-1">
-                    Trazo B/N Continuo Sin Sombreado
+                    Gemini Image Generation
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5 truncate" title={fusionResult.metrics.aiModelUsed}>
                     {fusionResult.metrics.aiModelUsed}
@@ -1071,33 +1169,32 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                     2. Vectorización Potrace
                   </div>
                   <div className="text-xs font-extrabold text-amber-950 mt-1">
-                    {fusionResult.metrics.outerContourNodes} nodos de contorno + {fusionResult.metrics.innerVectorPathsCount} trazos
+                    {fusionResult.metrics.outerContourNodes} nodos + {fusionResult.metrics.innerVectorPathsCount} trazos
                   </div>
                   <div className="text-[11px] text-amber-800 mt-0.5">
-                    Curvas Bézier cerradas y limpias
+                    Umbral adaptativo + Flood-Fill exterior
                   </div>
                 </div>
 
                 <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200">
                   <div className="text-[10px] font-extrabold text-emerald-700 uppercase">
-                    3. Intersección Booleana (Puzzle)
+                    3. Rompecabezas ({puzzlePieces} Piezas)
                   </div>
                   <div className="text-xs font-extrabold text-emerald-900 mt-1 flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     {fusionResult.metrics.clippedPuzzleSegmentsCount} cortes recortados al borde
                   </div>
                   <div className="text-[11px] text-emerald-700 mt-0.5">
-                    Dimensiones: {fusionResult.metrics.widthMm} × {fusionResult.metrics.heightMm} mm
+                    Tamaño final: {fusionResult.metrics.widthMm} × {fusionResult.metrics.heightMm} mm
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Caja con el Prompt Interno Multimodal documentado */}
             <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
               <div className="font-extrabold text-slate-800 flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-amber-600" />
-                Prompt Interno de la API de Imagen Multimodal:
+                Prompt Interno Enviado al Agente Gemini Multimodal:
               </div>
               <p className="italic text-[11px] text-slate-600 bg-white px-3 py-2 rounded-xl border border-slate-200/80">
                 &ldquo;{AI_FUSION_INTERNAL_PROMPT}&rdquo;
