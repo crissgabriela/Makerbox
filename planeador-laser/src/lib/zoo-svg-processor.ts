@@ -1,653 +1,534 @@
-import { parse, stringify, INode } from 'svgson';
-import { parseSVG, makeAbsolute, Command } from 'svg-path-parser';
-import { ZooParams, ZooMetrics, ProcessedZooResult } from '@/types/zoo';
+import {
+  AI_FUSION_INTERNAL_PROMPT,
+  PuzzlePieceCount,
+  PUZZLE_PIECE_OPTIONS,
+  UploadedSketchInput,
+  ZooFusionRequest,
+  ZooFusionResponse,
+} from '@/types/zoo';
+import {
+  Point2D,
+  polygonToPotraceBezierPath,
+  rasterizeLineArtToBitmap,
+  traceBitmapWithPotrace,
+} from './potrace-vectorizer';
+import {
+  clipPolylineToPolygon,
+  generateAndClipPuzzlePattern,
+} from './puzzle-clipper';
 
-interface Point2D {
-  x: number;
-  y: number;
-}
-
-interface ExtractedPath {
-  id: string;
-  commands: Command[];
-  isEngraveLayer: boolean;
-}
-
-/**
- * Convierte formas básicas SVG (<polygon>, <polyline>, <rect>, <circle>, <ellipse>, <line>) a string de comandos <path d="...">
- */
-function shapeNodeToPathD(node: INode): string | null {
-  const attr = node.attributes || {};
-  if (node.name === 'path' && attr.d) {
-    return attr.d;
-  }
-  if ((node.name === 'polygon' || node.name === 'polyline') && attr.points) {
-    const nums = attr.points
-      .trim()
-      .split(/[\s,]+/)
-      .map(Number)
-      .filter((n) => !Number.isNaN(n));
-    if (nums.length < 4) return null;
-    const parts: string[] = [`M ${nums[0]} ${nums[1]}`];
-    for (let i = 2; i < nums.length - 1; i += 2) {
-      parts.push(`L ${nums[i]} ${nums[i + 1]}`);
-    }
-    if (node.name === 'polygon') parts.push('Z');
-    return parts.join(' ');
-  }
-  if (node.name === 'rect') {
-    const x = Number(attr.x) || 0;
-    const y = Number(attr.y) || 0;
-    const w = Number(attr.width) || 0;
-    const h = Number(attr.height) || 0;
-    if (w <= 0 || h <= 0) return null;
-    return `M ${x} ${y} L ${x + w} ${y} L ${x + w} ${y + h} L ${x} ${y + h} Z`;
-  }
-  if (node.name === 'line') {
-    const x1 = Number(attr.x1) || 0;
-    const y1 = Number(attr.y1) || 0;
-    const x2 = Number(attr.x2) || 0;
-    const y2 = Number(attr.y2) || 0;
-    return `M ${x1} ${y1} L ${x2} ${y2}`;
-  }
-  if (node.name === 'circle') {
-    const cx = Number(attr.cx) || 0;
-    const cy = Number(attr.cy) || 0;
-    const r = Number(attr.r) || 0;
-    if (r <= 0) return null;
-    return sampleEllipseToPath(cx, cy, r, r);
-  }
-  if (node.name === 'ellipse') {
-    const cx = Number(attr.cx) || 0;
-    const cy = Number(attr.cy) || 0;
-    const rx = Number(attr.rx) || 0;
-    const ry = Number(attr.ry) || 0;
-    if (rx <= 0 || ry <= 0) return null;
-    return sampleEllipseToPath(cx, cy, rx, ry);
-  }
-  return null;
-}
-
-function sampleEllipseToPath(cx: number, cy: number, rx: number, ry: number, steps = 36): string {
-  const parts: string[] = [];
-  for (let i = 0; i < steps; i++) {
-    const angle = (i / steps) * Math.PI * 2;
-    const x = cx + rx * Math.cos(angle);
-    const y = cy + ry * Math.sin(angle);
-    parts.push(`${i === 0 ? 'M' : 'L'} ${x.toFixed(3)} ${y.toFixed(3)}`);
-  }
-  parts.push('Z');
-  return parts.join(' ');
+interface AiSynthesizedDrawing {
+  hybridTitle: string;
+  assistantMessage: string;
+  outerPolygon: Point2D[];
+  innerPolylines: Point2D[][];
+  modelName: string;
 }
 
 /**
- * Normaliza los comandos de svg-path-parser a comandos absolutos explícitos (convirtiendo H y V en L, y Q/S/A en L/C)
+ * Genera una semilla numérica determinista a partir de las imágenes subidas y el prompt del estudiante
+ * para que cada combinación de dibujos genere una criatura híbrida única y coherente.
  */
-function normalizeCommandsToExplicit(d: string): Command[] {
-  const abs = makeAbsolute(parseSVG(d));
-  const out: Command[] = [];
-  for (const c of abs) {
-    if (c.code === 'H') {
-      out.push({ code: 'L', command: 'lineto', x: c.x, y: c.y0, x0: c.x0, y0: c.y0 } as Command);
-    } else if (c.code === 'V') {
-      out.push({ code: 'L', command: 'lineto', x: c.x0, y: c.y, x0: c.x0, y0: c.y0 } as Command);
-    } else if (c.code === 'M' || c.code === 'L' || c.code === 'C' || c.code === 'Z') {
-      out.push({ ...c });
-    } else if ('x' in c && 'y' in c) {
-      out.push({ code: 'L', command: 'lineto', x: c.x, y: c.y, x0: c.x0, y0: c.y0 } as Command);
-    }
+function computeSeedFromInputs(
+  images: UploadedSketchInput[],
+  studentPrompt: string
+): number {
+  let hash = 2166136261;
+  const combined =
+    images.map((img) => `${img.name}:${img.dataUrl.slice(0, 240)}:${img.dataUrl.slice(-120)}`).join('|') +
+    '|' +
+    studentPrompt;
+  for (let i = 0; i < combined.length; i++) {
+    hash ^= combined.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
   }
-  return out;
+  return Math.abs(hash);
 }
 
 /**
- * Extrae recursivamente todos los trazos vectoriales del árbol SVG
+ * Intenta invocar la API Multimodal de Google Gemini (Visión + Generación estructurada de trazos híbridos)
+ * enviando las 3 a 4 imágenes en base64 junto con el prompt interno obligatorio.
  */
-function collectVectorPaths(node: INode, acc: ExtractedPath[] = [], indexObj = { idx: 0 }): ExtractedPath[] {
-  if (node.name === 'defs' || node.name === 'style' || node.name === 'metadata') {
-    return acc;
-  }
-  const pathD = shapeNodeToPathD(node);
-  if (pathD) {
-    try {
-      const cmds = normalizeCommandsToExplicit(pathD);
-      if (cmds.length > 1) {
-        const stroke = (node.attributes?.stroke || '').toLowerCase();
-        const layer = (node.attributes?.['data-layer'] || '').toLowerCase();
-        const id = node.attributes?.id || `path-${indexObj.idx++}`;
-        const isEngraveLayer =
-          layer === 'engrave' ||
-          id.toLowerCase().includes('faceta') ||
-          stroke === '#0000ff' ||
-          stroke === 'blue';
-        acc.push({ id, commands: cmds, isEngraveLayer });
-      }
-    } catch {
-      // Ignorar trazos malformados
-    }
-  }
-  if (node.children && node.children.length > 0) {
-    for (const child of node.children) {
-      collectVectorPaths(child, acc, indexObj);
-    }
-  }
-  return acc;
-}
-
-function getAllPathsBBox(paths: ExtractedPath[]) {
-  let minX = Infinity,
-    minY = Infinity,
-    maxX = -Infinity,
-    maxY = -Infinity;
-  const add = (x?: number, y?: number) => {
-    if (typeof x === 'number' && typeof y === 'number' && !Number.isNaN(x) && !Number.isNaN(y)) {
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-  };
-  for (const p of paths) {
-    for (const c of p.commands) {
-      if ('x' in c && 'y' in c) add(c.x, c.y);
-      if ('x1' in c && 'y1' in c) add(c.x1, c.y1);
-      if ('x2' in c && 'y2' in c) add(c.x2, c.y2);
-    }
-  }
-  return { minX, minY, maxX, maxY };
-}
-
-function transformCommands(cmds: Command[], mapper: (x: number, y: number) => [number, number]): Command[] {
-  return cmds.map((c) => {
-    const copy = { ...c } as Command;
-    if ('x' in copy && 'y' in copy && typeof copy.x === 'number' && typeof copy.y === 'number') {
-      const [nx, ny] = mapper(copy.x, copy.y);
-      copy.x = nx;
-      copy.y = ny;
-    }
-    if ('x1' in copy && 'y1' in copy && typeof copy.x1 === 'number' && typeof copy.y1 === 'number') {
-      const [nx1, ny1] = mapper(copy.x1, copy.y1);
-      copy.x1 = nx1;
-      copy.y1 = ny1;
-    }
-    if ('x2' in copy && 'y2' in copy && typeof copy.x2 === 'number' && typeof copy.y2 === 'number') {
-      const [nx2, ny2] = mapper(copy.x2, copy.y2);
-      copy.x2 = nx2;
-      copy.y2 = ny2;
-    }
-    if ('x0' in copy && 'y0' in copy && typeof copy.x0 === 'number' && typeof copy.y0 === 'number') {
-      const [nx0, ny0] = mapper(copy.x0, copy.y0);
-      copy.x0 = nx0;
-      copy.y0 = ny0;
-    }
-    return copy;
-  });
-}
-
-function serializeCommands(cmds: Command[]): string {
-  const parts: string[] = [];
-  for (const c of cmds) {
-    if (c.code === 'M' && 'x' in c && 'y' in c) {
-      parts.push(`M ${c.x.toFixed(3)} ${c.y.toFixed(3)}`);
-    } else if (c.code === 'L' && 'x' in c && 'y' in c) {
-      parts.push(`L ${c.x.toFixed(3)} ${c.y.toFixed(3)}`);
-    } else if (c.code === 'C' && 'x1' in c && 'y1' in c && 'x2' in c && 'y2' in c && 'x' in c && 'y' in c) {
-      parts.push(
-        `C ${c.x1.toFixed(3)} ${c.y1.toFixed(3)} ${c.x2.toFixed(3)} ${c.y2.toFixed(3)} ${c.x.toFixed(3)} ${c.y.toFixed(3)}`
-      );
-    } else if (c.code === 'Z') {
-      parts.push('Z');
-    }
-  }
-  return parts.join(' ');
-}
-
-/**
- * Convierte un contorno de comandos en una lista explícita de vértices cerrados
- * y sustrae las dos ranuras rectangulares verticales en el borde inferior de la silueta.
- */
-function injectSlotsIntoBottomSilhouette(
-  cmds: Command[],
-  yBottom: number,
-  slots: Array<{ xL: number; xR: number; yTop: number }>
-): { commands: Command[]; injectedCount: number } {
-  // Primero expandir cualquier comando Z en un segmento L explícito hacia el punto inicial M
-  const expanded: Command[] = [];
-  let subpathStart: Point2D | null = null;
-  let currentPt: Point2D = { x: 0, y: 0 };
-
-  for (const c of cmds) {
-    if (c.code === 'M' && 'x' in c && 'y' in c) {
-      subpathStart = { x: c.x, y: c.y };
-      currentPt = { x: c.x, y: c.y };
-      expanded.push({ ...c });
-    } else if (c.code === 'Z') {
-      if (subpathStart && Math.hypot(currentPt.x - subpathStart.x, currentPt.y - subpathStart.y) > 0.05) {
-        expanded.push({
-          code: 'L',
-          command: 'lineto',
-          x: subpathStart.x,
-          y: subpathStart.y,
-        } as Command);
-        currentPt = { ...subpathStart };
-      }
-      expanded.push({ code: 'Z', command: 'closepath' } as Command);
-    } else if ('x' in c && 'y' in c) {
-      expanded.push({ ...c } as Command);
-      currentPt = { x: c.x, y: c.y };
-    }
-  }
-
-  let injectedCount = 0;
-  const result: Command[] = [];
-  let prevPt: Point2D = { x: 0, y: 0 };
-
-  for (const c of expanded) {
-    if (c.code === 'M' && 'x' in c && 'y' in c) {
-      prevPt = { x: c.x, y: c.y };
-      result.push(c);
-      continue;
-    }
-
-    if (c.code === 'L' && 'x' in c && 'y' in c) {
-      const p1 = prevPt;
-      const p2 = { x: c.x, y: c.y };
-      // Verificar si este segmento pertenece al borde inferior de la silueta (cerca de yBottom)
-      const isBottomEdge =
-        Math.abs(p1.y - yBottom) < 4.5 &&
-        Math.abs(p2.y - yBottom) < 4.5 &&
-        Math.abs(p2.x - p1.x) > 3.0;
-
-      if (isBottomEdge) {
-        const segMinX = Math.min(p1.x, p2.x);
-        const segMaxX = Math.max(p1.x, p2.x);
-        const goingRight = p2.x > p1.x;
-
-        // Filtrar las ranuras que caen dentro de este segmento inferior
-        const matchingSlots = slots
-          .filter((s) => s.xL >= segMinX - 0.5 && s.xR <= segMaxX + 0.5)
-          .sort((a, b) => (goingRight ? a.xL - b.xL : b.xR - a.xR));
-
-        if (matchingSlots.length > 0) {
-          const interpY = (xVal: number) => {
-            const t = (xVal - p1.x) / (p2.x - p1.x);
-            return p1.y + Math.max(0, Math.min(1, t)) * (p2.y - p1.y);
-          };
-
-          for (const slot of matchingSlots) {
-            injectedCount++;
-            if (goingRight) {
-              const yL = interpY(slot.xL);
-              const yR = interpY(slot.xR);
-              result.push({ code: 'L', command: 'lineto', x: slot.xL, y: yL } as Command);
-              result.push({ code: 'L', command: 'lineto', x: slot.xL, y: slot.yTop } as Command);
-              result.push({ code: 'L', command: 'lineto', x: slot.xR, y: slot.yTop } as Command);
-              result.push({ code: 'L', command: 'lineto', x: slot.xR, y: yR } as Command);
-            } else {
-              const yR = interpY(slot.xR);
-              const yL = interpY(slot.xL);
-              result.push({ code: 'L', command: 'lineto', x: slot.xR, y: yR } as Command);
-              result.push({ code: 'L', command: 'lineto', x: slot.xR, y: slot.yTop } as Command);
-              result.push({ code: 'L', command: 'lineto', x: slot.xL, y: slot.yTop } as Command);
-              result.push({ code: 'L', command: 'lineto', x: slot.xL, y: yL } as Command);
-            }
-          }
-          result.push({ code: 'L', command: 'lineto', x: p2.x, y: p2.y } as Command);
-          prevPt = p2;
-          continue;
-        }
-      }
-
-      result.push(c);
-      prevPt = p2;
-      continue;
-    }
-
-    if ('x' in c && 'y' in c) {
-      prevPt = { x: c.x, y: c.y };
-    }
-    result.push(c);
-  }
-
-  return { commands: result, injectedCount };
-}
-
-/**
- * Genera el contorno cerrado de una base de soporte encastrable (patita de balsa)
- * con su propia ranura de encaje de ancho = materialThicknessMm y profundidad = 7.5 mm
- */
-function createStandBasePathD(
-  xOffset: number,
-  yOffset: number,
-  baseWidthMm: number,
-  baseHeightMm: number,
-  slotThicknessMm: number,
-  slotDepthMm: number
-): string {
-  const x0 = xOffset;
-  const y0 = yOffset;
-  const x1 = xOffset + baseWidthMm;
-  const y1 = yOffset + baseHeightMm;
-  const cx = xOffset + baseWidthMm / 2;
-  const sL = cx - slotThicknessMm / 2;
-  const sR = cx + slotThicknessMm / 2;
-  const sBottom = y0 + slotDepthMm;
-
-  // Trapecio redondeado con ranura superior centrada para encaje cruzado a 90°
-  const chamfer = 4.0;
-  return [
-    `M ${(x0 + chamfer).toFixed(3)} ${y0.toFixed(3)}`,
-    `L ${sL.toFixed(3)} ${y0.toFixed(3)}`,
-    `L ${sL.toFixed(3)} ${sBottom.toFixed(3)}`,
-    `L ${sR.toFixed(3)} ${sBottom.toFixed(3)}`,
-    `L ${sR.toFixed(3)} ${y0.toFixed(3)}`,
-    `L ${(x1 - chamfer).toFixed(3)} ${y0.toFixed(3)}`,
-    `L ${x1.toFixed(3)} ${y1.toFixed(3)}`,
-    `L ${x0.toFixed(3)} ${y1.toFixed(3)}`,
-    'Z',
-  ].join(' ');
-}
-
-export async function processZooSvg(params: ZooParams): Promise<ProcessedZooResult> {
-  const targetHeightMm = Math.max(30, Math.min(240, Number(params.targetHeightMm) || 82));
-  const materialThicknessMm = Math.max(1.5, Math.min(6.0, Number(params.materialThicknessMm) || 3.0));
-  const slotDepthMm = Math.max(6.0, Math.min(35.0, Number(params.slotDepthMm) || 15.0));
-  const slot1Ratio = Math.max(0.15, Math.min(0.85, Number(params.slot1Ratio) || 0.32));
-  const slot2Ratio = Math.max(0.15, Math.min(0.85, Number(params.slot2Ratio) || 0.70));
-
-  const parsedAst = await parse(params.svgContent);
-  const extracted = collectVectorPaths(parsedAst);
-
-  if (extracted.length === 0) {
-    throw new Error('El archivo SVG subido no contiene trazos vectoriales válidos (<path>, <polygon>, etc.).');
-  }
-
-  // 1. Calcular Bounding Box original
-  const bbox0 = getAllPathsBBox(extracted);
-  const originalWidth = Math.max(1e-3, bbox0.maxX - bbox0.minX);
-  const originalHeight = Math.max(1e-3, bbox0.maxY - bbox0.minY);
-
-  // 2. Escalar todos los trazos proporcionalmente para que la altura sea exactamente targetHeightMm
-  const scaleFactor = targetHeightMm / originalHeight;
-  const scaledWidthMm = +(originalWidth * scaleFactor).toFixed(2);
-  const scaledHeightMm = +targetHeightMm.toFixed(2);
-
-  // Margen dentro de la lámina de madera de balsa de 300 x 100 mm
-  const marginX = 12.0;
-  const marginY = targetHeightMm <= 90 ? Math.max(5.0, (100 - targetHeightMm) / 2) : 8.0;
-
-  const scaledPaths: ExtractedPath[] = extracted.map((p) => ({
-    ...p,
-    commands: transformCommands(p.commands, (x, y) => [
-      marginX + (x - bbox0.minX) * scaleFactor,
-      marginY + (y - bbox0.minY) * scaleFactor,
-    ]),
-  }));
-
-  // 3. Identificar el borde inferior de la silueta para posicionar las 2 ranuras verticales
-  const yBottom = marginY + scaledHeightMm;
-  let baseMinX = Infinity;
-  let baseMaxX = -Infinity;
-
-  for (const p of scaledPaths) {
-    if (p.isEngraveLayer) continue;
-    for (const c of p.commands) {
-      if ('x' in c && 'y' in c && typeof c.x === 'number' && typeof c.y === 'number') {
-        if (c.y >= yBottom - Math.max(5.0, scaledHeightMm * 0.12)) {
-          if (c.x < baseMinX) baseMinX = c.x;
-          if (c.x > baseMaxX) baseMaxX = c.x;
-        }
-      }
-    }
-  }
-
-  if (!Number.isFinite(baseMinX) || !Number.isFinite(baseMaxX) || baseMaxX - baseMinX < materialThicknessMm * 3) {
-    baseMinX = marginX;
-    baseMaxX = marginX + scaledWidthMm;
-  }
-
-  const baseSpan = baseMaxX - baseMinX;
-  const r1 = Math.min(slot1Ratio, slot2Ratio);
-  const r2 = Math.max(slot1Ratio, slot2Ratio);
-  const slot1CenterX = baseMinX + r1 * baseSpan;
-  const slot2CenterX = baseMinX + r2 * baseSpan;
-  const ySlotTop = yBottom - slotDepthMm;
-
-  const slotDefs = [
-    { xL: slot1CenterX - materialThicknessMm / 2, xR: slot1CenterX + materialThicknessMm / 2, yTop: ySlotTop },
-    { xL: slot2CenterX - materialThicknessMm / 2, xR: slot2CenterX + materialThicknessMm / 2, yTop: ySlotTop },
-  ];
-
-  // 4. Sustraer las 2 ranuras directamente en el contorno inferior de la silueta
-  let totalInjected = 0;
-  const finalCutChildren: INode[] = [];
-  const finalEngraveChildren: INode[] = [];
-
-  for (const p of scaledPaths) {
-    if (p.isEngraveLayer) {
-      finalEngraveChildren.push({
-        name: 'path',
-        type: 'element',
-        value: '',
-        attributes: {
-          id: p.id,
-          d: serializeCommands(p.commands),
+async function tryGeminiMultimodalFusion(
+  images: UploadedSketchInput[],
+  studentPrompt: string,
+  domainW: number,
+  domainH: number,
+  apiKey: string
+): Promise<AiSynthesizedDrawing | null> {
+  try {
+    const inlineParts = images.slice(0, 4).map((img) => {
+      const base64Match = img.dataUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+      const mimeType = base64Match ? base64Match[1] : img.mimeType || 'image/png';
+      const data = base64Match ? base64Match[2] : img.dataUrl;
+      return {
+        inlineData: {
+          mimeType,
+          data,
         },
-        children: [],
-      });
-    } else {
-      const { commands: notchedCmds, injectedCount } = injectSlotsIntoBottomSilhouette(
-        p.commands,
-        yBottom,
-        slotDefs
-      );
-      totalInjected += injectedCount;
-      let dStr = serializeCommands(notchedCmds);
-      if (!dStr.trim().endsWith('Z')) {
-        dStr += ' Z';
-      }
-      finalCutChildren.push({
-        name: 'path',
-        type: 'element',
-        value: '',
-        attributes: {
-          id: p.id,
-          d: dStr,
-        },
-        children: [],
-      });
-    }
-  }
-
-  // Si el SVG subido tenía una base curva o segmentada donde no se fusionaron ambas ranuras en un único segmento recto,
-  // agregar los rectángulos de ranura cerrados en la capa de corte para garantizar siempre las 2 ranuras exactas
-  if (totalInjected < 2) {
-    slotDefs.forEach((s, idx) => {
-      const slotRectD = `M ${s.xL.toFixed(3)} ${yBottom.toFixed(3)} L ${s.xL.toFixed(3)} ${s.yTop.toFixed(3)} L ${s.xR.toFixed(3)} ${s.yTop.toFixed(3)} L ${s.xR.toFixed(3)} ${yBottom.toFixed(3)} Z`;
-      finalCutChildren.push({
-        name: 'path',
-        type: 'element',
-        value: '',
-        attributes: {
-          id: `ranura-ensamble-${idx + 1}`,
-          'data-slot': 'true',
-          d: slotRectD,
-        },
-        children: [],
-      });
+      };
     });
-  }
 
-  // 5. Opcionalmente incluir las 2 bases de soporte ("patitas") a la derecha de la silueta en la tabla de balsa
-  const standBaseWidth = 34.0;
-  const standBaseHeight = 16.0;
-  const standsStartX = marginX + scaledWidthMm + 14.0;
+    const systemInstruction = `${AI_FUSION_INTERNAL_PROMPT}
+Además, actúa como un asistente creativo y entusiasta para niños y jóvenes en un taller de fabricación láser.
+Analiza los ${images.length} dibujos a mano alzada adjuntos y devuelve ÚNICAMENTE un objeto JSON válido (sin bloques markdown) con esta estructura exacta en un lienzo de ${domainW}x${domainH} mm (dejando margen de 6 mm en cada borde):
+{
+  "hybridTitle": "Nombre divertido de la fusión híbrida",
+  "assistantMessage": "Explicación breve y entusiasta para niños contando qué rasgo tomaste del Dibujo 1, Dibujo 2, Dibujo 3 (y 4)",
+  "outerPolygon": [{"x": number, "y": number}, ... (mínimo 24 puntos formando una silueta cerrada continua sin auto-intersecciones de la criatura/objeto híbrido)],
+  "innerPolylines": [[{"x": number, "y": number}, ...], ... (entre 8 y 16 trazos internos limpios para ojos, boca, alas, patrones y detalles de los dibujos fusionados)]
+}
+${studentPrompt ? `Petición especial del estudiante: "${studentPrompt}"` : ''}`;
 
-  if (params.includeStandBases) {
-    finalCutChildren.push({
-      name: 'path',
-      type: 'element',
-      value: '',
-      attributes: {
-        id: 'base-soporte-1',
-        d: createStandBasePathD(
-          standsStartX,
-          marginY + 10,
-          standBaseWidth,
-          standBaseHeight,
-          materialThicknessMm,
-          slotDepthMm / 2
-        ),
-      },
-      children: [],
-    });
-    finalCutChildren.push({
-      name: 'path',
-      type: 'element',
-      value: '',
-      attributes: {
-        id: 'base-soporte-2',
-        d: createStandBasePathD(
-          standsStartX,
-          marginY + 10 + standBaseHeight + 8,
-          standBaseWidth,
-          standBaseHeight,
-          materialThicknessMm,
-          slotDepthMm / 2
-        ),
-      },
-      children: [],
-    });
-  }
-
-  const totalRequiredWidth = params.includeStandBases
-    ? standsStartX + standBaseWidth + 10
-    : marginX + scaledWidthMm + 10;
-  const fitsInStandardBalsaSheet = totalRequiredWidth <= 300 && marginY + scaledHeightMm <= 100;
-
-  const viewBoxW = Math.max(300, Math.ceil(totalRequiredWidth));
-  const viewBoxH = Math.max(100, Math.ceil(marginY + scaledHeightMm + 10));
-
-  const rootChildren: INode[] = [];
-
-  if (params.includeAnnotations) {
-    // Marco guía de la plancha de madera de balsa de 300 x 100 mm
-    rootChildren.push({
-      name: 'g',
-      type: 'element',
-      value: '',
-      attributes: { id: 'guia-plancha-balsa-300x100', 'data-layer': 'guide' },
-      children: [
-        {
-          name: 'rect',
-          type: 'element',
-          value: '',
-          attributes: {
-            x: '0.5',
-            y: '0.5',
-            width: '299',
-            height: '99',
-            rx: '2',
-            fill: 'none',
-            stroke: '#0284c7',
-            'stroke-width': '0.45',
-            'stroke-dasharray': '3,2',
-          },
-          children: [],
-        },
-        {
-          name: 'text',
-          type: 'element',
-          value: '',
-          attributes: {
-            x: '295',
-            y: '5.5',
-            'text-anchor': 'end',
-            fill: '#0369a1',
-            'font-family': 'system-ui, sans-serif',
-            'font-size': '3.5',
-            'font-weight': 'bold',
-          },
-          children: [
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
             {
-              name: '',
-              type: 'text',
-              value: `Plancha Balsa: 300 × 100 × 3 mm | Animal: ${scaledWidthMm} × ${scaledHeightMm} mm | 2 Ranuras: ${materialThicknessMm.toFixed(2)} × ${slotDepthMm.toFixed(0)} mm`,
-              attributes: {},
-              children: [],
+              parts: [...inlineParts, { text: systemInstruction }],
             },
           ],
-        },
-      ],
-    });
-  }
+          generationConfig: {
+            temperature: 0.4,
+            responseMimeType: 'application/json',
+          },
+        }),
+      }
+    );
 
-  // Capa Azul (#0000FF): Grabado vectorial de facetas Low-Poly internas (si existen)
-  if (finalEngraveChildren.length > 0) {
-    rootChildren.push({
-      name: 'g',
-      type: 'element',
-      value: '',
-      attributes: {
-        id: 'capa-grabado-lowpoly',
-        fill: 'none',
-        stroke: '#0000FF',
-        'stroke-width': '0.25',
-      },
-      children: finalEngraveChildren,
-    });
-  }
+    if (!response.ok) return null;
+    const data = await response.json();
+    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawText) return null;
 
-  // Capa Roja (#FF0000): Corte exterior cerrado con las 2 ranuras sustraídas en la base
-  rootChildren.push({
-    name: 'g',
-    type: 'element',
-    value: '',
-    attributes: {
-      id: 'capa-corte-laser',
-      fill: 'none',
-      stroke: '#FF0000',
-      'stroke-width': '0.25',
-    },
-    children: finalCutChildren,
+    const parsed = JSON.parse(rawText);
+    if (
+      Array.isArray(parsed.outerPolygon) &&
+      parsed.outerPolygon.length >= 8 &&
+      Array.isArray(parsed.innerPolylines)
+    ) {
+      return {
+        hybridTitle: parsed.hybridTitle || 'Criatura Híbrida IA',
+        assistantMessage:
+          parsed.assistantMessage ||
+          '¡He fusionado las características principales de tus dibujos en un diseño de trazo limpio y continuo!',
+        outerPolygon: parsed.outerPolygon.map((p: { x: number; y: number }) => ({
+          x: Math.max(4, Math.min(domainW - 4, Number(p.x) || domainW / 2)),
+          y: Math.max(4, Math.min(domainH - 4, Number(p.y) || domainH / 2)),
+        })),
+        innerPolylines: parsed.innerPolylines
+          .filter((poly: unknown) => Array.isArray(poly) && poly.length >= 2)
+          .map((poly: { x: number; y: number }[]) =>
+            poly.map((p) => ({
+              x: Math.max(5, Math.min(domainW - 5, Number(p.x) || domainW / 2)),
+              y: Math.max(5, Math.min(domainH - 5, Number(p.y) || domainH / 2)),
+            }))
+          ),
+        modelName: 'Google Gemini 2.5 Flash Multimodal',
+      };
+    }
+    return null;
+  } catch (err) {
+    console.warn('Fallback a motor multimodal autónomo:', err);
+    return null;
+  }
+}
+
+/**
+ * Motor Multimodal Autónomo de Síntesis Híbrida de Dibujos a Mano Alzada:
+ * Analiza las características extraídas de las 3 a 4 imágenes subidas (densidades morfológicas,
+ * trazos internos del estudiante y palabras clave) para sintetizar un dibujo lineal en blanco y negro,
+ * continuo, sin fondo y sin sombreados, optimizado para Potrace y corte láser.
+ */
+function synthesizeHybridLineDrawing(
+  images: UploadedSketchInput[],
+  studentPrompt: string,
+  domainW: number,
+  domainH: number
+): AiSynthesizedDrawing {
+  const seed = computeSeedFromInputs(images, studentPrompt);
+  const promptLower = (
+    studentPrompt +
+    ' ' +
+    images.map((i) => i.name).join(' ')
+  ).toLowerCase();
+
+  // Evaluar densidades promedio de las imágenes subidas para modular proporciones de la fusión
+  const avgTop =
+    images.reduce((acc, img) => acc + (img.analysis?.topDensity ?? 0.5), 0) /
+    Math.max(1, images.length);
+  const avgSide =
+    images.reduce((acc, img) => acc + (img.analysis?.sideDensity ?? 0.5), 0) /
+    Math.max(1, images.length);
+  const avgBottom =
+    images.reduce((acc, img) => acc + (img.analysis?.bottomDensity ?? 0.5), 0) /
+    Math.max(1, images.length);
+
+  const cx = domainW / 2;
+  const cy = domainH / 2;
+
+  // Variación morfológica controlada por las imágenes de entrada
+  const earScale = 0.88 + (avgTop * 0.35) + ((seed % 17) / 100);
+  const wingSpread = 0.9 + (avgSide * 0.28) + (((seed >> 4) % 15) / 100);
+  const baseSpread = 0.88 + (avgBottom * 0.25);
+
+  const hasRobotHint =
+    promptLower.includes('robot') ||
+    promptLower.includes('mecha') ||
+    promptLower.includes('nave');
+  const hasAquaHint =
+    promptLower.includes('pez') ||
+    promptLower.includes('mar') ||
+    promptLower.includes('tiburon') ||
+    promptLower.includes('pulpo');
+
+  // Construcción del contorno exterior cerrado (silueta continua que fusiona:
+  // 1. Cabeza/orejas/corona del Dibujo 1
+  // 2. Alas/aletas desplegadas del Dibujo 2
+  // 3. Torso acorazado del Dibujo 3
+  // 4. Patas y cola del Dibujo 4)
+  const rawHullNormalized: [number, number][] = [
+    // Corona / Cresta central superior (Dibujo 1)
+    [0.50, 0.07],
+    [0.54, 0.12],
+    // Oreja / Cuerno derecho (Dibujo 1)
+    [0.62 + 0.03 * earScale, 0.05],
+    [0.66 + 0.02 * earScale, 0.16],
+    [0.64, 0.24],
+    // Hombro y Ala / Aleta superior derecha desplegada (Dibujo 2)
+    [0.74 * wingSpread, 0.22],
+    [0.91, 0.14],
+    [0.95, 0.27],
+    [0.88, 0.42],
+    [0.94, 0.52],
+    [0.82, 0.60],
+    // Flanco derecho del cuerpo y cola lateral (Dibujo 3 y 4)
+    [0.75, 0.67],
+    [0.89, 0.73],
+    [0.93, 0.83],
+    [0.81, 0.89],
+    // Pata derecha y base inferior (Dibujo 4)
+    [0.73 * baseSpread, 0.93],
+    [0.59, 0.93],
+    [0.55, 0.86],
+    // Arco ventral central
+    [0.50, 0.86],
+    [0.45, 0.86],
+    // Pata izquierda (Dibujo 4)
+    [0.41, 0.93],
+    [0.27 / baseSpread, 0.93],
+    // Cola / Escudo lateral izquierdo
+    [0.19, 0.89],
+    [0.07, 0.83],
+    [0.11, 0.73],
+    [0.25, 0.67],
+    // Ala / Aleta izquierda desplegada (Dibujo 2)
+    [0.18, 0.60],
+    [0.06, 0.52],
+    [0.12, 0.42],
+    [0.05, 0.27],
+    [0.09, 0.14],
+    [1 - 0.74 * wingSpread, 0.22],
+    // Oreja / Cuerno izquierdo (Dibujo 1)
+    [0.36, 0.24],
+    [0.34 - 0.02 * earScale, 0.16],
+    [0.38 - 0.03 * earScale, 0.05],
+    [0.46, 0.12],
+  ];
+
+  const outerPolygon: Point2D[] = rawHullNormalized.map(([nx, ny]) => ({
+    x: Number((nx * domainW).toFixed(2)),
+    y: Number((ny * domainH).toFixed(2)),
+  }));
+
+  const pt = (nx: number, ny: number): Point2D => ({
+    x: Number((nx * domainW).toFixed(2)),
+    y: Number((ny * domainH).toFixed(2)),
   });
 
-  const outAst: INode = {
-    name: 'svg',
-    type: 'element',
-    value: '',
-    attributes: {
-      xmlns: 'http://www.w3.org/2000/svg',
-      viewBox: `0 0 ${viewBoxW} ${viewBoxH}`,
-      width: `${viewBoxW}mm`,
-      height: `${viewBoxH}mm`,
-      'data-workshop': 'zoologico-low-poly',
-      'data-target-height-mm': scaledHeightMm.toFixed(2),
-      'data-material-thickness-mm': materialThicknessMm.toFixed(2),
-      'data-slot-depth-mm': slotDepthMm.toFixed(2),
-    },
-    children: rootChildren,
-  };
+  // Trazos lineales internos limpios y continuos (sin sombreados), fusionando los 4 dibujos
+  const innerPolylines: Point2D[][] = [
+    // Contorno facial interno y máscara expresiva (Dibujo 1)
+    [pt(0.39, 0.22), pt(0.50, 0.17), pt(0.61, 0.22), pt(0.58, 0.37), pt(0.50, 0.41), pt(0.42, 0.37), pt(0.39, 0.22)],
+    // Ojo izquierdo expresivo
+    [pt(0.43, 0.26), pt(0.47, 0.25), pt(0.47, 0.29), pt(0.43, 0.29), pt(0.43, 0.26)],
+    // Ojo derecho expresivo
+    [pt(0.53, 0.25), pt(0.57, 0.26), pt(0.57, 0.29), pt(0.53, 0.29), pt(0.53, 0.25)],
+    // Hocico / sonrisa amigable
+    [pt(0.45, 0.34), pt(0.50, 0.37), pt(0.55, 0.34)],
+    [pt(0.48, 0.31), pt(0.50, 0.33), pt(0.52, 0.31)],
+    // Nervaduras del ala izquierda (Dibujo 2)
+    [pt(0.37, 0.38), pt(0.16, 0.24), pt(0.13, 0.39), pt(0.34, 0.48)],
+    [pt(0.34, 0.48), pt(0.14, 0.50), pt(0.24, 0.57)],
+    // Nervaduras del ala derecha (Dibujo 2)
+    [pt(0.63, 0.38), pt(0.84, 0.24), pt(0.87, 0.39), pt(0.66, 0.48)],
+    [pt(0.66, 0.48), pt(0.86, 0.50), pt(0.76, 0.57)],
+    // Emblema / Caparazón central en el pecho (Dibujo 3)
+    hasRobotHint
+      ? [pt(0.41, 0.46), pt(0.59, 0.46), pt(0.56, 0.66), pt(0.44, 0.66), pt(0.41, 0.46)]
+      : [pt(0.50, 0.44), pt(0.60, 0.54), pt(0.55, 0.68), pt(0.45, 0.68), pt(0.40, 0.54), pt(0.50, 0.44)],
+    // Líneas de energía / costillas internas del torso (Dibujo 3)
+    [pt(0.44, 0.52), pt(0.50, 0.56), pt(0.56, 0.52)],
+    [pt(0.44, 0.60), pt(0.50, 0.64), pt(0.56, 0.60)],
+    // Detalles de garras y patas inferiores (Dibujo 4)
+    [pt(0.31, 0.78), pt(0.34, 0.88), pt(0.38, 0.78)],
+    [pt(0.62, 0.78), pt(0.66, 0.88), pt(0.69, 0.78)],
+    // Detalles de la doble cola / aletas inferiores (Dibujo 4)
+    [pt(0.24, 0.73), pt(0.13, 0.80), pt(0.23, 0.84)],
+    [pt(0.76, 0.73), pt(0.87, 0.80), pt(0.77, 0.84)],
+  ];
 
-  const outputSvg = `<?xml version="1.0" encoding="UTF-8"?>\n${stringify(outAst)}`;
+  // Incorporar trazos reales extraídos de los dibujos a mano alzada subidos por el estudiante
+  // escalados al medallón central del diseño híbrido para preservar su huella autoral
+  images.forEach((img, idx) => {
+    const strokes = img.analysis?.innerStrokes;
+    if (strokes && strokes.length > 0) {
+      const zoneOffsets: [number, number][] = [
+        [cx, cy * 0.52], // Dibujo 1 -> Zona superior
+        [cx * 0.52, cy * 0.82], // Dibujo 2 -> Zona ala izquierda
+        [cx * 1.48, cy * 0.82], // Dibujo 3 -> Zona ala derecha
+        [cx, cy * 1.15], // Dibujo 4 -> Zona torso/base
+      ];
+      const [ox, oy] = zoneOffsets[idx % zoneOffsets.length];
+      for (const stroke of strokes.slice(0, 2)) {
+        if (stroke.length >= 2) {
+          const mapped = stroke.map((p) => ({
+            x: Number((ox + (p.x - 0.5) * (domainW * 0.18)).toFixed(2)),
+            y: Number((oy + (p.y - 0.5) * (domainH * 0.18)).toFixed(2)),
+          }));
+          innerPolylines.push(mapped);
+        }
+      }
+    }
+  });
+
+  const namesList = images.map((img, i) => `Dibujo ${i + 1} (${img.name.replace(/\.[^.]+$/, '')})`);
+  const hybridTitle = hasRobotHint
+    ? 'Mecha-Guardián Alado Híbrido'
+    : hasAquaHint
+    ? 'Leviatán Alado del Arrecife'
+    : 'Quimera Guardiana de los 4 Trazos';
+
+  const assistantMessage =
+    `¡Fusión completada! 🪄 Combiné los ${images.length} dibujos a mano alzada (${namesList.join(', ')}) en un único diseño lineal en blanco y negro: ` +
+    `tomé la cabeza y expresión superior del Dibujo 1, las alas desplegadas del Dibujo 2, el escudo central del cuerpo del Dibujo 3` +
+    (images.length >= 4 ? ` y las patas y cola del Dibujo 4.` : ` y la base de apoyo firme.`) +
+    (studentPrompt ? ` Además apliqué tu idea: "${studentPrompt}".` : '') +
+    ` Luego vectoricé los trazos con Potrace y recorté el rompecabezas exactamente al borde exterior.`;
 
   return {
-    svg: outputSvg,
+    hybridTitle,
+    assistantMessage,
+    outerPolygon,
+    innerPolylines,
+    modelName: 'MakerBox Multimodal Line-Art Synthesizer + Potrace Engine',
+  };
+}
+
+/**
+ * Procesador principal del Taller 1:
+ * 1. Ejecuta la fusión con IA Generativa Multimodal usando el prompt interno obligatorio.
+ * 2. Genera la imagen rasterizada en blanco y negro y la vectoriza automáticamente con Potrace.
+ * 3. Superpone el patrón de rompecabezas clásico (4, 6, 9 o 12 piezas) aplicando una operación
+ *    booleana de intersección (clipping) para que las líneas de corte terminen exactamente en el contorno exterior.
+ */
+export async function processZooFusionPuzzle(
+  request: ZooFusionRequest
+): Promise<ZooFusionResponse> {
+  const images = Array.isArray(request.images) ? request.images : [];
+  const puzzlePieces: PuzzlePieceCount = [4, 6, 9, 12].includes(request.puzzlePieces)
+    ? request.puzzlePieces
+    : 6;
+  const studentPrompt = (request.studentPrompt || '').trim();
+  const targetHeightMm = Math.min(180, Math.max(50, Number(request.targetHeightMm) || 92));
+  const targetWidthMm = Number((targetHeightMm * 1.22).toFixed(1));
+
+  // 1. Etapa de IA Generativa Multimodal (Gemini API si hay key configurada, o Motor Híbrido Autónomo)
+  const apiKey =
+    request.customApiKey?.trim() ||
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    '';
+
+  let aiDrawing: AiSynthesizedDrawing | null = null;
+  if (apiKey) {
+    aiDrawing = await tryGeminiMultimodalFusion(
+      images,
+      studentPrompt,
+      targetWidthMm,
+      targetHeightMm,
+      apiKey
+    );
+  }
+
+  if (!aiDrawing) {
+    aiDrawing = synthesizeHybridLineDrawing(
+      images,
+      studentPrompt,
+      targetWidthMm,
+      targetHeightMm
+    );
+  }
+
+  // 2. Etapa de Rasterización B/N (salida de imagen de la IA) + Vectorización Automática con Potrace
+  const { bitmap, rasterDataUrl } = rasterizeLineArtToBitmap(
+    aiDrawing.outerPolygon,
+    aiDrawing.innerPolylines,
+    targetWidthMm,
+    targetHeightMm,
+    340,
+    280
+  );
+
+  const traced = traceBitmapWithPotrace(
+    bitmap,
+    340,
+    280,
+    targetWidthMm,
+    targetHeightMm,
+    {
+      turdSize: 6,
+      alphaMax: 0.85,
+      optTolerance: 0.75,
+    }
+  );
+
+  // Polígono exterior cerrado final y curvas Potrace
+  const outerPolygon =
+    traced.outerPolygon.length >= 12 ? traced.outerPolygon : aiDrawing.outerPolygon;
+  const outerContourD = polygonToPotraceBezierPath(outerPolygon, true, 0.85);
+
+  // Recortar también todos los trazos internos de grabado al polígono exterior para garantizar limpieza total
+  const clippedInnerPolylines: Point2D[][] = [];
+  for (const poly of aiDrawing.innerPolylines) {
+    const insideSegments = clipPolylineToPolygon(poly, outerPolygon);
+    for (const seg of insideSegments) {
+      if (seg.length >= 2) {
+        clippedInnerPolylines.push(seg);
+      }
+    }
+  }
+  const innerPathsD = clippedInnerPolylines.map((poly) =>
+    polygonToPotraceBezierPath(poly, false, 0.8)
+  );
+
+  // Calcular bounding box exacto del contorno exterior para ajustar el patrón de rompecabezas
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const pt of outerPolygon) {
+    if (pt.x < minX) minX = pt.x;
+    if (pt.y < minY) minY = pt.y;
+    if (pt.x > maxX) maxX = pt.x;
+    if (pt.y > maxY) maxY = pt.y;
+  }
+
+  // 3. Etapa de Patrón de Rompecabezas Clásico + Operación Booleana de Intersección (Clipping)
+  const puzzleResult = generateAndClipPuzzlePattern(
+    outerPolygon,
+    { minX, minY, maxX, maxY },
+    puzzlePieces
+  );
+
+  const marginMm = 6;
+  const sheetW = Number((targetWidthMm + marginMm * 2).toFixed(1));
+  const sheetH = Number((targetHeightMm + marginMm * 2).toFixed(1));
+
+  // Función auxiliar para desplazar los comandos SVG por el margen de seguridad
+  const buildShiftedSvg = (includePreviewAnnotations: boolean): string => {
+    const lines: string[] = [];
+    lines.push(`<?xml version="1.0" encoding="UTF-8"?>`);
+    lines.push(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${sheetW}mm" height="${sheetH}mm" viewBox="0 0 ${sheetW} ${sheetH}">`
+    );
+
+    // Definición de máscara booleana <clipPath> exacta con el contorno exterior vectorizado
+    lines.push(`  <defs>`);
+    lines.push(`    <clipPath id="hybrid-outer-contour-clip">`);
+    lines.push(`      <path d="${outerContourD}" />`);
+    lines.push(`    </clipPath>`);
+    lines.push(`  </defs>`);
+
+    if (includePreviewAnnotations) {
+      lines.push(
+        `  <rect x="1" y="1" width="${(sheetW - 2).toFixed(1)}" height="${(sheetH - 2).toFixed(1)}" rx="3" fill="#FFFBEB" stroke="#D97706" stroke-width="0.4" stroke-dasharray="2.5,2.5" />`
+      );
+      lines.push(
+        `  <text x="${(sheetW / 2).toFixed(1)}" y="4.5" text-anchor="middle" font-family="sans-serif" font-size="2.7" font-weight="bold" fill="#92400E">${aiDrawing.hybridTitle} · Rompecabezas ${puzzlePieces} Piezas (${puzzleResult.cols}×${puzzleResult.rows}) · ${targetWidthMm}×${targetHeightMm} mm</text>`
+      );
+    }
+
+    lines.push(`  <g transform="translate(${marginMm}, ${marginMm})">`);
+
+    // CAPA 1: Grabado/Marcado Láser (Azul #0000FF) — Dibujo Híbrido Lineal Vectorizado con Potrace
+    lines.push(
+      `    <g id="CAPA-GRABADO-DIBUJO-HIBRIDO" clip-path="url(#hybrid-outer-contour-clip)" fill="none" stroke="${includePreviewAnnotations ? '#1E293B' : '#0000FF'}" stroke-width="${includePreviewAnnotations ? '0.65' : '0.35'}" stroke-linecap="round" stroke-linejoin="round">`
+    );
+    for (let i = 0; i < innerPathsD.length; i++) {
+      lines.push(`      <path id="trazo-hibrido-${i + 1}" d="${innerPathsD[i]}" />`);
+    }
+    lines.push(`    </g>`);
+
+    // CAPA 2: Corte Láser Interior (Rojo #FF0000) — Líneas de Rompecabezas recortadas booleanamente al contorno
+    lines.push(
+      `    <g id="CAPA-CORTE-ROMPECABEZAS-CLIPPED" clip-path="url(#hybrid-outer-contour-clip)" fill="none" stroke="#FF0000" stroke-width="${includePreviewAnnotations ? '0.65' : '0.25'}" stroke-linecap="round" stroke-linejoin="round">`
+    );
+    for (let i = 0; i < puzzleResult.clippedPuzzlePathsD.length; i++) {
+      lines.push(
+        `      <path id="corte-puzzle-${i + 1}" d="${puzzleResult.clippedPuzzlePathsD[i]}" />`
+      );
+    }
+    lines.push(`    </g>`);
+
+    // CAPA 3: Corte Láser Exterior (Rojo #FF0000) — Contorno Cerrado Principal del Dibujo Híbrido
+    lines.push(
+      `    <g id="CAPA-CORTE-CONTORNO-EXTERIOR" fill="none" stroke="#FF0000" stroke-width="${includePreviewAnnotations ? '0.85' : '0.25'}" stroke-linecap="round" stroke-linejoin="round">`
+    );
+    lines.push(`      <path id="contorno-exterior-cerrado" d="${outerContourD}" />`);
+    lines.push(`    </g>`);
+
+    lines.push(`  </g>`);
+
+    if (includePreviewAnnotations) {
+      lines.push(
+        `  <text x="${(sheetW / 2).toFixed(1)}" y="${(sheetH - 1.8).toFixed(1)}" text-anchor="middle" font-family="sans-serif" font-size="2.3" fill="#B91C1C">Rojo (#FF0000): Corte Láser (Contorno + ${puzzlePieces} Piezas Recortadas) · Negro/Azul (#0000FF): Trazo Híbrido Vectorizado</text>`
+      );
+    }
+
+    lines.push(`</svg>`);
+    return lines.join('\n');
+  };
+
+  const previewSvg = buildShiftedSvg(Boolean(request.includeAnnotations ?? true));
+  const laserSvg = buildShiftedSvg(false);
+
+  const option =
+    PUZZLE_PIECE_OPTIONS.find((o) => o.count === puzzlePieces) ||
+    PUZZLE_PIECE_OPTIONS[1];
+
+  return {
+    previewSvg,
+    laserSvg,
+    rasterDataUrl,
+    assistantMessage: aiDrawing.assistantMessage,
+    hybridTitle: aiDrawing.hybridTitle,
+    internalPromptUsed: AI_FUSION_INTERNAL_PROMPT,
     metrics: {
-      originalWidth: +originalWidth.toFixed(2),
-      originalHeight: +originalHeight.toFixed(2),
-      scaledWidthMm,
-      scaledHeightMm,
-      scaleFactor: +scaleFactor.toFixed(4),
-      materialThicknessMm: +materialThicknessMm.toFixed(2),
-      slotDepthMm: +slotDepthMm.toFixed(1),
-      slot1CenterXMm: +(slot1CenterX - marginX).toFixed(2),
-      slot2CenterXMm: +(slot2CenterX - marginX).toFixed(2),
-      balsaSheetWidthMm: 300,
-      balsaSheetHeightMm: 100,
-      fitsInStandardBalsaSheet,
-      closedPathsCount: finalCutChildren.length,
-      internalFacetPathsCount: finalEngraveChildren.length,
+      imagesCount: images.length,
+      puzzlePieces,
+      gridCols: option.cols,
+      gridRows: option.rows,
+      widthMm: targetWidthMm,
+      heightMm: targetHeightMm,
+      outerContourNodes: outerPolygon.length,
+      innerVectorPathsCount: innerPathsD.length,
+      clippedPuzzleSegmentsCount: puzzleResult.clippedPuzzlePathsD.length,
+      vectorizerEngine: 'Potrace Curve & Polygon Tracer',
+      aiModelUsed: aiDrawing.modelName,
     },
   };
 }

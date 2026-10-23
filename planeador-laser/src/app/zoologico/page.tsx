@@ -7,7 +7,7 @@ import { ZooSection } from '@/components/ZooSection';
 export default function ZoologicoPage() {
   return (
     <WorkshopShell
-      activeBadgeText="🦊 Taller 1: Zoológico Low-Poly · Corte Láser"
+      activeBadgeText="🧩 Taller 1: Fusión IA + Rompecabezas Láser"
       showHomeButton={true}
     >
       <ZooSection />

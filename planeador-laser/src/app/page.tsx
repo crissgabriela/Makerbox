@@ -64,34 +64,34 @@ export default function HomePage() {
 
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center text-3xl shadow-md group-hover:scale-105 transition-transform shrink-0">
-                  🦊
+                  🧩
                 </div>
                 <div>
                   <h2 className="text-2xl sm:text-3xl font-black text-slate-900 group-hover:text-amber-700 transition-colors">
-                    Zoológico Low-Poly
+                    Fusión IA + Rompecabezas
                   </h2>
                   <p className="text-xs sm:text-sm font-bold text-amber-700">
-                    Escalado Geométrico y Ranuras de Soporte
+                    Dibujos a Mano Alzada · Vectorización Potrace · Puzzle Láser
                   </p>
                 </div>
               </div>
 
               <p className="text-sm text-slate-600 leading-relaxed">
-                Sube la silueta vectorial <strong>.SVG</strong> de tu animal poligonal, elige la <strong>altura deseada en milímetros</strong> y genera automáticamente las <strong>2 ranuras inferiores de 3 × 15 mm</strong> para pararlo sobre su base.
+                Sube de <strong>3 a 4 dibujos a mano alzada (JPG/PNG)</strong>, conversa con el <strong>Asistente IA para niños y jóvenes</strong> para fusionarlos en un trazo lineal limpio, vectorízalo con <strong>Potrace</strong> y superpón un patrón de <strong>rompecabezas (4, 6, 9 o 12 piezas)</strong> recortado exactamente a la silueta exterior.
               </p>
 
               <ul className="space-y-2 text-xs font-semibold text-slate-700 bg-amber-50/60 border border-amber-200/80 rounded-2xl p-4">
                 <li className="flex items-center gap-2">
                   <Upload className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Zona de carga (Dropzone) para subir tu animal SVG + ejemplos Low-Poly</span>
+                  <span>Carga múltiple (Drag & Drop) de 3 a 4 dibujos en formato JPG/PNG</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Ruler className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Escalado automático proporcional según la altura deseada (mm)</span>
+                  <span>IA Generativa Multimodal + Vectorización automática tipo Potrace</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Scissors className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Sustracción automática de 2 ranuras verticales (3 mm × 15 mm) en la base</span>
+                  <span>Patrón de rompecabezas (4 opciones de piezas) con recorte booleano exacto</span>
                 </li>
               </ul>
             </div>
