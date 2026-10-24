@@ -37,6 +37,7 @@ async function tryGeminiNativeImageGeneration(
   modelUsed: string;
 } | null> {
   const imageModels = [
+    'gemini-2.5-flash-image-preview',
     'gemini-2.5-flash-image',
     'gemini-2.0-flash-preview-image-generation',
     'gemini-2.0-flash-exp-image-generation',
@@ -62,10 +63,13 @@ Fondo 100% blanco puro (#FFFFFF), trazos negros bien definidos tipo dibujo a tin
   for (const modelName of imageModels) {
     try {
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(apiKey.trim())}`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey.trim(),
+          },
           body: JSON.stringify({
             contents: [
               {

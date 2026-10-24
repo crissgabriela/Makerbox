@@ -731,7 +731,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
             type="password"
             value={customApiKey}
             onChange={(e) => setCustomApiKey(e.target.value)}
-            placeholder="AIzaSy... (Google Gemini API Key)"
+            placeholder="Pega aquí tu Clave de API (AQ... o AIzaSy...)"
             className="w-full sm:w-72 px-3 py-2 rounded-xl bg-white border border-amber-300 text-slate-800 font-mono text-xs"
           />
         </div>
