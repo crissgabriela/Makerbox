@@ -9,6 +9,7 @@ import {
   Flame,
   Layers,
   PieChart,
+  Puzzle,
   Ruler,
   Scissors,
   Shapes,
@@ -86,6 +87,20 @@ const TOOLS_CATALOG = [
     borderHover: 'hover:border-purple-500',
     bgSoft: 'bg-purple-50/70 border-purple-200/80',
     icon: Ruler,
+  },
+  {
+    number: 'Herramienta 6',
+    href: '/poliamantes',
+    title: 'Poliamantes: «9 P» y «10 Azadas»',
+    subtitle: 'Pentiamantes quirales (N=7) y Hexiamantes con retos numéricos (N=8)',
+    description:
+      'Rompecabezas lógicos de doble capa sobre redes de triángulos equiláteros. Experimenta cómo voltear fichas con punto invierte la quiralidad y deja una única solución matemática exacta.',
+    mathPills: ['Red Triangular N²', 'Quiralidad y Reflexión', 'Solución Única'],
+    timeBadge: '~7.0 min',
+    gradient: 'from-emerald-700 to-indigo-700',
+    borderHover: 'hover:border-emerald-600',
+    bgSoft: 'bg-emerald-50/70 border-emerald-200/80',
+    icon: Puzzle,
   },
 ];
 

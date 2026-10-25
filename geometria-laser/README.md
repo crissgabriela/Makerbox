@@ -4,7 +4,7 @@ Plataforma interactiva de herramientas matemáticas y geométricas desarrollada 
 
 ---
 
-## 🛠️ Herramientas Incluidas (5 Módulos Interactivos)
+## 🛠️ Herramientas Incluidas (6 Módulos Interactivos)
 
 1. **`/fracciones` — Discos de Fracciones y Ángulos Centrales (`1/2` a `1/12`)**
    - Plato didáctico de doble capa en MDF 3 mm (`6 mm` de espesor ensamblado) + sectores circulares con holgura mecánica calibrada (`0.15`, `0.20` o `0.30 mm`) y despunte de bisectriz en el ápice central.
@@ -21,6 +21,9 @@ Plataforma interactiva de herramientas matemáticas y geométricas desarrollada 
 5. **`/instrumentos` — Plantilla de Dibujo Matemático y Compás de Proporción Áurea ($\Phi = 1,618$)**
    - **Regla + Transportador 180° + Esténcil de Parábola ($y=x^2$), Polígonos y Espiral de Fibonacci**, personalizable con el **nombre grabado** de cada estudiante de la Feria Científica.
    - **Compás Articulado de Proporción Áurea ($\Phi = 1,618$):** Pantógrafo de 4 barras en razón de Fibonacci (`144 / 89 / 55 mm`) con perforaciones para tornillos/remaches `M3`.
+6. **`/poliamantes` — Rompecabezas Lógicos de Poliamantes: «Nueve P Puntiagudas» y «Diez Azadas»**
+   - **Puzzle A (`Nueve P Puntiagudas` · Red $N=7$):** 9 pentiamantes *P* quirales (`7` derechas con punto + `2` espejadas con punto) + `1` isla triangular fija sobre cavidad de $7^2 = 49$ triángulos ($3$ huecos libres). Incluye los 3 desafíos clásicos (ignorar puntos = 18 soluciones; mostrar 9 puntos = 1 solución única; ocultar todos los puntos = 1 solución única).
+   - **Puzzle B (`Diez Azadas` · Red $N=8$):** 10 hexiamantes *Azada* anidados en 5 pares $180^\circ$ sobre cavidad de $8^2 = 64$ triángulos con 8 celdas numeradas (`1..4`, dos de cada número), dejando libres los dos triángulos del reto elegido (solución única para cada número).
 
 ---
 

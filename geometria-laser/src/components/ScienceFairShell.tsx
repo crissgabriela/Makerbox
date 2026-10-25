@@ -12,6 +12,7 @@ import {
   Home,
   Info,
   PieChart,
+  Puzzle,
   Ruler,
   Shapes,
   Sparkles,
@@ -33,6 +34,7 @@ const NAV_ITEMS = [
   { href: '/poligonos', label: '3. Tangram y Polígonos', icon: Shapes },
   { href: '/espirografo', label: '4. Espirógrafo', icon: Compass },
   { href: '/instrumentos', label: '5. Plantilla Áurea', icon: Ruler },
+  { href: '/poliamantes', label: '6. Poliamantes', icon: Puzzle },
 ];
 
 interface ScienceFairShellProps {

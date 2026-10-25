@@ -1,10 +1,13 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
+  ArrowRight,
   Check,
   Grid,
   Plus,
+  Puzzle,
   RotateCcw,
   Shapes,
   Sparkles,
@@ -101,6 +104,27 @@ export function PolygonsTangramSection() {
             🔷 Modo B: Polígonos y Teselaciones
           </button>
         </div>
+      </div>
+
+      {/* ENLACE RELACIONADO A HERRAMIENTA 6: ROMPECABEZAS DE POLIAMANTES */}
+      <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border border-teal-200/80 rounded-2xl p-3.5 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3 text-xs sm:text-sm text-slate-700">
+          <span className="w-8 h-8 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0">
+            <Puzzle className="w-4 h-4" />
+          </span>
+          <span>
+            <strong className="text-slate-900">¿Buscas retos avanzados en red triangular?</strong>{' '}
+            Explora también los rompecabezas de poliamantes{' '}
+            <strong>«Nueve P Puntiagudas» (N=7)</strong> y <strong>«Diez Azadas» (N=8)</strong>.
+          </span>
+        </div>
+        <Link
+          href="/poliamantes"
+          className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-black shrink-0 transition-colors"
+        >
+          <span>Ir a Poliamantes</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
       </div>
 
       {/* ===================================================================== */}
