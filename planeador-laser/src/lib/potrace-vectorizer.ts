@@ -1,3 +1,5 @@
+import { EngravingStrokeWeight } from '@/types/zoo';
+
 export interface Point2D {
   x: number;
   y: number;
@@ -413,6 +415,120 @@ function traceMooreOuterContour(
 }
 
 /**
+ * Algoritmo de adelgazamiento morfológico (Zhang-Suen Thinning)
+ * para reducir el grosor de las líneas del dibujo y acelerar drásticamente
+ * el grabado láser en la Creality Falcon 10W sin alterar el contorno exterior ni el corte.
+ */
+export function thinBinaryMask(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  mode: EngravingStrokeWeight = 'thin'
+): Uint8Array {
+  if (mode === 'normal') {
+    return new Uint8Array(mask);
+  }
+
+  const result = new Uint8Array(mask);
+  const maxIterations = mode === 'ultra-thin' ? 8 : 2;
+  const toDelete: number[] = [];
+
+  for (let iter = 0; iter < maxIterations; iter++) {
+    let hasChanged = false;
+
+    // Sub-iteración 1
+    toDelete.length = 0;
+    for (let y = 1; y < height - 1; y++) {
+      const rowOffset = y * width;
+      for (let x = 1; x < width - 1; x++) {
+        const idx = rowOffset + x;
+        if (result[idx] === 0) continue;
+
+        const p2 = result[idx - width];
+        const p3 = result[idx - width + 1];
+        const p4 = result[idx + 1];
+        const p5 = result[idx + width + 1];
+        const p6 = result[idx + width];
+        const p7 = result[idx + width - 1];
+        const p8 = result[idx - 1];
+        const p9 = result[idx - width - 1];
+
+        const b = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
+        if (b < 2 || b > 6) continue;
+
+        let a = 0;
+        if (p2 === 0 && p3 === 1) a++;
+        if (p3 === 0 && p4 === 1) a++;
+        if (p4 === 0 && p5 === 1) a++;
+        if (p5 === 0 && p6 === 1) a++;
+        if (p6 === 0 && p7 === 1) a++;
+        if (p7 === 0 && p8 === 1) a++;
+        if (p8 === 0 && p9 === 1) a++;
+        if (p9 === 0 && p2 === 1) a++;
+
+        if (a === 1 && p2 * p4 * p6 === 0 && p4 * p6 * p8 === 0) {
+          toDelete.push(idx);
+        }
+      }
+    }
+
+    if (toDelete.length > 0) {
+      hasChanged = true;
+      for (let i = 0; i < toDelete.length; i++) {
+        result[toDelete[i]] = 0;
+      }
+    }
+
+    // Sub-iteración 2
+    toDelete.length = 0;
+    for (let y = 1; y < height - 1; y++) {
+      const rowOffset = y * width;
+      for (let x = 1; x < width - 1; x++) {
+        const idx = rowOffset + x;
+        if (result[idx] === 0) continue;
+
+        const p2 = result[idx - width];
+        const p3 = result[idx - width + 1];
+        const p4 = result[idx + 1];
+        const p5 = result[idx + width + 1];
+        const p6 = result[idx + width];
+        const p7 = result[idx + width - 1];
+        const p8 = result[idx - 1];
+        const p9 = result[idx - width - 1];
+
+        const b = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
+        if (b < 2 || b > 6) continue;
+
+        let a = 0;
+        if (p2 === 0 && p3 === 1) a++;
+        if (p3 === 0 && p4 === 1) a++;
+        if (p4 === 0 && p5 === 1) a++;
+        if (p5 === 0 && p6 === 1) a++;
+        if (p6 === 0 && p7 === 1) a++;
+        if (p7 === 0 && p8 === 1) a++;
+        if (p8 === 0 && p9 === 1) a++;
+        if (p9 === 0 && p2 === 1) a++;
+
+        if (a === 1 && p2 * p4 * p8 === 0 && p2 * p6 * p8 === 0) {
+          toDelete.push(idx);
+        }
+      }
+    }
+
+    if (toDelete.length > 0) {
+      hasChanged = true;
+      for (let i = 0; i < toDelete.length; i++) {
+        result[toDelete[i]] = 0;
+      }
+    }
+
+    if (!hasChanged) break;
+  }
+
+  return result;
+}
+
+/**
  * En el servidor: genera una imagen raster B/N limpia para grabado en la Creality Falcon 10W
  * y devuelve el contorno exterior vectorizado con Potrace.
  */
@@ -422,11 +538,13 @@ export function buildServerRasterAndOuterContour(
   domainWidth: number,
   domainHeight: number,
   rasterWidth = 420,
-  rasterHeight = 380
+  rasterHeight = 380,
+  strokeWeight: EngravingStrokeWeight = 'thin'
 ): TracedVectorResult {
-  const bitmap = new Uint8Array(rasterWidth * rasterHeight);
+  const rawBitmap = new Uint8Array(rasterWidth * rasterHeight);
+  const thickness = strokeWeight === 'normal' ? 1 : 0;
 
-  const drawSegment = (p1: Point2D, p2: Point2D, thickness = 1) => {
+  const drawSegment = (p1: Point2D, p2: Point2D) => {
     const x0 = Math.round((p1.x / domainWidth) * (rasterWidth - 1));
     const y0 = Math.round((p1.y / domainHeight) * (rasterHeight - 1));
     const x1 = Math.round((p2.x / domainWidth) * (rasterWidth - 1));
@@ -442,7 +560,7 @@ export function buildServerRasterAndOuterContour(
           const nx = cx + dx;
           const ny = cy + dy;
           if (nx >= 0 && nx < rasterWidth && ny >= 0 && ny < rasterHeight) {
-            bitmap[ny * rasterWidth + nx] = 1;
+            rawBitmap[ny * rasterWidth + nx] = 1;
           }
         }
       }
@@ -451,9 +569,12 @@ export function buildServerRasterAndOuterContour(
 
   for (const poly of innerPolylines) {
     for (let i = 0; i < poly.length - 1; i++) {
-      drawSegment(poly[i], poly[i + 1], 1);
+      drawSegment(poly[i], poly[i + 1]);
     }
   }
+
+  // Adelgazamiento morfológico del trazo de grabado según el modo seleccionado
+  const bitmap = thinBinaryMask(rawBitmap, rasterWidth, rasterHeight, strokeWeight);
 
   // Codificar la imagen de grabado en formato BMP de 24 bits (blanco puro #FFFFFF y trazo negro #000000)
   const rowStride = Math.ceil((rasterWidth * 3) / 4) * 4;

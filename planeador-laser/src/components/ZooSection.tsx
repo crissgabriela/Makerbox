@@ -23,13 +23,18 @@ import {
 import {
   AI_FUSION_INTERNAL_PROMPT,
   AssistantChatMessage,
+  ENGRAVING_STROKE_OPTIONS,
+  EngravingStrokeWeight,
   PUZZLE_PIECE_OPTIONS,
   PuzzlePieceCount,
   SketchFeatureAnalysis,
   UploadedSketchInput,
   ZooFusionResponse,
 } from '@/types/zoo';
-import { extractOuterContourFromRgba } from '@/lib/potrace-vectorizer';
+import {
+  extractOuterContourFromRgba,
+  thinBinaryMask,
+} from '@/lib/potrace-vectorizer';
 import { buildPuzzleSvgFromTracedResult } from '@/lib/puzzle-clipper';
 
 interface ZooSectionProps {
@@ -38,7 +43,7 @@ interface ZooSectionProps {
 
 /**
  * Procesa la imagen generada por Gemini para la Creality Falcon 10W:
- * 1. Limpia el fondo dejando el dibujo como IMAGEN RASTER PNG de alto contraste (SIN vectorizar los trazos internos) para Grabado Láser.
+ * 1. Limpia el fondo y adelgaza los trazos (Zhang-Suen thinning) dejando una IMAGEN RASTER PNG de alta velocidad (SIN vectorizar) para Grabado Láser.
  * 2. Detecta y vectoriza ÚNICAMENTE el contorno exterior cerrado (#FF0000) y las líneas del rompecabezas (#FF0000) para Corte Láser.
  */
 async function buildFalconEngravingAndVectorCutClient(
@@ -46,7 +51,8 @@ async function buildFalconEngravingAndVectorCutClient(
   puzzlePieces: PuzzlePieceCount,
   targetHeightMm: number,
   hybridTitle: string,
-  includeAnnotations: boolean
+  includeAnnotations: boolean,
+  strokeWeight: EngravingStrokeWeight = 'thin'
 ): Promise<{
   previewSvg: string;
   laserSvg: string;
@@ -96,8 +102,11 @@ async function buildFalconEngravingAndVectorCutClient(
         return;
       }
 
+      // Adelgazamiento morfológico (Zhang-Suen) de las líneas para grabado ultra veloz en Falcon 10W
+      const finalEngraveMask = thinBinaryMask(inkMask, w, h, strokeWeight);
+
       // Crear el PNG recortado exactamente al bounding box del contorno (alineación 1:1 milimétrica)
-      // con trazos negros puros (#000000) y fondo transparente para grabar en Creality Falcon 10W
+      // con trazos negros finos (#000000) y fondo transparente para grabar en Creality Falcon 10W
       const { minX, minY, widthPx, heightPx } = traced.cropBoxPx;
       const cropCanvas = document.createElement('canvas');
       cropCanvas.width = widthPx;
@@ -115,7 +124,7 @@ async function buildFalconEngravingAndVectorCutClient(
               srcX < w &&
               srcY >= 0 &&
               srcY < h &&
-              inkMask[srcY * w + srcX] === 1;
+              finalEngraveMask[srcY * w + srcX] === 1;
             const dstIdx = (y * widthPx + x) * 4;
             if (isInk) {
               outData.data[dstIdx + 0] = 0;
@@ -353,7 +362,7 @@ function createSampleHandDrawnSketches(): UploadedSketchInput[] {
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, 180, 180);
       ctx.strokeStyle = '#1E293B';
-      ctx.lineWidth = 3.5;
+      ctx.lineWidth = 1.5;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       p.draw(ctx);
@@ -371,6 +380,7 @@ function createSampleHandDrawnSketches(): UploadedSketchInput[] {
 export function ZooSection({ onBackToMenu }: ZooSectionProps) {
   const [images, setImages] = useState<UploadedSketchInput[]>([]);
   const [puzzlePieces, setPuzzlePieces] = useState<PuzzlePieceCount>(25);
+  const [engravingStroke, setEngravingStroke] = useState<EngravingStrokeWeight>('thin');
   const [targetHeightMm, setTargetHeightMm] = useState<number>(120);
   const [showAnnotations, setShowAnnotations] = useState<boolean>(true);
   const [activePreviewTab, setActivePreviewTab] = useState<'vector-puzzle' | 'ai-raster'>('vector-puzzle');
@@ -384,7 +394,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
     {
       id: 'welcome-1',
       role: 'assistant',
-      text: '¡Hola creador! 👋 Sube de 3 a 4 dibujos a mano alzada (JPG/PNG) y presiona "Fusionar Dibujos". El dibujo generado se mantiene como IMAGEN para grabarlo en la Creality Falcon 10W, y solo el contorno exterior y las líneas del rompecabezas (20 a 40 piezas) se vectorizan para el corte.',
+      text: '¡Hola creador! 👋 Sube de 3 a 4 dibujos a mano alzada (JPG/PNG) y presiona "Fusionar Dibujos". Ahora los trazos de la imagen son mucho más delgados para que la Creality Falcon 10W grabe a toda velocidad, y el contorno exterior con las piezas del rompecabezas se vectorizan para el corte láser.',
       timestamp: 'Ahora',
     },
   ]);
@@ -410,6 +420,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
     async (
       imgsToFuse: UploadedSketchInput[],
       piecesCount: PuzzlePieceCount,
+      strokeWeight: EngravingStrokeWeight,
       promptText: string,
       heightMm: number,
       annotations: boolean,
@@ -432,6 +443,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
           body: JSON.stringify({
             images: imgsToFuse,
             puzzlePieces: piecesCount,
+            strokeWeight,
             studentPrompt: promptText,
             targetHeightMm: heightMm,
             includeAnnotations: annotations,
@@ -444,7 +456,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
           throw new Error(data.error || 'Error al fusionar los dibujos.');
         }
 
-        // Mantener la imagen generada SIN vectorizar (en PNG limpio para grabado en Creality Falcon 10W)
+        // Mantener la imagen generada SIN vectorizar con trazo delgado para grabado veloz en Falcon 10W
         // y vectorizar únicamente su contorno exterior + las líneas del rompecabezas
         if (data.rasterDataUrl) {
           const falconBuilt = await buildFalconEngravingAndVectorCutClient(
@@ -452,7 +464,8 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
             piecesCount,
             heightMm,
             data.hybridTitle,
-            annotations
+            annotations,
+            strokeWeight
           );
           if (falconBuilt) {
             data.previewSvg = falconBuilt.previewSvg;
@@ -461,6 +474,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
             data.metrics.clippedPuzzleSegmentsCount = falconBuilt.clippedSegmentsCount;
             data.metrics.widthMm = falconBuilt.widthMm;
             data.metrics.heightMm = falconBuilt.heightMm;
+            data.metrics.strokeWeight = strokeWeight;
             setCleanEngravingPngUrl(falconBuilt.cleanedEngravingPngUrl);
           }
         }
@@ -495,12 +509,46 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
     [customApiKey]
   );
 
+  const handleStrokeWeightChange = async (newWeight: EngravingStrokeWeight) => {
+    setEngravingStroke(newWeight);
+    if (fusionResult?.rasterDataUrl) {
+      const falconBuilt = await buildFalconEngravingAndVectorCutClient(
+        fusionResult.rasterDataUrl,
+        puzzlePieces,
+        targetHeightMm,
+        fusionResult.hybridTitle,
+        showAnnotations,
+        newWeight
+      );
+      if (falconBuilt) {
+        setCleanEngravingPngUrl(falconBuilt.cleanedEngravingPngUrl);
+        setFusionResult((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            previewSvg: falconBuilt.previewSvg,
+            laserSvg: falconBuilt.laserSvg,
+            metrics: {
+              ...prev.metrics,
+              strokeWeight: newWeight,
+              outerContourNodes: falconBuilt.outerNodes,
+              clippedPuzzleSegmentsCount: falconBuilt.clippedSegmentsCount,
+              widthMm: falconBuilt.widthMm,
+              heightMm: falconBuilt.heightMm,
+            },
+          };
+        });
+      }
+    }
+  };
+
   useEffect(() => {
     if (images.length >= 3 && images.length <= 4) {
       const timer = setTimeout(() => {
         executeFusion(
           images,
           puzzlePieces,
+          engravingStroke,
           studentPrompt,
           targetHeightMm,
           showAnnotations,
@@ -509,7 +557,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
       }, 120);
       return () => clearTimeout(timer);
     }
-  }, [images, puzzlePieces, targetHeightMm, showAnnotations, studentPrompt, executeFusion]);
+  }, [images, puzzlePieces, engravingStroke, targetHeightMm, showAnnotations, studentPrompt, executeFusion]);
 
   const handleFilesSelected = async (fileList: FileList | File[]) => {
     const incomingFiles = Array.from(fileList).filter(
@@ -561,7 +609,8 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
         puzzlePieces,
         targetHeightMm,
         title,
-        showAnnotations
+        showAnnotations,
+        engravingStroke
       );
 
       if (falconBuilt) {
@@ -571,7 +620,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
           laserSvg: falconBuilt.laserSvg,
           rasterDataUrl: dataUrl,
           hasNativeGeminiRaster: true,
-          assistantMessage: `¡Listo para la Creality Falcon 10W! Tu imagen "${file.name}" se conservó en formato de imagen sin vectorizar para el grabado láser, y se vectorizó únicamente su contorno exterior junto con las líneas del rompecabezas de ${puzzlePieces} piezas (${option.cols}×${option.rows}).`,
+          assistantMessage: `¡Listo para la Creality Falcon 10W! Tu imagen "${file.name}" se conservó en formato de imagen sin vectorizar para el grabado láser con trazos optimizados para alta velocidad, y se vectorizó únicamente su contorno exterior junto con las líneas del rompecabezas de ${puzzlePieces} piezas (${option.cols}×${option.rows}).`,
           hybridTitle: title,
           internalPromptUsed: AI_FUSION_INTERNAL_PROMPT,
           metrics: {
@@ -581,6 +630,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
             gridRows: option.rows,
             widthMm: falconBuilt.widthMm,
             heightMm: falconBuilt.heightMm,
+            strokeWeight: engravingStroke,
             outerContourNodes: falconBuilt.outerNodes,
             innerVectorPathsCount: 1,
             clippedPuzzleSegmentsCount: falconBuilt.clippedSegmentsCount,
@@ -643,7 +693,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
     setChatInput('');
 
     if (images.length >= 3 && images.length <= 4) {
-      executeFusion(images, puzzlePieces, text, targetHeightMm, showAnnotations, true);
+      executeFusion(images, puzzlePieces, engravingStroke, text, targetHeightMm, showAnnotations, true);
     }
   };
 
@@ -920,6 +970,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                 executeFusion(
                   images,
                   puzzlePieces,
+                  engravingStroke,
                   studentPrompt,
                   targetHeightMm,
                   showAnnotations,
@@ -1019,7 +1070,54 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
             </div>
           </div>
 
-          {/* Tarjeta 3: Asistente IA Creativo */}
+          {/* Tarjeta 3: Grosor de Línea para Grabado Láser (Creality Falcon 10W) */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-3.5">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-amber-600" />
+                3. Grosor de Línea para Grabado (Velocidad Falcon 10W)
+              </label>
+              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                Grabado Rápido
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-500 leading-snug">
+              Las líneas más delgadas reducen la cantidad de pasadas del cabezal láser, acelerando significativamente el tiempo de grabado en madera. El corte exterior y del rompecabezas se mantiene intacto.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {ENGRAVING_STROKE_OPTIONS.map((opt) => {
+                const isSelected = engravingStroke === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => handleStrokeWeightChange(opt.id)}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                      isSelected
+                        ? 'bg-amber-50 border-amber-500 text-amber-950 ring-2 ring-amber-500/20 shadow-2xs'
+                        : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black">{opt.label}</span>
+                      </div>
+                      <span className="inline-block text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-white/90 border border-slate-200 text-amber-700 mt-1">
+                        {opt.badge}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1.5 leading-tight">
+                      {opt.description}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Tarjeta 4: Asistente IA Creativo */}
           <div className="bg-white rounded-3xl border border-purple-200 p-5 shadow-xs space-y-3.5">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-xs">
@@ -1213,10 +1311,10 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                     1. Dibujo Híbrido (Grabado)
                   </div>
                   <div className="text-xs font-extrabold text-slate-900 mt-1">
-                    Imagen PNG Incrustada (No Vectorizada)
+                    Línea {engravingStroke === 'ultra-thin' ? 'Ultra Fina (1 px)' : engravingStroke === 'thin' ? 'Fina (Recomendada)' : 'Original'}
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5">
-                    Modo Image Engrave en Creality Falcon 10W
+                    {engravingStroke === 'ultra-thin' ? 'Máxima velocidad Falcon 10W' : engravingStroke === 'thin' ? 'Grabado rápido en madera' : 'Grosor estándar'}
                   </div>
                 </div>
 

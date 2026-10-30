@@ -1,5 +1,33 @@
 export type PuzzlePieceCount = 20 | 25 | 30 | 40;
 
+export type EngravingStrokeWeight = 'ultra-thin' | 'thin' | 'normal';
+
+export const ENGRAVING_STROKE_OPTIONS: {
+  id: EngravingStrokeWeight;
+  label: string;
+  badge: string;
+  description: string;
+}[] = [
+  {
+    id: 'ultra-thin',
+    label: 'Ultra Fina (1 px)',
+    badge: 'Máxima Velocidad ⚡',
+    description: 'Trazo de línea esqueleto ultra delgado (1 px). Reduce al mínimo el tiempo de grabado láser en la Falcon 10W.',
+  },
+  {
+    id: 'thin',
+    label: 'Fina (Recomendada)',
+    badge: 'Grabado Rápido ✨',
+    description: 'Líneas finas y nítidas (~1.5–2 px) con excelente contraste en madera de balsa y grabado veloz.',
+  },
+  {
+    id: 'normal',
+    label: 'Normal / Original',
+    badge: 'Grosor Original',
+    description: 'Mantiene el grosor original de los trazos de la imagen sin adelgazar.',
+  },
+];
+
 export const PUZZLE_PIECE_OPTIONS: {
   count: PuzzlePieceCount;
   cols: number;
@@ -46,7 +74,7 @@ export const PUZZLE_PIECE_OPTIONS: {
  * Prompt interno obligatorio para la API de visión y generación de imágenes multimodales (Gemini Image Generation)
  */
 export const AI_FUSION_INTERNAL_PROMPT =
-  'Genera un dibujo lineal en blanco y negro, sin fondo, fusionando las características principales de las imágenes de referencia. El trazo debe ser limpio, continuo, simple y sin sombreados, optimizado para trazado vectorial.';
+  'Genera un dibujo lineal en blanco y negro, sin fondo, fusionando las características principales de las imágenes de referencia. El trazo debe ser muy delgado, ultra fino tipo estilógrafo (hairline / fine thin outline), limpio, continuo, simple y sin sombreados ni áreas negras rellenas, optimizado para grabado láser rápido de alta velocidad.';
 
 export interface SketchFeatureAnalysis {
   topDensity: number;
@@ -77,6 +105,8 @@ export interface ZooFusionRequest {
   images: UploadedSketchInput[];
   /** Cantidad de piezas del rompecabezas: 20, 25, 30 o 40 */
   puzzlePieces: PuzzlePieceCount;
+  /** Grosor de línea para el grabado láser en Creality Falcon 10W */
+  strokeWeight?: EngravingStrokeWeight;
   /** Instrucción adicional opcional del niño/joven para el asistente IA */
   studentPrompt?: string;
   /** Altura objetivo del rompecabezas en mm (por defecto 120 mm) */
@@ -94,6 +124,7 @@ export interface ZooFusionMetrics {
   gridRows: number;
   widthMm: number;
   heightMm: number;
+  strokeWeight: EngravingStrokeWeight;
   outerContourNodes: number;
   innerVectorPathsCount: number;
   clippedPuzzleSegmentsCount: number;

@@ -56,7 +56,7 @@ async function tryGeminiNativeImageGeneration(
   });
 
   const fullPrompt = `${AI_FUSION_INTERNAL_PROMPT}
-Fondo 100% blanco puro (#FFFFFF), trazos negros bien definidos tipo dibujo a tinta continua, integrando de forma orgánica las criaturas u objetos de las ${images.length} imágenes adjuntas en un solo personaje híbrido completo.${
+Fondo 100% blanco puro (#FFFFFF). Los trazos negros deben ser muy delgados y finos (ultra-thin fine line-art), de trazo único continuo tipo pluma fina (hairline strokes, sin líneas gruesas, sin dobles trazos y sin áreas negras rellenas), integrando de forma orgánica las criaturas u objetos de las ${images.length} imágenes adjuntas en un solo personaje híbrido completo para que la cortadora láser Creality Falcon 10W grabe a máxima velocidad.${
     studentPrompt ? ` Indicación adicional del estudiante: ${studentPrompt}` : ''
   }`;
 
@@ -226,6 +226,7 @@ export async function processZooFusionPuzzle(
   const puzzlePieces: PuzzlePieceCount = [20, 25, 30, 40].includes(request.puzzlePieces)
     ? request.puzzlePieces
     : 25;
+  const strokeWeight = request.strokeWeight || 'thin';
   const studentPrompt = (request.studentPrompt || '').trim();
   const targetHeightMm = Math.min(180, Math.max(60, Number(request.targetHeightMm) || 120));
   const targetWidthMm = Number((targetHeightMm * 1.15).toFixed(1));
@@ -264,7 +265,8 @@ export async function processZooFusionPuzzle(
     targetWidthMm,
     targetHeightMm,
     420,
-    380
+    380,
+    strokeWeight
   );
 
   const finalTitle = nativeGeminiImage?.hybridTitle || aiDrawing.hybridTitle;
@@ -305,6 +307,7 @@ export async function processZooFusionPuzzle(
       gridRows: option.rows,
       widthMm: targetWidthMm,
       heightMm: targetHeightMm,
+      strokeWeight,
       outerContourNodes: traced.outerContourNodes,
       innerVectorPathsCount: 1, // 1 imagen raster unificada para grabado en Falcon 10W
       clippedPuzzleSegmentsCount: built.puzzleResult.clippedPuzzlePathsD.length,

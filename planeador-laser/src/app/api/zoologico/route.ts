@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processZooFusionPuzzle } from '@/lib/zoo-svg-processor';
-import { PuzzlePieceCount } from '@/types/zoo';
+import { PuzzlePieceCount, EngravingStrokeWeight } from '@/types/zoo';
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,6 +8,7 @@ export async function POST(request: NextRequest) {
 
     const images = Array.isArray(body.images) ? body.images : [];
     const puzzlePieces = (Number(body.puzzlePieces) || 25) as PuzzlePieceCount;
+    const strokeWeight = (body.strokeWeight || 'thin') as EngravingStrokeWeight;
     const studentPrompt = typeof body.studentPrompt === 'string' ? body.studentPrompt : '';
     const targetHeightMm = Number(body.targetHeightMm) || 120;
     const includeAnnotations =
@@ -18,6 +19,7 @@ export async function POST(request: NextRequest) {
     const result = await processZooFusionPuzzle({
       images,
       puzzlePieces,
+      strokeWeight,
       studentPrompt,
       targetHeightMm,
       includeAnnotations,
