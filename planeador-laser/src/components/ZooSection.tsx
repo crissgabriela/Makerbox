@@ -61,6 +61,8 @@ async function buildFalconEngravingAndVectorCutClient(
   clippedSegmentsCount: number;
   widthMm: number;
   heightMm: number;
+  cols: number;
+  rows: number;
 } | null> {
   return new Promise((resolve) => {
     const img = new window.Image();
@@ -160,6 +162,8 @@ async function buildFalconEngravingAndVectorCutClient(
         clippedSegmentsCount: built.puzzleResult.clippedPuzzlePathsD.length,
         widthMm: built.puzzleResult.frameWidthMm,
         heightMm: built.puzzleResult.frameHeightMm,
+        cols: built.puzzleResult.cols,
+        rows: built.puzzleResult.rows,
       });
     };
     img.src = rasterUrl;
@@ -699,10 +703,6 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
 
         setCleanEngravingPngUrl(falconBuilt.cleanedEngravingPngUrl);
 
-        const finalOption =
-          PUZZLE_PIECE_OPTIONS.find((o) => o.count === piecesCount) ||
-          PUZZLE_PIECE_OPTIONS[1];
-
         const updatedResult: ZooFusionResponse = {
           previewSvg: falconBuilt.previewSvg,
           laserSvg: falconBuilt.laserSvg,
@@ -714,8 +714,8 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
           metrics: {
             imagesCount: imgsToFuse.length,
             puzzlePieces: piecesCount,
-            gridCols: finalOption.cols,
-            gridRows: finalOption.rows,
+            gridCols: falconBuilt.cols,
+            gridRows: falconBuilt.rows,
             widthMm: falconBuilt.widthMm,
             heightMm: falconBuilt.heightMm,
             strokeWeight,
@@ -783,7 +783,100 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
               clippedPuzzleSegmentsCount: falconBuilt.clippedSegmentsCount,
               widthMm: falconBuilt.widthMm,
               heightMm: falconBuilt.heightMm,
+              gridCols: falconBuilt.cols,
+              gridRows: falconBuilt.rows,
             },
+          };
+        });
+      }
+    }
+  };
+
+  const handlePuzzlePiecesChange = async (newPieces: PuzzlePieceCount) => {
+    setPuzzlePieces(newPieces);
+    if (fusionResult?.rasterDataUrl) {
+      const falconBuilt = await buildFalconEngravingAndVectorCutClient(
+        fusionResult.rasterDataUrl,
+        newPieces,
+        targetHeightMm,
+        fusionResult.hybridTitle,
+        showAnnotations,
+        engravingStroke
+      );
+      if (falconBuilt) {
+        setCleanEngravingPngUrl(falconBuilt.cleanedEngravingPngUrl);
+        setFusionResult((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            previewSvg: falconBuilt.previewSvg,
+            laserSvg: falconBuilt.laserSvg,
+            metrics: {
+              ...prev.metrics,
+              puzzlePieces: newPieces,
+              gridCols: falconBuilt.cols,
+              gridRows: falconBuilt.rows,
+              outerContourNodes: falconBuilt.outerNodes,
+              clippedPuzzleSegmentsCount: falconBuilt.clippedSegmentsCount,
+              widthMm: falconBuilt.widthMm,
+              heightMm: falconBuilt.heightMm,
+            },
+          };
+        });
+      }
+    }
+  };
+
+  const handleTargetHeightChange = async (newHeight: number) => {
+    setTargetHeightMm(newHeight);
+    if (fusionResult?.rasterDataUrl) {
+      const falconBuilt = await buildFalconEngravingAndVectorCutClient(
+        fusionResult.rasterDataUrl,
+        puzzlePieces,
+        newHeight,
+        fusionResult.hybridTitle,
+        showAnnotations,
+        engravingStroke
+      );
+      if (falconBuilt) {
+        setCleanEngravingPngUrl(falconBuilt.cleanedEngravingPngUrl);
+        setFusionResult((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            previewSvg: falconBuilt.previewSvg,
+            laserSvg: falconBuilt.laserSvg,
+            metrics: {
+              ...prev.metrics,
+              widthMm: falconBuilt.widthMm,
+              heightMm: falconBuilt.heightMm,
+              gridCols: falconBuilt.cols,
+              gridRows: falconBuilt.rows,
+            },
+          };
+        });
+      }
+    }
+  };
+
+  const handleShowAnnotationsChange = async (checked: boolean) => {
+    setShowAnnotations(checked);
+    if (fusionResult?.rasterDataUrl) {
+      const falconBuilt = await buildFalconEngravingAndVectorCutClient(
+        fusionResult.rasterDataUrl,
+        puzzlePieces,
+        targetHeightMm,
+        fusionResult.hybridTitle,
+        checked,
+        engravingStroke
+      );
+      if (falconBuilt) {
+        setFusionResult((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            previewSvg: falconBuilt.previewSvg,
+            laserSvg: falconBuilt.laserSvg,
           };
         });
       }
@@ -868,14 +961,14 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
           laserSvg: falconBuilt.laserSvg,
           rasterDataUrl: dataUrl,
           hasNativeGeminiRaster: true,
-          assistantMessage: `¡Listo para la Creality Falcon 10W! Tu imagen "${file.name}" se enmarcó dentro de un recuadro rectangular para el grabado láser con trazos optimizados para alta velocidad, y se vectorizaron las líneas de corte del rompecabezas de lado a lado (${puzzlePieces} piezas · ${option.cols}×${option.rows}) y el corte perimetral en rojo #FF0000.`,
+          assistantMessage: `¡Listo para la Creality Falcon 10W! Tu imagen "${file.name}" se enmarcó dentro de un recuadro rectangular ajustado al dibujo para el grabado láser con trazos optimizados para alta velocidad, garantizando que el 100% de las piezas tengan grabado y encastres reforzados antideslizantes (${puzzlePieces} piezas · ${falconBuilt.cols}×${falconBuilt.rows}) con corte perimetral en rojo #FF0000.`,
           hybridTitle: title,
           internalPromptUsed: AI_FUSION_INTERNAL_PROMPT,
           metrics: {
             imagesCount: images.length,
             puzzlePieces,
-            gridCols: option.cols,
-            gridRows: option.rows,
+            gridCols: falconBuilt.cols,
+            gridRows: falconBuilt.rows,
             widthMm: falconBuilt.widthMm,
             heightMm: falconBuilt.heightMm,
             strokeWeight: engravingStroke,
@@ -1258,7 +1351,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                   <button
                     key={opt.count}
                     type="button"
-                    onClick={() => setPuzzlePieces(opt.count)}
+                    onClick={() => handlePuzzlePiecesChange(opt.count)}
                     className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                       isSelected
                         ? 'bg-amber-50 border-amber-500 text-amber-950 ring-2 ring-amber-500/20 shadow-2xs'
@@ -1291,7 +1384,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                 max={180}
                 step={5}
                 value={targetHeightMm}
-                onChange={(e) => setTargetHeightMm(Number(e.target.value))}
+                onChange={(e) => handleTargetHeightChange(Number(e.target.value))}
                 className="w-full accent-amber-600 cursor-pointer"
               />
               <div className="flex justify-between text-[10px] text-slate-400">
@@ -1506,7 +1599,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                 <input
                   type="checkbox"
                   checked={showAnnotations}
-                  onChange={(e) => setShowAnnotations(e.target.checked)}
+                  onChange={(e) => handleShowAnnotationsChange(e.target.checked)}
                   className="w-4 h-4 rounded accent-amber-600"
                 />
                 <Eye className="w-3.5 h-3.5 text-slate-500" />
@@ -1545,35 +1638,35 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                     1. Dibujo Híbrido (Grabado)
                   </div>
                   <div className="text-xs font-extrabold text-slate-900 mt-1">
-                    Línea {engravingStroke === 'ultra-thin' ? 'Ultra Fina (1 px)' : engravingStroke === 'thin' ? 'Fina (Recomendada)' : 'Original'}
+                    Línea {engravingStroke === 'ultra-thin' ? 'Ultra Fina (1 px)' : engravingStroke === 'thin' ? 'Fina (Recomendada)' : 'Original'} (100% Cobertura)
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5">
-                    {engravingStroke === 'ultra-thin' ? 'Máxima velocidad Falcon 10W' : engravingStroke === 'thin' ? 'Grabado rápido en madera' : 'Grosor estándar'}
+                    {engravingStroke === 'ultra-thin' ? 'Máxima velocidad Falcon 10W' : engravingStroke === 'thin' ? 'Grabado rápido en madera' : 'Grosor estándar'} · Sin piezas en blanco
                   </div>
                 </div>
 
                 <div className="p-3 rounded-2xl bg-amber-50/60 border border-amber-200">
                   <div className="text-[10px] font-extrabold text-amber-800 uppercase">
-                    2. Contorno Exterior (Corte)
+                    2. Marco Rectangular (Corte #FF0000)
                   </div>
                   <div className="text-xs font-extrabold text-amber-950 mt-1">
-                    Vectorizado Cerrado ({fusionResult.metrics.outerContourNodes} nodos)
+                    Ajustado al dibujo ({fusionResult.metrics.widthMm} × {fusionResult.metrics.heightMm} mm)
                   </div>
                   <div className="text-[11px] text-amber-800 mt-0.5">
-                    Trazo rojo #FF0000 alrededor de la figura
+                    Trazo exterior cerrado para recorte perimetral
                   </div>
                 </div>
 
                 <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200">
                   <div className="text-[10px] font-extrabold text-emerald-700 uppercase">
-                    3. Rompecabezas ({puzzlePieces} Piezas)
+                    3. Rompecabezas ({fusionResult.metrics.gridCols}×{fusionResult.metrics.gridRows} = {puzzlePieces} Piezas)
                   </div>
                   <div className="text-xs font-extrabold text-emerald-900 mt-1 flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    {fusionResult.metrics.clippedPuzzleSegmentsCount} vectores recortados
+                    Encastre reforzado antideslizante ({fusionResult.metrics.clippedPuzzleSegmentsCount} líneas)
                   </div>
                   <div className="text-[11px] text-emerald-700 mt-0.5">
-                    Tamaño final: {fusionResult.metrics.widthMm} × {fusionResult.metrics.heightMm} mm
+                    Bloqueo mecánico firme de lado a lado
                   </div>
                 </div>
               </div>

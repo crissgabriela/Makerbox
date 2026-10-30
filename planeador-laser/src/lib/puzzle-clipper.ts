@@ -3,7 +3,11 @@ import {
   polygonToPotraceBezierPath,
   TracedVectorResult,
 } from './potrace-vectorizer';
-import { PuzzlePieceCount, PUZZLE_PIECE_OPTIONS } from '@/types/zoo';
+import {
+  PuzzlePieceCount,
+  PUZZLE_PIECE_OPTIONS,
+  getAdaptiveGridForPieceCount,
+} from '@/types/zoo';
 
 export interface ClippedPuzzleResult {
   cols: number;
@@ -145,6 +149,13 @@ export function clipPolylineToPolygon(
  * Genera el borde clásico de una celda de rompecabezas entre pStart y pEnd
  * con una pestaña/lengüeta redondeada de encastre clásico (jigsaw tab).
  */
+/**
+ * Pestaña clásica reforzada para corte láser (jigsaw tab):
+ * - Altura/profundidad reforzada: 0.28 (40% más profunda)
+ * - Cuello estrecho (0.16) y cabeza de bulbo circular ancha (0.33)
+ * - Razón de bloqueo mecánico > 2.0x con ángulo de socavado (undercut)
+ *   que traba físicamente las piezas para que no se separen fácilmente.
+ */
 function generateClassicJigsawEdgePoints(
   pStart: Point2D,
   pEnd: Point2D,
@@ -161,7 +172,7 @@ function generateClassicJigsawEdgePoints(
   const nx = -ty * tabDirection;
   const ny = tx * tabDirection;
 
-  const tabHeight = 0.20;
+  const tabHeight = 0.28;
 
   const cubicBezier = (
     p0: [number, number],
@@ -187,32 +198,32 @@ function generateClassicJigsawEdgePoints(
   const segments: [[number, number], [number, number], [number, number], [number, number]][] = [
     [
       [0.0, 0.0],
-      [0.34, 0.0],
-      [0.41, -tabHeight * 0.18],
-      [0.39, tabHeight * 0.36],
+      [0.32, 0.0],
+      [0.38, -tabHeight * 0.06],
+      [0.42, tabHeight * 0.25],
     ],
     [
-      [0.39, tabHeight * 0.36],
-      [0.33, tabHeight * 0.96],
-      [0.43, tabHeight * 1.05],
-      [0.5, tabHeight * 1.05],
+      [0.42, tabHeight * 0.25],
+      [0.26, tabHeight * 0.55],
+      [0.36, tabHeight * 1.06],
+      [0.50, tabHeight * 1.0],
     ],
     [
-      [0.5, tabHeight * 1.05],
-      [0.57, tabHeight * 1.05],
-      [0.67, tabHeight * 0.96],
-      [0.61, tabHeight * 0.36],
+      [0.50, tabHeight * 1.0],
+      [0.64, tabHeight * 1.06],
+      [0.74, tabHeight * 0.55],
+      [0.58, tabHeight * 0.25],
     ],
     [
-      [0.61, tabHeight * 0.36],
-      [0.59, -tabHeight * 0.18],
-      [0.66, 0.0],
+      [0.58, tabHeight * 0.25],
+      [0.62, -tabHeight * 0.06],
+      [0.68, 0.0],
       [1.0, 0.0],
     ],
   ];
 
   const points: Point2D[] = [];
-  const subSamples = Math.max(5, Math.floor(samplesPerSegment / segments.length));
+  const subSamples = Math.max(6, Math.floor(samplesPerSegment / segments.length));
 
   for (let sIdx = 0; sIdx < segments.length; sIdx++) {
     const [b0, b1, b2, b3] = segments[sIdx];
@@ -231,25 +242,105 @@ function generateClassicJigsawEdgePoints(
 }
 
 /**
+ * Genera el comando SVG continuo de curvas cúbicas de Bézier exactas
+ * para una línea divisoria de lado a lado con lengüetas de encastre reforzadas.
+ */
+function generateClassicJigsawDividerSvgPath(
+  pStart: Point2D,
+  pEnd: Point2D,
+  steps: number,
+  isVertical: boolean,
+  dividerIndex: number
+): string {
+  const cellLen = (isVertical ? pEnd.y - pStart.y : pEnd.x - pStart.x) / steps;
+  const tabHeight = 0.28;
+
+  const segments: [[number, number], [number, number], [number, number], [number, number]][] = [
+    [
+      [0.0, 0.0],
+      [0.32, 0.0],
+      [0.38, -tabHeight * 0.06],
+      [0.42, tabHeight * 0.25],
+    ],
+    [
+      [0.42, tabHeight * 0.25],
+      [0.26, tabHeight * 0.55],
+      [0.36, tabHeight * 1.06],
+      [0.50, tabHeight * 1.0],
+    ],
+    [
+      [0.50, tabHeight * 1.0],
+      [0.64, tabHeight * 1.06],
+      [0.74, tabHeight * 0.55],
+      [0.58, tabHeight * 0.25],
+    ],
+    [
+      [0.58, tabHeight * 0.25],
+      [0.62, -tabHeight * 0.06],
+      [0.68, 0.0],
+      [1.0, 0.0],
+    ],
+  ];
+
+  const cmds: string[] = [`M ${pStart.x.toFixed(2)} ${pStart.y.toFixed(2)}`];
+
+  for (let s = 0; s < steps; s++) {
+    const p0: Point2D = isVertical
+      ? { x: pStart.x, y: pStart.y + s * cellLen }
+      : { x: pStart.x + s * cellLen, y: pStart.y };
+    const p1: Point2D = isVertical
+      ? { x: pStart.x, y: pStart.y + (s + 1) * cellLen }
+      : { x: pStart.x + (s + 1) * cellLen, y: pStart.y };
+
+    const dir: 1 | -1 =
+      ((isVertical ? dividerIndex : s) + (isVertical ? s : dividerIndex)) % 2 === 0
+        ? 1
+        : -1;
+
+    const dx = p1.x - p0.x;
+    const dy = p1.y - p0.y;
+    const len = Math.hypot(dx, dy);
+    const tx = dx / len;
+    const ty = dy / len;
+    const nx = -ty * dir;
+    const ny = tx * dir;
+
+    for (const seg of segments) {
+      const transform = (u: number, v: number) => ({
+        x: p0.x + u * len * tx + v * len * nx,
+        y: p0.y + u * len * ty + v * len * ny,
+      });
+      const cp1 = transform(seg[1][0], seg[1][1]);
+      const cp2 = transform(seg[2][0], seg[2][1]);
+      const p3 = transform(seg[3][0], seg[3][1]);
+      cmds.push(
+        `C ${cp1.x.toFixed(2)} ${cp1.y.toFixed(2)}, ${cp2.x.toFixed(2)} ${cp2.y.toFixed(2)}, ${p3.x.toFixed(2)} ${p3.y.toFixed(2)}`
+      );
+    }
+  }
+
+  return cmds.join(' ');
+}
+
+/**
  * Construye el patrón completo de rompecabezas clásico enmarcado dentro de un recuadro rectangular:
  * - El marco exterior es un rectángulo cortado en vector (#FF0000).
- * - Las líneas divisorias con lengüetas de encastre van 100% DE LADO A LADO de forma continua.
- * - Asegura que todas las líneas de corte estén completas y cierren cada una de las piezas.
+ * - Las líneas divisorias con lengüetas de encastre reforzadas van 100% DE LADO A LADO de forma continua.
+ * - La cuadrícula de piezas se adapta a la orientación y aspecto del dibujo para mantener piezas cuadradas.
  */
 export function generateFramedRectanglePuzzlePattern(
   frameWidth: number,
   frameHeight: number,
   pieceCount: PuzzlePieceCount
 ): ClippedPuzzleResult {
-  const option =
-    PUZZLE_PIECE_OPTIONS.find((o) => o.count === pieceCount) ||
-    PUZZLE_PIECE_OPTIONS[0];
-  const { cols, rows } = option;
+  const aspect = frameWidth / Math.max(1, frameHeight);
+  const { cols, rows } = getAdaptiveGridForPieceCount(pieceCount, aspect);
 
   const cellW = frameWidth / cols;
   const cellH = frameHeight / rows;
 
   const rawDividers: Point2D[][] = [];
+  const clippedPuzzlePathsD: string[] = [];
 
   // Divisores verticales continuos (de y = 0 a y = frameHeight)
   for (let c = 1; c < cols; c++) {
@@ -277,6 +368,16 @@ export function generateFramedRectanglePuzzlePattern(
       };
     }
     rawDividers.push(verticalCurve);
+
+    // Ruta SVG exacta en curvas cúbicas de Bézier con encastre reforzado
+    const dividerPathD = generateClassicJigsawDividerSvgPath(
+      { x: Number(x.toFixed(2)), y: 0 },
+      { x: Number(x.toFixed(2)), y: Number(frameHeight.toFixed(2)) },
+      rows,
+      true,
+      c
+    );
+    clippedPuzzlePathsD.push(dividerPathD);
   }
 
   // Divisores horizontales continuos (de x = 0 a x = frameWidth)
@@ -305,6 +406,16 @@ export function generateFramedRectanglePuzzlePattern(
       };
     }
     rawDividers.push(horizontalCurve);
+
+    // Ruta SVG exacta en curvas cúbicas de Bézier con encastre reforzado
+    const dividerPathD = generateClassicJigsawDividerSvgPath(
+      { x: 0, y: Number(y.toFixed(2)) },
+      { x: Number(frameWidth.toFixed(2)), y: Number(y.toFixed(2)) },
+      cols,
+      false,
+      r
+    );
+    clippedPuzzlePathsD.push(dividerPathD);
   }
 
   const polylineToD = (pts: Point2D[]) => {
@@ -314,9 +425,6 @@ export function generateFramedRectanglePuzzlePattern(
       .join(' ');
   };
 
-  const clippedPuzzlePathsD = rawDividers.map((poly) =>
-    polygonToPotraceBezierPath(poly, false, 0.75)
-  );
   const rawPuzzlePathsD = rawDividers.map(polylineToD);
   const outerRectD = `M 0 0 L ${frameWidth.toFixed(2)} 0 L ${frameWidth.toFixed(2)} ${frameHeight.toFixed(2)} L 0 ${frameHeight.toFixed(2)} Z`;
 
@@ -344,9 +452,11 @@ export function generateAndClipPuzzlePattern(
 
 /**
  * Ensambla el archivo SVG enmarcado dentro de un recuadro para corte y grabado en Creality Falcon 10W:
- * - RECUADRO RECTANGULAR: El puzzle se enmarca de forma ordenada en un rectángulo.
- * - CAPA DE GRABADO (Imagen Raster): El dibujo fusionado se centra estéticamente dentro del marco.
- * - CAPA DE CORTE (#FF0000): Las líneas divisorias del rompecabezas van de lado a lado completas, y el recuadro exterior conforma el corte perimetral.
+ * - RECUADRO AJUSTADO AL DIBUJO: Ancho y alto coinciden exactamente con la silueta real del dibujo.
+ * - TODAS LAS PIEZAS GRABADAS: El dibujo cubre el 100% del área interna del marco con ligero sangrado
+ *   para garantizar que no existan piezas vacías ni en los bordes ni en las esquinas.
+ * - ENCASTRE REFORZADO: Lengüetas con bulbo profundo y socavado antideslizante.
+ * - CAPA DE CORTE (#FF0000): Líneas continuas de lado a lado + contorno perimetral cerrado.
  */
 export function buildPuzzleSvgFromTracedResult(
   traced: TracedVectorResult,
@@ -359,16 +469,15 @@ export function buildPuzzleSvgFromTracedResult(
   laserSvg: string;
   puzzleResult: ClippedPuzzleResult;
 } {
-  const option =
-    PUZZLE_PIECE_OPTIONS.find((o) => o.count === puzzlePieces) ||
-    PUZZLE_PIECE_OPTIONS[0];
-  const { cols, rows } = option;
+  // Dimensiones efectivas del dibujo en milímetros
+  const drawingHeightMm = Math.max(60, Number((traced.heightMm || 120).toFixed(1)));
+  const drawingWidthMm = Math.max(40, Number((traced.widthMm || 120).toFixed(1)));
 
-  // Altura objetivo en mm (e.g. 120 mm)
-  const frameHeightMm = Math.max(60, Number((traced.heightMm || 120).toFixed(1)));
-  // Ancho proporcional a la cuadrícula de piezas para que cada pieza sea perfectamente cuadrada y simétrica
-  const frameWidthMm = Number((frameHeightMm * (cols / rows)).toFixed(1));
+  // 1. Ajuste del recuadro exactamente al tamaño real del dibujo (sin columnas o filas vacías)
+  const frameHeightMm = drawingHeightMm;
+  const frameWidthMm = drawingWidthMm;
 
+  // 2. Patrón de rompecabezas adaptado con encastre mecánico reforzado
   const puzzleResult = generateFramedRectanglePuzzlePattern(
     frameWidthMm,
     frameHeightMm,
@@ -378,18 +487,14 @@ export function buildPuzzleSvgFromTracedResult(
   const engravingHref =
     customEngravingImageUrl || traced.engravingImageDataUrl || '';
 
-  // Centrar el dibujo dentro del marco rectangular con un margen estético del 8%
-  const padX = Number((frameWidthMm * 0.08).toFixed(1));
-  const padY = Number((frameHeightMm * 0.08).toFixed(1));
-  const availW = frameWidthMm - padX * 2;
-  const availH = frameHeightMm - padY * 2;
+  // 3. Cobertura del 100% de las piezas:
+  // Se eliminan márgenes blancos y se aplica un sangrado suave (bleed 4%)
+  // para que todas las piezas perimetrales y de esquina reciban trazos grabados.
+  const bleedScale = 1.04;
+  const scale = Math.max(frameWidthMm / drawingWidthMm, frameHeightMm / drawingHeightMm) * bleedScale;
 
-  const srcW = Math.max(10, traced.widthMm || availW);
-  const srcH = Math.max(10, traced.heightMm || availH);
-  const scale = Math.min(availW / srcW, availH / srcH, 1.05);
-
-  const drawW = Number((srcW * scale).toFixed(1));
-  const drawH = Number((srcH * scale).toFixed(1));
+  const drawW = Number((drawingWidthMm * scale).toFixed(1));
+  const drawH = Number((drawingHeightMm * scale).toFixed(1));
   const drawX = Number(((frameWidthMm - drawW) / 2).toFixed(1));
   const drawY = Number(((frameHeightMm - drawH) / 2).toFixed(1));
 
@@ -405,11 +510,16 @@ export function buildPuzzleSvgFromTracedResult(
       lines.push(
         `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${sheetW}mm" height="${sheetH}mm" viewBox="0 0 ${sheetW} ${sheetH}">`
       );
+      lines.push(`  <defs>`);
+      lines.push(`    <clipPath id="clip-marco-preview">`);
+      lines.push(`      <rect x="0" y="0" width="${frameWidthMm}" height="${frameHeightMm}" rx="0" />`);
+      lines.push(`    </clipPath>`);
+      lines.push(`  </defs>`);
       lines.push(
         `  <rect x="1" y="1" width="${(sheetW - 2).toFixed(1)}" height="${(sheetH - 2).toFixed(1)}" rx="3" fill="#FFFFFF" stroke="#D97706" stroke-width="0.4" stroke-dasharray="2.5,2.5" />`
       );
       lines.push(
-        `  <text x="${(sheetW / 2).toFixed(1)}" y="5.2" text-anchor="middle" font-family="sans-serif" font-size="2.8" font-weight="bold" fill="#92400E">${hybridTitle} · Creality Falcon 10W (Recuadro Rectangular · ${puzzlePieces} Piezas · ${frameWidthMm}×${frameHeightMm} mm)</text>`
+        `  <text x="${(sheetW / 2).toFixed(1)}" y="5.2" text-anchor="middle" font-family="sans-serif" font-size="2.8" font-weight="bold" fill="#92400E">${hybridTitle} · Creality Falcon 10W (Recuadro Ajustado · ${puzzleResult.cols}×${puzzleResult.rows} = ${puzzlePieces} Piezas · ${frameWidthMm}×${frameHeightMm} mm)</text>`
       );
       lines.push(`  <g transform="translate(${marginMm}, ${marginMm})">`);
     } else {
@@ -417,19 +527,25 @@ export function buildPuzzleSvgFromTracedResult(
       lines.push(
         `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${frameWidthMm}mm" height="${frameHeightMm}mm" viewBox="0 0 ${frameWidthMm} ${frameHeightMm}">`
       );
+      lines.push(`  <defs>`);
+      lines.push(`    <clipPath id="clip-marco-falcon">`);
+      lines.push(`      <rect x="0" y="0" width="${frameWidthMm}" height="${frameHeightMm}" rx="0" />`);
+      lines.push(`    </clipPath>`);
+      lines.push(`  </defs>`);
       lines.push(`  <g id="ROMPECABEZAS-RECTANGULAR-FALCON-10W">`);
     }
 
-    // CAPA 1: DIBUJO PARA GRABADO LÁSER EN CREALITY FALCON 10W (IMAGEN RASTER B/N ENMARCADA)
+    // CAPA 1: DIBUJO PARA GRABADO LÁSER EN CREALITY FALCON 10W (IMAGEN RASTER B/N ENMARCADA SIN MÁRGENES VACÍOS)
     if (engravingHref) {
-      lines.push(`    <g id="CAPA-GRABADO-IMAGEN-FALCON-10W">`);
+      const clipId = withAnnotations ? 'clip-marco-preview' : 'clip-marco-falcon';
+      lines.push(`    <g id="CAPA-GRABADO-IMAGEN-FALCON-10W" clip-path="url(#${clipId})">`);
       lines.push(
         `      <image x="${drawX}" y="${drawY}" width="${drawW}" height="${drawH}" preserveAspectRatio="none" href="${engravingHref}" xlink:href="${engravingHref}" />`
       );
       lines.push(`    </g>`);
     }
 
-    // CAPA 2: LÍNEAS DE CORTE DEL PUZZLE (ROJO #FF0000 - DE LADO A LADO)
+    // CAPA 2: LÍNEAS DE CORTE DEL PUZZLE (ROJO #FF0000 - DE LADO A LADO CON ENCASTE REFORZADO)
     lines.push(
       `    <g id="CAPA-CORTE-LINEAS-PUZZLE" fill="none" stroke="#FF0000" stroke-width="${withAnnotations ? '0.45' : '0.20'}" stroke-linecap="round" stroke-linejoin="round">`
     );
@@ -453,7 +569,7 @@ export function buildPuzzleSvgFromTracedResult(
 
     if (withAnnotations) {
       lines.push(
-        `  <text x="${(sheetW / 2).toFixed(1)}" y="${(sheetH - 2.2).toFixed(1)}" text-anchor="middle" font-family="sans-serif" font-size="2.4" fill="#B91C1C">Capa Imagen: Grabado Falcon 10W · Vectores Rojos (#FF0000): Corte Recuadro + ${puzzlePieces} Piezas de lado a lado</text>`
+        `  <text x="${(sheetW / 2).toFixed(1)}" y="${(sheetH - 2.2).toFixed(1)}" text-anchor="middle" font-family="sans-serif" font-size="2.4" fill="#B91C1C">Capa Imagen: Grabado Falcon 10W (100% Cobertura) · Vectores Rojos (#FF0000): Marco + ${puzzlePieces} Piezas Encastre Reforzado</text>`
       );
     }
 

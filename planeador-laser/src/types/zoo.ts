@@ -40,43 +40,80 @@ export const PUZZLE_PIECE_OPTIONS: {
     count: 20,
     cols: 5,
     rows: 4,
-    label: '20 Piezas (5×4)',
+    label: '20 Piezas',
     difficulty: 'Nivel Inicial',
-    description: '20 piezas grandes en marco rectangular de 5×4 encastres, ideal para armado rápido.',
+    description: '20 piezas grandes en marco ajustado al dibujo con encaje reforzado antideslizante.',
   },
   {
     count: 30,
     cols: 6,
     rows: 5,
-    label: '30 Piezas (6×5)',
+    label: '30 Piezas',
     difficulty: 'Nivel Explorador',
-    description: '30 piezas en cuadrícula equilibrada de 6×5 con encastre clásico de lado a lado.',
+    description: '30 piezas en cuadrícula equilibrada con pestañas de bulbo profundo de lado a lado.',
   },
   {
     count: 40,
     cols: 8,
     rows: 5,
-    label: '40 Piezas (8×5)',
+    label: '40 Piezas',
     difficulty: 'Nivel Intermedio',
-    description: '40 piezas de tamaño medio, desafiante, ordenado y proporcional.',
+    description: '40 piezas de tamaño medio, desafiante y ordenado con todas las piezas grabadas.',
   },
   {
     count: 50,
     cols: 10,
     rows: 5,
-    label: '50 Piezas (10×5)',
+    label: '50 Piezas',
     difficulty: 'Nivel Avanzado',
-    description: '50 piezas de encastre continuo de borde a borde dentro del marco rectangular.',
+    description: '50 piezas de encastre mecánico continuo de borde a borde dentro del marco.',
   },
   {
     count: 60,
     cols: 10,
     rows: 6,
-    label: '60 Piezas (10×6)',
+    label: '60 Piezas',
     difficulty: 'Nivel Maestro',
-    description: '60 piezas de máxima precisión y desafío para corte láser en balsa/MDF.',
+    description: '60 piezas de máxima precisión y agarre firme para corte láser en madera/MDF.',
   },
 ];
+
+/**
+ * Calcula la cuadrícula óptima (columnas x filas) para una cantidad dada de piezas
+ * adaptándose automáticamente a la orientación y relación de aspecto (ancho/alto) del dibujo.
+ */
+export function getAdaptiveGridForPieceCount(
+  count: PuzzlePieceCount,
+  aspectRatio = 1.0
+): { cols: number; rows: number; totalPieces: number } {
+  // aspectRatio = ancho / alto
+  if (count === 20) {
+    return aspectRatio < 0.95
+      ? { cols: 4, rows: 5, totalPieces: 20 }
+      : { cols: 5, rows: 4, totalPieces: 20 };
+  }
+  if (count === 30) {
+    return aspectRatio < 0.95
+      ? { cols: 5, rows: 6, totalPieces: 30 }
+      : { cols: 6, rows: 5, totalPieces: 30 };
+  }
+  if (count === 40) {
+    return aspectRatio < 0.95
+      ? { cols: 5, rows: 8, totalPieces: 40 }
+      : { cols: 8, rows: 5, totalPieces: 40 };
+  }
+  if (count === 50) {
+    if (aspectRatio < 0.75) return { cols: 5, rows: 10, totalPieces: 50 };
+    if (aspectRatio <= 1.35) return { cols: 7, rows: 7, totalPieces: 49 };
+    return { cols: 10, rows: 5, totalPieces: 50 };
+  }
+  if (count === 60) {
+    return aspectRatio < 0.95
+      ? { cols: 6, rows: 10, totalPieces: 60 }
+      : { cols: 10, rows: 6, totalPieces: 60 };
+  }
+  return { cols: 6, rows: 5, totalPieces: 30 };
+}
 
 /**
  * Prompt interno obligatorio para la API de visión y generación de imágenes multimodales (Gemini Image Generation)

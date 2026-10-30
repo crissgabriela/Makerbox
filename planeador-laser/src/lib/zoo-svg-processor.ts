@@ -337,10 +337,8 @@ export async function processZooFusionPuzzle(
   const studentPrompt = (request.studentPrompt || '').trim();
   const targetHeightMm = Math.min(180, Math.max(60, Number(request.targetHeightMm) || 120));
 
-  const option =
-    PUZZLE_PIECE_OPTIONS.find((o) => o.count === puzzlePieces) ||
-    PUZZLE_PIECE_OPTIONS[0];
-  const targetWidthMm = Number((targetHeightMm * (option.cols / option.rows)).toFixed(1));
+  // Proporción natural y equilibrada para la ilustración (relación 4:5 aprox, ideal para animales y personajes)
+  const targetWidthMm = Number((targetHeightMm * 0.85).toFixed(1));
 
   const areDefaultSamples =
     images.length > 0 && images.every((img) => img.id.startsWith('sample-'));
@@ -438,10 +436,10 @@ export async function processZooFusionPuzzle(
     metrics: {
       imagesCount: images.length,
       puzzlePieces,
-      gridCols: option.cols,
-      gridRows: option.rows,
-      widthMm: targetWidthMm,
-      heightMm: targetHeightMm,
+      gridCols: built.puzzleResult.cols,
+      gridRows: built.puzzleResult.rows,
+      widthMm: built.puzzleResult.frameWidthMm,
+      heightMm: built.puzzleResult.frameHeightMm,
       strokeWeight,
       outerContourNodes: traced.outerContourNodes,
       innerVectorPathsCount: 1, // 1 imagen raster unificada para grabado en Falcon 10W
