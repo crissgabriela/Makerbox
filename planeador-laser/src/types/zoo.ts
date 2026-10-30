@@ -1,4 +1,4 @@
-export type PuzzlePieceCount = 20 | 25 | 30 | 40;
+export type PuzzlePieceCount = 20 | 30 | 40 | 50 | 60;
 
 export type EngravingStrokeWeight = 'ultra-thin' | 'thin' | 'normal';
 
@@ -42,31 +42,39 @@ export const PUZZLE_PIECE_OPTIONS: {
     rows: 4,
     label: '20 Piezas (5×4)',
     difficulty: 'Nivel Inicial',
-    description: 'Cuadrícula de 5×4 encastres clásicos ideal para armado rápido en taller.',
-  },
-  {
-    count: 25,
-    cols: 5,
-    rows: 5,
-    label: '25 Piezas (5×5)',
-    difficulty: 'Nivel Explorador',
-    description: 'Distribución simétrica de 5×5 piezas con excelente nivel de detalle.',
+    description: '20 piezas grandes en marco rectangular de 5×4 encastres, ideal para armado rápido.',
   },
   {
     count: 30,
     cols: 6,
     rows: 5,
     label: '30 Piezas (6×5)',
-    difficulty: 'Nivel Intermedio',
-    description: 'Mayor densidad de lengüetas sobre la silueta del dibujo híbrido.',
+    difficulty: 'Nivel Explorador',
+    description: '30 piezas en cuadrícula equilibrada de 6×5 con encastre clásico de lado a lado.',
   },
   {
     count: 40,
     cols: 8,
     rows: 5,
     label: '40 Piezas (8×5)',
-    difficulty: 'Nivel Desafío',
-    description: 'Máximo desafío de armado con 40 piezas recortadas al contorno exterior.',
+    difficulty: 'Nivel Intermedio',
+    description: '40 piezas de tamaño medio, desafiante, ordenado y proporcional.',
+  },
+  {
+    count: 50,
+    cols: 10,
+    rows: 5,
+    label: '50 Piezas (10×5)',
+    difficulty: 'Nivel Avanzado',
+    description: '50 piezas de encastre continuo de borde a borde dentro del marco rectangular.',
+  },
+  {
+    count: 60,
+    cols: 10,
+    rows: 6,
+    label: '60 Piezas (10×6)',
+    difficulty: 'Nivel Maestro',
+    description: '60 piezas de máxima precisión y desafío para corte láser en balsa/MDF.',
   },
 ];
 

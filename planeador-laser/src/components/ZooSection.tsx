@@ -158,8 +158,8 @@ async function buildFalconEngravingAndVectorCutClient(
         cleanedEngravingPngUrl,
         outerNodes: traced.outerPolygon.length,
         clippedSegmentsCount: built.puzzleResult.clippedPuzzlePathsD.length,
-        widthMm: traced.widthMm,
-        heightMm: traced.heightMm,
+        widthMm: built.puzzleResult.frameWidthMm,
+        heightMm: built.puzzleResult.frameHeightMm,
       });
     };
     img.src = rasterUrl;
@@ -564,7 +564,7 @@ function createSampleHandDrawnSketches(): UploadedSketchInput[] {
 
 export function ZooSection({ onBackToMenu }: ZooSectionProps) {
   const [images, setImages] = useState<UploadedSketchInput[]>([]);
-  const [puzzlePieces, setPuzzlePieces] = useState<PuzzlePieceCount>(25);
+  const [puzzlePieces, setPuzzlePieces] = useState<PuzzlePieceCount>(30);
   const [engravingStroke, setEngravingStroke] = useState<EngravingStrokeWeight>('thin');
   const [targetHeightMm, setTargetHeightMm] = useState<number>(120);
   const [showAnnotations, setShowAnnotations] = useState<boolean>(true);
@@ -868,7 +868,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
           laserSvg: falconBuilt.laserSvg,
           rasterDataUrl: dataUrl,
           hasNativeGeminiRaster: true,
-          assistantMessage: `¡Listo para la Creality Falcon 10W! Tu imagen "${file.name}" se conservó en formato de imagen sin vectorizar para el grabado láser con trazos optimizados para alta velocidad, y se vectorizó únicamente su contorno exterior junto con las líneas del rompecabezas de ${puzzlePieces} piezas (${option.cols}×${option.rows}).`,
+          assistantMessage: `¡Listo para la Creality Falcon 10W! Tu imagen "${file.name}" se enmarcó dentro de un recuadro rectangular para el grabado láser con trazos optimizados para alta velocidad, y se vectorizaron las líneas de corte del rompecabezas de lado a lado (${puzzlePieces} piezas · ${option.cols}×${option.rows}) y el corte perimetral en rojo #FF0000.`,
           hybridTitle: title,
           internalPromptUsed: AI_FUSION_INTERNAL_PROMPT,
           metrics: {
@@ -882,8 +882,8 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
             outerContourNodes: falconBuilt.outerNodes,
             innerVectorPathsCount: 1,
             clippedPuzzleSegmentsCount: falconBuilt.clippedSegmentsCount,
-            vectorizerEngine: 'Imagen PNG (Grabado Falcon 10W) + Contorno y Puzzle Vectorizados',
-            aiModelUsed: 'Gemini Image + Creality Falcon 10W Processor',
+            vectorizerEngine: 'Imagen PNG (Grabado Falcon 10W) + Recuadro y Puzzle Vectorizados (#FF0000)',
+            aiModelUsed: 'Gemini 3 Pro / Imagen 3 + Creality Falcon 10W Processor',
           },
         });
       } else {
@@ -998,7 +998,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
           )}
           <span className="hidden sm:inline-block h-5 w-px bg-slate-200" />
           <span className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
-            🧩 Taller 1 · Creality Falcon 10W (Imagen de Grabado + Contorno/Puzzle Vectorizados)
+            🧩 Taller 1 · Falcon 10W (Recuadro Rectangular · Grabado PNG + Corte Puzzle de lado a lado #FF0000)
           </span>
         </div>
 
@@ -1009,7 +1009,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 text-xs font-extrabold transition-colors cursor-pointer"
           >
             <KeyRound className="w-3.5 h-3.5 text-amber-700" />
-            <span>Configurar API Key Gemini Image</span>
+            <span>Configurar Modelos Gemini 3 Pro / Imagen 3</span>
           </button>
         </div>
       </div>
@@ -1018,11 +1018,14 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
       {showApiConfig && (
         <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
           <div className="space-y-1 max-w-2xl">
-            <div className="font-extrabold text-amber-950">
-              Agente Nativo Google Gemini Image Generation (`gemini-2.5-flash-image` / `gemini-2.0-flash-preview-image-generation`)
+            <div className="font-extrabold text-amber-950 flex items-center gap-2">
+              <span>Agente Avanzado Google Gemini 3 Pro / 3.1 & Imagen 3</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-black">
+                Modelos Pro & Imagen 3
+              </span>
             </div>
             <p className="text-amber-900 leading-relaxed">
-              Ingresa tu <strong>Google Gemini API Key</strong> aquí o configúrala como variable de entorno <code className="font-mono bg-white px-1 rounded">GEMINI_API_KEY</code> en Vercel.
+              Compatible con los motores más elaborados de Google: <strong>Gemini 3 Pro Image</strong>, <strong>Gemini 3.1 Pro</strong>, <strong>Gemini 3.1 Flash Image</strong> e <strong>Imagen 3</strong>. Si tu API Key cuenta con facturación activa en Google Cloud, la app generará las imágenes con estos motores de máxima elaboración artística. Si usas el plan gratuito (Free Tier), el motor morfológico y de visión multimodal ensamblará y afinará tus dibujos automáticamente.
             </p>
           </div>
           <input
@@ -1044,11 +1047,11 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                 <Sparkles className="w-3 h-3" /> Creality Falcon 10W
               </span>
               <h1 className="text-base sm:text-lg font-black tracking-tight">
-                Fusión IA para Grabado + Rompecabezas (20–40 Piezas) 🧩
+                Fusión IA para Grabado + Rompecabezas en Recuadro (20–60 Piezas) 🧩
               </h1>
             </div>
             <p className="text-amber-100 text-xs leading-normal">
-              Sube de 3 a 4 dibujos a mano alzada. Grabado en imagen PNG (alta velocidad) + contorno y corte puzzle en #FF0000.
+              Sube de 3 a 4 dibujos a mano alzada. Grabado en imagen PNG enmarcada + corte del recuadro y líneas del puzzle de lado a lado (#FF0000).
             </p>
           </div>
 
@@ -1236,19 +1239,19 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
             </div>
           </div>
 
-          {/* Tarjeta 2: Selector de Patrón de Rompecabezas (20, 25, 30 o 40 Piezas) */}
+          {/* Tarjeta 2: Selector de Patrón de Rompecabezas (20, 30, 40, 50 o 60 Piezas) */}
           <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
               <label className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
                 <Puzzle className="w-4 h-4 text-amber-600" />
-                2. Cantidad de Piezas (20 a 40 Piezas)
+                2. Cantidad de Piezas (20 a 60 Piezas en Recuadro)
               </label>
               <span className="text-[11px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-full">
                 Corte Vectorial #FF0000
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               {PUZZLE_PIECE_OPTIONS.map((opt) => {
                 const isSelected = puzzlePieces === opt.count;
                 return (
@@ -1294,7 +1297,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
               <div className="flex justify-between text-[10px] text-slate-400">
                 <span>80 mm</span>
                 <span className="text-emerald-700 font-semibold">
-                  120 mm (Recomendado 20–40 piezas)
+                  120 mm (Recomendado 20–60 piezas)
                 </span>
                 <span>180 mm</span>
               </div>

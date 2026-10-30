@@ -37,11 +37,11 @@ async function tryGeminiNativeImageGeneration(
   modelUsed: string;
 } | null> {
   const imageModels = [
-    'gemini-3.1-flash-image',
-    'gemini-2.5-flash-image',
-    'gemini-3.1-flash-lite-image',
-    'gemini-3-pro-image-preview',
     'gemini-3-pro-image',
+    'gemini-3-pro-image-preview',
+    'gemini-3.1-flash-image',
+    'gemini-3.1-flash-lite-image',
+    'gemini-2.5-flash-image',
     'gemini-2.5-flash-image-preview',
     'gemini-2.0-flash-preview-image-generation',
   ];
@@ -137,8 +137,9 @@ async function analyzeSketchesWithGeminiVision(
   modelUsed: string;
 } | null> {
   const visionModels = [
-    'gemini-3.5-flash-lite',
+    'gemini-3.1-pro-preview',
     'gemini-3.8-flash',
+    'gemini-3.5-flash-lite',
     'gemini-flash-latest',
   ];
 
@@ -321,20 +322,25 @@ function synthesizeOrganicGeminiStyleDrawing(
 
 /**
  * Procesador principal del Taller 1 para Creality Falcon 10W:
- * - El dibujo generado se mantiene como IMAGEN RASTER de alto contraste (para modo Grabado de Imagen).
- * - El CONTORNO EXTERIOR y las LÍNEAS DEL ROMPECABEZAS (20, 25, 30 o 40 piezas) se VECTORIZAN en #FF0000 para Corte.
+ * - El rompecabezas se genera dentro de un RECUADRO RECTANGULAR ordenado.
+ * - El dibujo híbrido se mantiene como IMAGEN RASTER de alto contraste (Capa de Grabado).
+ * - El RECUADRO EXTERIOR y las LÍNEAS DEL PUZZLE (20, 30, 40, 50 o 60 piezas) van de lado a lado completas en #FF0000 (Capa de Corte).
  */
 export async function processZooFusionPuzzle(
   request: ZooFusionRequest
 ): Promise<ZooFusionResponse> {
   const images = Array.isArray(request.images) ? request.images : [];
-  const puzzlePieces: PuzzlePieceCount = [20, 25, 30, 40].includes(request.puzzlePieces)
+  const puzzlePieces: PuzzlePieceCount = [20, 30, 40, 50, 60].includes(request.puzzlePieces)
     ? request.puzzlePieces
-    : 25;
+    : 30;
   const strokeWeight = request.strokeWeight || 'thin';
   const studentPrompt = (request.studentPrompt || '').trim();
   const targetHeightMm = Math.min(180, Math.max(60, Number(request.targetHeightMm) || 120));
-  const targetWidthMm = Number((targetHeightMm * 1.15).toFixed(1));
+
+  const option =
+    PUZZLE_PIECE_OPTIONS.find((o) => o.count === puzzlePieces) ||
+    PUZZLE_PIECE_OPTIONS[0];
+  const targetWidthMm = Number((targetHeightMm * (option.cols / option.rows)).toFixed(1));
 
   const areDefaultSamples =
     images.length > 0 && images.every((img) => img.id.startsWith('sample-'));
@@ -420,10 +426,6 @@ export async function processZooFusionPuzzle(
     finalTitle,
     Boolean(request.includeAnnotations ?? true)
   );
-
-  const option =
-    PUZZLE_PIECE_OPTIONS.find((o) => o.count === puzzlePieces) ||
-    PUZZLE_PIECE_OPTIONS[0];
 
   return {
     previewSvg: built.previewSvg,

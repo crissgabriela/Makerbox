@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const images = Array.isArray(body.images) ? body.images : [];
-    const puzzlePieces = (Number(body.puzzlePieces) || 25) as PuzzlePieceCount;
+    const puzzlePieces = (Number(body.puzzlePieces) || 30) as PuzzlePieceCount;
     const strokeWeight = (body.strokeWeight || 'thin') as EngravingStrokeWeight;
     const studentPrompt = typeof body.studentPrompt === 'string' ? body.studentPrompt : '';
     const targetHeightMm = Number(body.targetHeightMm) || 120;

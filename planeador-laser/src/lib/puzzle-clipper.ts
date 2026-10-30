@@ -8,12 +8,16 @@ import { PuzzlePieceCount, PUZZLE_PIECE_OPTIONS } from '@/types/zoo';
 export interface ClippedPuzzleResult {
   cols: number;
   rows: number;
-  /** Polilíneas del patrón de rompecabezas recortadas exactamente al contorno exterior */
+  frameWidthMm: number;
+  frameHeightMm: number;
+  /** Polilíneas completas del patrón de rompecabezas de lado a lado */
   clippedPuzzlePolylines: Point2D[][];
-  /** Comandos SVG d="" de las líneas de corte del rompecabezas recortadas al contorno */
+  /** Comandos SVG d="" de las líneas divisorias de corte de lado a lado */
   clippedPuzzlePathsD: string[];
   /** Comandos SVG d="" del patrón completo */
   rawPuzzlePathsD: string[];
+  /** Atributo d="" del recuadro exterior de corte */
+  outerRectD: string;
 }
 
 /**
@@ -227,12 +231,14 @@ function generateClassicJigsawEdgePoints(
 }
 
 /**
- * Construye el patrón completo de rompecabezas clásico para la cantidad de piezas seleccionada (20, 25, 30 o 40)
- * y aplica la operación booleana de intersección contra el contorno exterior del dibujo híbrido.
+ * Construye el patrón completo de rompecabezas clásico enmarcado dentro de un recuadro rectangular:
+ * - El marco exterior es un rectángulo cortado en vector (#FF0000).
+ * - Las líneas divisorias con lengüetas de encastre van 100% DE LADO A LADO de forma continua.
+ * - Asegura que todas las líneas de corte estén completas y cierren cada una de las piezas.
  */
-export function generateAndClipPuzzlePattern(
-  outerPolygon: Point2D[],
-  bbox: { minX: number; minY: number; maxX: number; maxY: number },
+export function generateFramedRectanglePuzzlePattern(
+  frameWidth: number,
+  frameHeight: number,
   pieceCount: PuzzlePieceCount
 ): ClippedPuzzleResult {
   const option =
@@ -240,19 +246,18 @@ export function generateAndClipPuzzlePattern(
     PUZZLE_PIECE_OPTIONS[0];
   const { cols, rows } = option;
 
-  const width = bbox.maxX - bbox.minX;
-  const height = bbox.maxY - bbox.minY;
-  const cellW = width / cols;
-  const cellH = height / rows;
+  const cellW = frameWidth / cols;
+  const cellH = frameHeight / rows;
 
   const rawDividers: Point2D[][] = [];
 
+  // Divisores verticales continuos (de y = 0 a y = frameHeight)
   for (let c = 1; c < cols; c++) {
-    const x = bbox.minX + c * cellW;
+    const x = c * cellW;
     const verticalCurve: Point2D[] = [];
     for (let r = 0; r < rows; r++) {
-      const y0 = bbox.minY + r * cellH;
-      const y1 = bbox.minY + (r + 1) * cellH;
+      const y0 = r * cellH;
+      const y1 = (r + 1) * cellH;
       const dir: 1 | -1 = (c + r) % 2 === 0 ? 1 : -1;
       const edgePts = generateClassicJigsawEdgePoints(
         { x, y: y0 },
@@ -263,15 +268,24 @@ export function generateAndClipPuzzlePattern(
       if (r > 0) edgePts.shift();
       verticalCurve.push(...edgePts);
     }
+    // Asegurar unión exacta milimétrica con los bordes superior e inferior del recuadro
+    if (verticalCurve.length > 0) {
+      verticalCurve[0] = { x: Number(x.toFixed(2)), y: 0 };
+      verticalCurve[verticalCurve.length - 1] = {
+        x: Number(x.toFixed(2)),
+        y: Number(frameHeight.toFixed(2)),
+      };
+    }
     rawDividers.push(verticalCurve);
   }
 
+  // Divisores horizontales continuos (de x = 0 a x = frameWidth)
   for (let r = 1; r < rows; r++) {
-    const y = bbox.minY + r * cellH;
+    const y = r * cellH;
     const horizontalCurve: Point2D[] = [];
     for (let c = 0; c < cols; c++) {
-      const x0 = bbox.minX + c * cellW;
-      const x1 = bbox.minX + (c + 1) * cellW;
+      const x0 = c * cellW;
+      const x1 = (c + 1) * cellW;
       const dir: 1 | -1 = (r + c) % 2 === 0 ? -1 : 1;
       const edgePts = generateClassicJigsawEdgePoints(
         { x: x0, y },
@@ -282,17 +296,15 @@ export function generateAndClipPuzzlePattern(
       if (c > 0) edgePts.shift();
       horizontalCurve.push(...edgePts);
     }
-    rawDividers.push(horizontalCurve);
-  }
-
-  const clippedPuzzlePolylines: Point2D[][] = [];
-  for (const divider of rawDividers) {
-    const clippedSegments = clipPolylineToPolygon(divider, outerPolygon);
-    for (const seg of clippedSegments) {
-      if (seg.length >= 2) {
-        clippedPuzzlePolylines.push(seg);
-      }
+    // Asegurar unión exacta milimétrica con los bordes izquierdo y derecho del recuadro
+    if (horizontalCurve.length > 0) {
+      horizontalCurve[0] = { x: 0, y: Number(y.toFixed(2)) };
+      horizontalCurve[horizontalCurve.length - 1] = {
+        x: Number(frameWidth.toFixed(2)),
+        y: Number(y.toFixed(2)),
+      };
     }
+    rawDividers.push(horizontalCurve);
   }
 
   const polylineToD = (pts: Point2D[]) => {
@@ -302,25 +314,39 @@ export function generateAndClipPuzzlePattern(
       .join(' ');
   };
 
-  const clippedPuzzlePathsD = clippedPuzzlePolylines.map((poly) =>
-    polygonToPotraceBezierPath(poly, false, 0.7)
+  const clippedPuzzlePathsD = rawDividers.map((poly) =>
+    polygonToPotraceBezierPath(poly, false, 0.75)
   );
   const rawPuzzlePathsD = rawDividers.map(polylineToD);
+  const outerRectD = `M 0 0 L ${frameWidth.toFixed(2)} 0 L ${frameWidth.toFixed(2)} ${frameHeight.toFixed(2)} L 0 ${frameHeight.toFixed(2)} Z`;
 
   return {
     cols,
     rows,
-    clippedPuzzlePolylines,
+    frameWidthMm: frameWidth,
+    frameHeightMm: frameHeight,
+    clippedPuzzlePolylines: rawDividers,
     clippedPuzzlePathsD,
     rawPuzzlePathsD,
+    outerRectD,
   };
 }
 
+export function generateAndClipPuzzlePattern(
+  outerPolygon: Point2D[],
+  bbox: { minX: number; minY: number; maxX: number; maxY: number },
+  pieceCount: PuzzlePieceCount
+): ClippedPuzzleResult {
+  const width = Math.max(10, bbox.maxX - bbox.minX);
+  const height = Math.max(10, bbox.maxY - bbox.minY);
+  return generateFramedRectanglePuzzlePattern(width, height, pieceCount);
+}
+
 /**
- * Ensambla el archivo SVG de previsualización y el archivo SVG limpio para corte/grabado en Creality Falcon 10W:
- * - CAPA 1 (IMAGEN RASTER NO VECTORIZADA): <image> incrustada con fondo limpio para grabado de imagen en Falcon 10W.
- * - CAPA 2 (VECTORES DE CORTE #FF0000): Líneas del rompecabezas (20–40 piezas) recortadas booleanamente al contorno.
- * - CAPA 3 (VECTOR DE CORTE EXTERIOR #FF0000): Contorno exterior cerrado vectorizado alrededor de la figura.
+ * Ensambla el archivo SVG enmarcado dentro de un recuadro para corte y grabado en Creality Falcon 10W:
+ * - RECUADRO RECTANGULAR: El puzzle se enmarca de forma ordenada en un rectángulo.
+ * - CAPA DE GRABADO (Imagen Raster): El dibujo fusionado se centra estéticamente dentro del marco.
+ * - CAPA DE CORTE (#FF0000): Las líneas divisorias del rompecabezas van de lado a lado completas, y el recuadro exterior conforma el corte perimetral.
  */
 export function buildPuzzleSvgFromTracedResult(
   traced: TracedVectorResult,
@@ -333,90 +359,101 @@ export function buildPuzzleSvgFromTracedResult(
   laserSvg: string;
   puzzleResult: ClippedPuzzleResult;
 } {
-  const outerPolygon = traced.outerPolygon;
-  const outerContourD = traced.outerPathD;
-  const engravingHref =
-    customEngravingImageUrl || traced.engravingImageDataUrl || '';
+  const option =
+    PUZZLE_PIECE_OPTIONS.find((o) => o.count === puzzlePieces) ||
+    PUZZLE_PIECE_OPTIONS[0];
+  const { cols, rows } = option;
 
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const pt of outerPolygon) {
-    if (pt.x < minX) minX = pt.x;
-    if (pt.y < minY) minY = pt.y;
-    if (pt.x > maxX) maxX = pt.x;
-    if (pt.y > maxY) maxY = pt.y;
-  }
+  // Altura objetivo en mm (e.g. 120 mm)
+  const frameHeightMm = Math.max(60, Number((traced.heightMm || 120).toFixed(1)));
+  // Ancho proporcional a la cuadrícula de piezas para que cada pieza sea perfectamente cuadrada y simétrica
+  const frameWidthMm = Number((frameHeightMm * (cols / rows)).toFixed(1));
 
-  const puzzleResult = generateAndClipPuzzlePattern(
-    outerPolygon,
-    { minX, minY, maxX, maxY },
+  const puzzleResult = generateFramedRectanglePuzzlePattern(
+    frameWidthMm,
+    frameHeightMm,
     puzzlePieces
   );
 
-  const marginMm = 7;
-  const sheetW = Number((traced.widthMm + marginMm * 2).toFixed(1));
-  const sheetH = Number((traced.heightMm + marginMm * 2).toFixed(1));
+  const engravingHref =
+    customEngravingImageUrl || traced.engravingImageDataUrl || '';
+
+  // Centrar el dibujo dentro del marco rectangular con un margen estético del 8%
+  const padX = Number((frameWidthMm * 0.08).toFixed(1));
+  const padY = Number((frameHeightMm * 0.08).toFixed(1));
+  const availW = frameWidthMm - padX * 2;
+  const availH = frameHeightMm - padY * 2;
+
+  const srcW = Math.max(10, traced.widthMm || availW);
+  const srcH = Math.max(10, traced.heightMm || availH);
+  const scale = Math.min(availW / srcW, availH / srcH, 1.05);
+
+  const drawW = Number((srcW * scale).toFixed(1));
+  const drawH = Number((srcH * scale).toFixed(1));
+  const drawX = Number(((frameWidthMm - drawW) / 2).toFixed(1));
+  const drawY = Number(((frameHeightMm - drawH) / 2).toFixed(1));
+
+  const marginMm = 8;
+  const sheetW = Number((frameWidthMm + marginMm * 2).toFixed(1));
+  const sheetH = Number((frameHeightMm + marginMm * 2).toFixed(1));
 
   const renderSvg = (withAnnotations: boolean): string => {
     const lines: string[] = [];
     lines.push(`<?xml version="1.0" encoding="UTF-8"?>`);
-    lines.push(
-      `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${sheetW}mm" height="${sheetH}mm" viewBox="0 0 ${sheetW} ${sheetH}">`
-    );
-
-    lines.push(`  <defs>`);
-    lines.push(`    <clipPath id="hybrid-outer-contour-clip">`);
-    lines.push(`      <path d="${outerContourD}" />`);
-    lines.push(`    </clipPath>`);
-    lines.push(`  </defs>`);
 
     if (withAnnotations) {
+      lines.push(
+        `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${sheetW}mm" height="${sheetH}mm" viewBox="0 0 ${sheetW} ${sheetH}">`
+      );
       lines.push(
         `  <rect x="1" y="1" width="${(sheetW - 2).toFixed(1)}" height="${(sheetH - 2).toFixed(1)}" rx="3" fill="#FFFFFF" stroke="#D97706" stroke-width="0.4" stroke-dasharray="2.5,2.5" />`
       );
       lines.push(
-        `  <text x="${(sheetW / 2).toFixed(1)}" y="4.8" text-anchor="middle" font-family="sans-serif" font-size="2.7" font-weight="bold" fill="#92400E">${hybridTitle} · Creality Falcon 10W (${puzzlePieces} Piezas · ${traced.widthMm}×${traced.heightMm} mm)</text>`
+        `  <text x="${(sheetW / 2).toFixed(1)}" y="5.2" text-anchor="middle" font-family="sans-serif" font-size="2.8" font-weight="bold" fill="#92400E">${hybridTitle} · Creality Falcon 10W (Recuadro Rectangular · ${puzzlePieces} Piezas · ${frameWidthMm}×${frameHeightMm} mm)</text>`
       );
+      lines.push(`  <g transform="translate(${marginMm}, ${marginMm})">`);
+    } else {
+      // SVG Limpio para LightBurn / LaserGRBL listo para corte y grabado directo
+      lines.push(
+        `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${frameWidthMm}mm" height="${frameHeightMm}mm" viewBox="0 0 ${frameWidthMm} ${frameHeightMm}">`
+      );
+      lines.push(`  <g id="ROMPECABEZAS-RECTANGULAR-FALCON-10W">`);
     }
 
-    lines.push(`  <g transform="translate(${marginMm}, ${marginMm})">`);
-
-    // CAPA 1: IMAGEN RASTER PARA GRABADO LÁSER EN CREALITY FALCON 10W (NO VECTORIZADA)
+    // CAPA 1: DIBUJO PARA GRABADO LÁSER EN CREALITY FALCON 10W (IMAGEN RASTER B/N ENMARCADA)
     if (engravingHref) {
+      lines.push(`    <g id="CAPA-GRABADO-IMAGEN-FALCON-10W">`);
       lines.push(
-        `    <g id="CAPA-IMAGEN-GRABADO-FALCON-10W" clip-path="url(#hybrid-outer-contour-clip)">`
-      );
-      lines.push(
-        `      <image x="0" y="0" width="${traced.widthMm}" height="${traced.heightMm}" preserveAspectRatio="none" href="${engravingHref}" xlink:href="${engravingHref}" />`
+        `      <image x="${drawX}" y="${drawY}" width="${drawW}" height="${drawH}" preserveAspectRatio="none" href="${engravingHref}" xlink:href="${engravingHref}" />`
       );
       lines.push(`    </g>`);
     }
 
-    // CAPA 2: CORTE LÁSER VECTORIAL INTERIOR (Rojo #FF0000) — Líneas de Rompecabezas recortadas al contorno
+    // CAPA 2: LÍNEAS DE CORTE DEL PUZZLE (ROJO #FF0000 - DE LADO A LADO)
     lines.push(
-      `    <g id="CAPA-CORTE-ROMPECABEZAS-VECTORIZADO" clip-path="url(#hybrid-outer-contour-clip)" fill="none" stroke="#FF0000" stroke-width="${withAnnotations ? '0.45' : '0.20'}" stroke-linecap="round" stroke-linejoin="round">`
+      `    <g id="CAPA-CORTE-LINEAS-PUZZLE" fill="none" stroke="#FF0000" stroke-width="${withAnnotations ? '0.45' : '0.20'}" stroke-linecap="round" stroke-linejoin="round">`
     );
     for (let i = 0; i < puzzleResult.clippedPuzzlePathsD.length; i++) {
       lines.push(
-        `      <path id="corte-puzzle-${i + 1}" d="${puzzleResult.clippedPuzzlePathsD[i]}" />`
+        `      <path id="corte-puzzle-linea-${i + 1}" d="${puzzleResult.clippedPuzzlePathsD[i]}" />`
       );
     }
     lines.push(`    </g>`);
 
-    // CAPA 3: CORTE LÁSER VECTORIAL EXTERIOR (Rojo #FF0000) — Contorno Cerrado Vectorizado
+    // CAPA 3: CORTE DEL RECUADRO EXTERIOR (ROJO #FF0000 - MARCO PERIMETRAL CERRADO)
     lines.push(
-      `    <g id="CAPA-CORTE-CONTORNO-EXTERIOR-VECTORIZADO" fill="none" stroke="#FF0000" stroke-width="${withAnnotations ? '0.75' : '0.22'}" stroke-linecap="round" stroke-linejoin="round">`
+      `    <g id="CAPA-CORTE-RECUADRO-EXTERIOR" fill="none" stroke="#FF0000" stroke-width="${withAnnotations ? '0.75' : '0.22'}" stroke-linecap="round" stroke-linejoin="round">`
     );
-    lines.push(`      <path id="contorno-exterior-vectorizado" d="${outerContourD}" />`);
+    lines.push(
+      `      <rect id="corte-marco-perimetral" x="0" y="0" width="${frameWidthMm}" height="${frameHeightMm}" rx="0.5" />`
+    );
     lines.push(`    </g>`);
 
     lines.push(`  </g>`);
 
     if (withAnnotations) {
       lines.push(
-        `  <text x="${(sheetW / 2).toFixed(1)}" y="${(sheetH - 1.8).toFixed(1)}" text-anchor="middle" font-family="sans-serif" font-size="2.3" fill="#B91C1C">Imagen PNG incrustada: Grabado Creality Falcon 10W · Vectores Rojos (#FF0000): Corte de Contorno + ${puzzlePieces} Piezas</text>`
+        `  <text x="${(sheetW / 2).toFixed(1)}" y="${(sheetH - 2.2).toFixed(1)}" text-anchor="middle" font-family="sans-serif" font-size="2.4" fill="#B91C1C">Capa Imagen: Grabado Falcon 10W · Vectores Rojos (#FF0000): Corte Recuadro + ${puzzlePieces} Piezas de lado a lado</text>`
       );
     }
 
