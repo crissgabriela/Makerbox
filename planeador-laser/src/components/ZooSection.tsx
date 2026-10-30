@@ -244,6 +244,191 @@ async function analyzeAndNormalizeSketchFile(
 }
 
 /**
+ * Fusiona de forma dinámica los 3 a 4 dibujos a mano alzada subidos por el usuario:
+ * - Extrae la caja delimitadora de trazos negros de cada boceto (eliminando márgenes de papel en blanco).
+ * - Clasifica y ensambla armónicamente los elementos morfológicamente (cabeza/superior, alas/laterales, base/patas).
+ * - Genera una sola imagen raster combinada donde los trazos de los estudiantes se integran armónicamente
+ *   para grabado veloz en Creality Falcon 10W y corte láser exterior + puzzle.
+ */
+async function createHybridSketchCompositeClient(
+  images: UploadedSketchInput[]
+): Promise<string> {
+  if (images.length > 0 && images.every((img) => img.id.startsWith('sample-'))) {
+    return '/samples/gemini-fusion-demo.jpg';
+  }
+
+  const canvas = document.createElement('canvas');
+  const size = 512;
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return images[0]?.dataUrl || '';
+
+  // Fondo blanco puro
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, size, size);
+
+  // Cargar cada imagen y obtener sus píxeles de tinta
+  const loadedImgs = await Promise.all(
+    images.slice(0, 4).map(
+      (sketch) =>
+        new Promise<{ img: HTMLImageElement; sketch: UploadedSketchInput }>((resolve, reject) => {
+          const img = new window.Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => resolve({ img, sketch });
+          img.onerror = () => reject(new Error('Error cargando imagen'));
+          img.src = sketch.dataUrl;
+        })
+    )
+  );
+
+  // Extraer el bounding box de tinta de cada imagen (ignorando fondo blanco/grisáceo)
+  const elements = loadedImgs.map(({ img, sketch }, index) => {
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = img.width;
+    tempCanvas.height = img.height;
+    const tCtx = tempCanvas.getContext('2d');
+    if (!tCtx) {
+      return { img, sketch, index, minX: 0, minY: 0, width: img.width, height: img.height };
+    }
+    tCtx.drawImage(img, 0, 0);
+    const data = tCtx.getImageData(0, 0, img.width, img.height).data;
+    let minX = img.width;
+    let minY = img.height;
+    let maxX = 0;
+    let maxY = 0;
+    let inkCount = 0;
+
+    for (let y = 0; y < img.height; y += 2) {
+      for (let x = 0; x < img.width; x += 2) {
+        const i = (y * img.width + x) * 4;
+        const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        const alpha = data[i + 3];
+        if (alpha > 40 && lum < 210) {
+          inkCount++;
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    if (minX >= maxX || minY >= maxY || inkCount < 20) {
+      minX = 0;
+      minY = 0;
+      maxX = img.width;
+      maxY = img.height;
+    }
+
+    return {
+      img,
+      sketch,
+      index,
+      minX,
+      minY,
+      width: Math.max(10, maxX - minX),
+      height: Math.max(10, maxY - minY),
+      analysis: sketch.analysis,
+    };
+  });
+
+  // Clasificar roles morfológicos según densidades espaciales o posición de carga:
+  // 1) Lateral / Alas / Brazos (mayor sideDensity o index 1)
+  // 2) Base / Patas / Tentáculos (mayor bottomDensity o index 2)
+  // 3) Cabeza / Rostro / Superior (mayor topDensity o index 0)
+  // 4) Cuerpo / Centro (si hay 4ª imagen)
+  let headElem = elements[0];
+  let wingsElem = elements[1] || elements[0];
+  let baseElem = elements[2] || elements[0];
+  let centerElem = elements[3];
+
+  if (elements.length >= 3) {
+    const sortedByTop = [...elements].sort(
+      (a, b) => (b.analysis?.topDensity ?? 0) - (a.analysis?.topDensity ?? 0)
+    );
+    headElem = sortedByTop[0];
+
+    const remaining1 = elements.filter((e) => e !== headElem);
+    const sortedByBottom = [...remaining1].sort(
+      (a, b) => (b.analysis?.bottomDensity ?? 0) - (a.analysis?.bottomDensity ?? 0)
+    );
+    baseElem = sortedByBottom[0];
+
+    const remaining2 = remaining1.filter((e) => e !== baseElem);
+    const sortedBySide = [...remaining2].sort(
+      (a, b) => (b.analysis?.sideDensity ?? 0) - (a.analysis?.sideDensity ?? 0)
+    );
+    wingsElem = sortedBySide[0] || remaining2[0] || headElem;
+
+    const remaining3 = remaining2.filter((e) => e !== wingsElem);
+    centerElem = remaining3[0];
+  }
+
+  // Dibujar capa a capa usando 'darken' para que todos los trazos de los niños se sumen limpiamente
+  ctx.globalCompositeOperation = 'darken';
+
+  const drawCropped = (
+    elem: typeof elements[0],
+    destX: number,
+    destY: number,
+    destW: number,
+    destH: number
+  ) => {
+    ctx.drawImage(
+      elem.img,
+      elem.minX,
+      elem.minY,
+      elem.width,
+      elem.height,
+      destX,
+      destY,
+      destW,
+      destH
+    );
+  };
+
+  // 1. Alas / Laterales (fondo intermedio, amplia envergadura)
+  if (wingsElem) {
+    const w = size * 0.76;
+    const h = size * 0.44;
+    const x = (size - w) / 2;
+    const y = size * 0.22;
+    drawCropped(wingsElem, x, y, w, h);
+  }
+
+  // 2. Base / Patas / Tentáculos (abajo, sostiene la figura)
+  if (baseElem) {
+    const w = size * 0.62;
+    const h = size * 0.46;
+    const x = (size - w) / 2;
+    const y = size * 0.48;
+    drawCropped(baseElem, x, y, w, h);
+  }
+
+  // 3. Si hay 4ª imagen: cuerpo / pecho / centro
+  if (centerElem) {
+    const w = size * 0.44;
+    const h = size * 0.36;
+    const x = (size - w) / 2;
+    const y = size * 0.34;
+    drawCropped(centerElem, x, y, w, h);
+  }
+
+  // 4. Cabeza / Rostro / Cuernos (arriba al frente)
+  if (headElem) {
+    const w = size * 0.54;
+    const h = size * 0.42;
+    const x = (size - w) / 2;
+    const y = size * 0.08;
+    drawCropped(headElem, x, y, w, h);
+  }
+
+  ctx.globalCompositeOperation = 'source-over';
+  return canvas.toDataURL('image/png');
+}
+
+/**
  * Genera los 3 dibujos a mano alzada en formato PNG que dan origen a la fusión de ejemplo de Gemini:
  * 1. Gato sentado con bigotes
  * 2. Alas puntiagudas de murciélago/dragón
@@ -436,50 +621,113 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
       setIsFusing(true);
       setErrorMsg(null);
 
+      const isCustomUpload = imgsToFuse.some((img) => !img.id.startsWith('sample-'));
+
       try {
-        const res = await fetch('/api/zoologico', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            images: imgsToFuse,
-            puzzlePieces: piecesCount,
-            strokeWeight,
-            studentPrompt: promptText,
-            targetHeightMm: heightMm,
-            includeAnnotations: annotations,
-            customApiKey,
-          }),
-        });
-
-        const data: ZooFusionResponse & { error?: string } = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error || 'Error al fusionar los dibujos.');
+        // 1. Si son dibujos personalizados del estudiante, componer dinámicamente sus trazos reales
+        let dynamicCompositeUrl = '';
+        if (isCustomUpload) {
+          dynamicCompositeUrl = await createHybridSketchCompositeClient(imgsToFuse);
         }
 
-        // Mantener la imagen generada SIN vectorizar con trazo delgado para grabado veloz en Falcon 10W
-        // y vectorizar únicamente su contorno exterior + las líneas del rompecabezas
-        if (data.rasterDataUrl) {
-          const falconBuilt = await buildFalconEngravingAndVectorCutClient(
-            data.rasterDataUrl,
-            piecesCount,
-            heightMm,
-            data.hybridTitle,
-            annotations,
-            strokeWeight
-          );
-          if (falconBuilt) {
-            data.previewSvg = falconBuilt.previewSvg;
-            data.laserSvg = falconBuilt.laserSvg;
-            data.metrics.outerContourNodes = falconBuilt.outerNodes;
-            data.metrics.clippedPuzzleSegmentsCount = falconBuilt.clippedSegmentsCount;
-            data.metrics.widthMm = falconBuilt.widthMm;
-            data.metrics.heightMm = falconBuilt.heightMm;
-            data.metrics.strokeWeight = strokeWeight;
-            setCleanEngravingPngUrl(falconBuilt.cleanedEngravingPngUrl);
+        // 2. Llamar a la API para análisis multimodal de visión con Gemini (y generación nativa si hay cuota)
+        let data: (ZooFusionResponse & { error?: string }) | null = null;
+        try {
+          const res = await fetch('/api/zoologico', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              images: imgsToFuse,
+              puzzlePieces: piecesCount,
+              strokeWeight,
+              studentPrompt: promptText,
+              targetHeightMm: heightMm,
+              includeAnnotations: annotations,
+              customApiKey,
+            }),
+          });
+
+          if (res.ok) {
+            data = await res.json();
           }
+        } catch (apiErr) {
+          console.warn('API de Gemini no disponible en este momento, usando motor morfológico local...', apiErr);
         }
 
-        setFusionResult(data);
+        // Determinar qué imagen raster usar:
+        // - Si Gemini generó una imagen nativa (y no es el demo), usarla
+        // - Si son dibujos subidos por el estudiante, usar la composición dinámica de sus dibujos
+        // - Si es el ejemplo inicial demostrativo, usar el demo
+        let targetRaster = '';
+        if (
+          data?.hasNativeGeminiRaster &&
+          data.rasterDataUrl &&
+          !data.rasterDataUrl.includes('gemini-fusion-demo.jpg')
+        ) {
+          targetRaster = data.rasterDataUrl;
+        } else if (isCustomUpload) {
+          targetRaster =
+            dynamicCompositeUrl || (await createHybridSketchCompositeClient(imgsToFuse));
+        } else {
+          targetRaster = data?.rasterDataUrl || '/samples/gemini-fusion-demo.jpg';
+        }
+
+        const title =
+          data?.hybridTitle ||
+          (isCustomUpload
+            ? `Criatura Híbrida (${imgsToFuse.length} Dibujos Fusionados)`
+            : 'Gato-Dragón-Medusa (Fusión Híbrida Gemini)');
+
+        const assistantMsg =
+          data?.assistantMessage ||
+          (isCustomUpload
+            ? `¡He fusionado tus ${imgsToFuse.length} dibujos a mano alzada! Cada elemento se integró en el lienzo respetando tus trazos para grabado y corte en Creality Falcon 10W.`
+            : '¡He cargado el ejemplo de Gemini (Gato + Alas + Medusa)!');
+
+        const falconBuilt = await buildFalconEngravingAndVectorCutClient(
+          targetRaster,
+          piecesCount,
+          heightMm,
+          title,
+          annotations,
+          strokeWeight
+        );
+
+        if (!falconBuilt) {
+          throw new Error('No se pudo extraer el contorno exterior de los dibujos combinados.');
+        }
+
+        setCleanEngravingPngUrl(falconBuilt.cleanedEngravingPngUrl);
+
+        const finalOption =
+          PUZZLE_PIECE_OPTIONS.find((o) => o.count === piecesCount) ||
+          PUZZLE_PIECE_OPTIONS[1];
+
+        const updatedResult: ZooFusionResponse = {
+          previewSvg: falconBuilt.previewSvg,
+          laserSvg: falconBuilt.laserSvg,
+          rasterDataUrl: targetRaster,
+          hasNativeGeminiRaster: Boolean(data?.hasNativeGeminiRaster && !isCustomUpload),
+          assistantMessage: assistantMsg,
+          hybridTitle: title,
+          internalPromptUsed: data?.internalPromptUsed || AI_FUSION_INTERNAL_PROMPT,
+          metrics: {
+            imagesCount: imgsToFuse.length,
+            puzzlePieces: piecesCount,
+            gridCols: finalOption.cols,
+            gridRows: finalOption.rows,
+            widthMm: falconBuilt.widthMm,
+            heightMm: falconBuilt.heightMm,
+            strokeWeight,
+            outerContourNodes: falconBuilt.outerNodes,
+            innerVectorPathsCount: 1,
+            clippedPuzzleSegmentsCount: falconBuilt.clippedSegmentsCount,
+            vectorizerEngine: 'Imagen PNG (Grabado Falcon 10W) + Contorno y Puzzle Vectorizados (#FF0000)',
+            aiModelUsed: data?.metrics?.aiModelUsed || 'Google Gemini Vision + Motor Morfológico Falcon 10W',
+          },
+        };
+
+        setFusionResult(updatedResult);
 
         if (announceInChat) {
           setChatMessages((prev) => [
@@ -487,7 +735,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
             {
               id: `ai-${Date.now()}`,
               role: 'assistant',
-              text: data.assistantMessage,
+              text: assistantMsg,
               timestamp: new Date().toLocaleTimeString([], {
                 hour: '2-digit',
                 minute: '2-digit',
@@ -787,49 +1035,32 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
         </div>
       )}
 
-      {/* Banner Hero del Taller 1 */}
-      <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
-        <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-2 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 text-amber-100 text-xs font-bold uppercase tracking-wider">
-              <Sparkles className="w-3.5 h-3.5" />
-              Optimizado para Creality Falcon 10W · Imagen de Grabado + Corte Vectorial
+      {/* Banner Compacto del Taller 1 */}
+      <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 rounded-2xl py-3 px-4 sm:px-6 text-white shadow-md relative overflow-hidden">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/20 text-amber-100 text-[10px] font-black uppercase tracking-wide">
+                <Sparkles className="w-3 h-3" /> Creality Falcon 10W
+              </span>
+              <h1 className="text-base sm:text-lg font-black tracking-tight">
+                Fusión IA para Grabado + Rompecabezas (20–40 Piezas) 🧩
+              </h1>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Fusión IA para Grabado + Rompecabezas Vectorial (20–40 Piezas) 🧩
-            </h1>
-            <p className="text-amber-50 text-sm sm:text-base leading-relaxed">
-              Sube de <strong>3 a 4 dibujos a mano alzada (JPG/PNG)</strong>. La imagen híbrida generada se mantiene en{' '}
-              <strong>formato de imagen (sin vectorizar) para grabarla en la Creality Falcon 10W</strong>, mientras que{' '}
-              <strong>el contorno exterior y las líneas del rompecabezas (20 a 40 piezas) se vectorizan</strong> para el corte láser.
+            <p className="text-amber-100 text-xs leading-normal">
+              Sube de 3 a 4 dibujos a mano alzada. Grabado en imagen PNG (alta velocidad) + contorno y corte puzzle en #FF0000.
             </p>
           </div>
 
           {fusionResult && (
-            <div className="grid grid-cols-2 gap-2.5 bg-slate-950/30 backdrop-blur-md p-3.5 rounded-2xl border border-white/15 shrink-0">
-              <div className="px-3 py-2 rounded-xl bg-white/10">
-                <div className="text-[10px] uppercase tracking-wider text-amber-200 font-bold">
-                  Dibujo Interior
-                </div>
-                <div className="text-base font-black text-white">
-                  Imagen PNG (Grabado)
-                </div>
-                <div className="text-[10px] text-amber-100">
-                  Sin vectorizar · Creality Falcon 10W
-                </div>
-              </div>
-              <div className="px-3 py-2 rounded-xl bg-white/10">
-                <div className="text-[10px] uppercase tracking-wider text-amber-200 font-bold">
-                  Contorno + Puzzle
-                </div>
-                <div className="text-base font-black text-white">
-                  {fusionResult.metrics.puzzlePieces} Piezas Vectorizadas
-                </div>
-                <div className="text-[10px] text-emerald-200 font-semibold">
-                  ✓ Corte #FF0000 recortado al borde
-                </div>
-              </div>
+            <div className="flex items-center gap-2 shrink-0 bg-slate-950/25 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-white/15 text-xs">
+              <span className="text-[11px] font-bold text-amber-200">
+                Grabado: <span className="text-white font-black">PNG Falcon 10W</span>
+              </span>
+              <span className="text-white/30">|</span>
+              <span className="text-[11px] font-bold text-amber-200">
+                Corte: <span className="text-emerald-300 font-black">{fusionResult.metrics.puzzlePieces} Piezas Vector</span>
+              </span>
             </div>
           )}
         </div>

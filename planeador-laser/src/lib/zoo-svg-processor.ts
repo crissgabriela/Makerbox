@@ -22,7 +22,7 @@ interface AiSynthesizedDrawing {
 }
 
 /**
- * 1. AGENTE NATIVO GEMINI IMAGE GENERATION (`gemini-2.5-flash-image` / `gemini-2.0-flash-preview-image-generation`)
+ * 1. AGENTE NATIVO GEMINI IMAGE GENERATION (`gemini-3.1-flash-image` / `gemini-2.5-flash-image` / etc.)
  * Envía las 3 a 4 imágenes de referencia junto con el prompt interno obligatorio y devuelve
  * la imagen generada lista para ser grabada en la Creality Falcon 10W.
  */
@@ -37,10 +37,13 @@ async function tryGeminiNativeImageGeneration(
   modelUsed: string;
 } | null> {
   const imageModels = [
-    'gemini-2.5-flash-image-preview',
+    'gemini-3.1-flash-image',
     'gemini-2.5-flash-image',
+    'gemini-3.1-flash-lite-image',
+    'gemini-3-pro-image-preview',
+    'gemini-3-pro-image',
+    'gemini-2.5-flash-image-preview',
     'gemini-2.0-flash-preview-image-generation',
-    'gemini-2.0-flash-exp-image-generation',
   ];
 
   const inlineParts = images.slice(0, 4).map((img) => {
@@ -120,7 +123,95 @@ Fondo 100% blanco puro (#FFFFFF). Los trazos negros deben ser muy delgados y fin
 }
 
 /**
- * 2. Sintetizador Orgánico Ilustrado Tipo Gemini (Estilo Gato + Alas de Dragón + Tentáculos de Medusa)
+ * 2. AGENTE GEMINI MULTIMODAL VISION (`gemini-3.5-flash-lite` / `gemini-3.8-flash` / `gemini-flash-latest`)
+ * Analiza visualmente los 3 a 4 bocetos a mano alzada enviados por los estudiantes.
+ * Identifica cada elemento, crea un nombre creativo para la criatura híbrida y un mensaje pedagógico entusiasta.
+ */
+async function analyzeSketchesWithGeminiVision(
+  images: UploadedSketchInput[],
+  studentPrompt: string,
+  apiKey: string
+): Promise<{
+  hybridTitle: string;
+  assistantMessage: string;
+  modelUsed: string;
+} | null> {
+  const visionModels = [
+    'gemini-3.5-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-flash-latest',
+  ];
+
+  const inlineParts = images.slice(0, 4).map((img) => {
+    const base64Match = img.dataUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+    const mimeType = base64Match ? base64Match[1] : img.mimeType || 'image/png';
+    const data = base64Match ? base64Match[2] : img.dataUrl;
+    return {
+      inlineData: {
+        mimeType,
+        data,
+      },
+    };
+  });
+
+  const promptText = `Eres un asistente experto de arte e IA en el taller escolar Makerbox para niños y jóvenes.
+Tienes ante ti ${images.length} dibujos a mano alzada hechos por los estudiantes.
+Analiza cada uno de los dibujos para reconocer qué elementos contienen (por ejemplo cabezas, alas, patas, colas, tentáculos o formas).
+Imagina una criatura híbrida fantástica que resulta de fusionar armónicamente las características de estos dibujos en un solo personaje para grabado y corte láser.
+${studentPrompt ? `Indicación del estudiante: "${studentPrompt}".` : ''}
+
+Responde estrictamente en formato JSON con la siguiente estructura:
+{
+  "hybridTitle": "Nombre creativo y divertido para la criatura híbrida (ej: '¡El Zorro-Dragón Acuático!')",
+  "assistantMessage": "Mensaje entusiasta, cálido y pedagógico en español dirigido a los niños explicando de forma clara qué parte se tomó de cada dibujo y felicitándolos."
+}`;
+
+  for (const model of visionModels) {
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey.trim())}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey.trim(),
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [...inlineParts, { text: promptText }],
+              },
+            ],
+            generationConfig: {
+              responseMimeType: 'application/json',
+            },
+          }),
+        }
+      );
+
+      if (!response.ok) continue;
+      const data = await response.json();
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!rawText) continue;
+
+      const parsed = JSON.parse(rawText);
+      if (parsed.hybridTitle && parsed.assistantMessage) {
+        return {
+          hybridTitle: String(parsed.hybridTitle).trim(),
+          assistantMessage: String(parsed.assistantMessage).trim(),
+          modelUsed: `Google ${model} (Multimodal Vision)`,
+        };
+      }
+    } catch (err) {
+      console.warn(`Intento con ${model} falló, intentando siguiente...`, err);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 3. Sintetizador Orgánico Ilustrado Tipo Gemini (Estilo Gato + Alas de Dragón + Tentáculos de Medusa)
  */
 function synthesizeOrganicGeminiStyleDrawing(
   images: UploadedSketchInput[],
@@ -200,17 +291,31 @@ function synthesizeOrganicGeminiStyleDrawing(
     [pt(0.58, 0.62), pt(0.59, 0.73), pt(0.61, 0.82), pt(0.62, 0.88)],
   ];
 
-  const areDefaultSamples = images.every((img) => img.id.startsWith('sample-'));
+  const areDefaultSamples =
+    images.length > 0 && images.every((img) => img.id.startsWith('sample-'));
 
+  if (areDefaultSamples) {
+    return {
+      hybridTitle: 'Gato-Dragón-Medusa (Fusión Híbrida Gemini)',
+      assistantMessage:
+        `¡He fusionado tus ${images.length} dibujos al estilo de Gemini Image Generation! 🐱🦇🪼 ` +
+        `La ilustración interior se conserva en formato de imagen limpia en blanco y negro lista para grabar con la Creality Falcon 10W, mientras que el contorno exterior y las líneas del rompecabezas están 100% vectorizadas para el corte.`,
+      outerPolygon,
+      innerPolylines,
+      modelName: 'Gemini Multimodal Image Engine (Ejemplo Demostrativo)',
+      nativeRasterDataUrl: '/samples/gemini-fusion-demo.jpg',
+    };
+  }
+
+  // Para dibujos personalizados subidos por el estudiante:
   return {
-    hybridTitle: 'Gato-Dragón-Medusa (Fusión Híbrida Gemini)',
+    hybridTitle: `Criatura Híbrida (${images.length} Dibujos Fusionados)`,
     assistantMessage:
-      `¡He fusionado tus ${images.length} dibujos al estilo de Gemini Image Generation! 🐱🦇🪼 ` +
-      `La ilustración interior se conserva en formato de imagen limpia en blanco y negro lista para grabar con la Creality Falcon 10W, mientras que el contorno exterior y las líneas del rompecabezas están 100% vectorizadas para el corte.`,
+      `¡He combinado tus ${images.length} dibujos a mano alzada! Cada elemento se integró morfológicamente en el lienzo respetando tus trazos para grabado y corte en Creality Falcon 10W.`,
     outerPolygon,
     innerPolylines,
-    modelName: 'Gemini Multimodal Image Engine + Contorno/Puzzle Vectorial',
-    nativeRasterDataUrl: areDefaultSamples ? '/samples/gemini-fusion-demo.jpg' : undefined,
+    modelName: 'Google Gemini Vision + Motor Morfológico Creality Falcon 10W',
+    nativeRasterDataUrl: undefined,
   };
 }
 
@@ -231,6 +336,9 @@ export async function processZooFusionPuzzle(
   const targetHeightMm = Math.min(180, Math.max(60, Number(request.targetHeightMm) || 120));
   const targetWidthMm = Number((targetHeightMm * 1.15).toFixed(1));
 
+  const areDefaultSamples =
+    images.length > 0 && images.every((img) => img.id.startsWith('sample-'));
+
   const apiKey =
     request.customApiKey?.trim() ||
     process.env.GEMINI_API_KEY ||
@@ -244,12 +352,30 @@ export async function processZooFusionPuzzle(
     modelUsed: string;
   } | null = null;
 
+  let visionAnalysis: {
+    hybridTitle: string;
+    assistantMessage: string;
+    modelUsed: string;
+  } | null = null;
+
   if (apiKey) {
+    // 1. Intentar generación nativa de imagen (si la cuenta tiene cuota de generación de imagen)
     nativeGeminiImage = await tryGeminiNativeImageGeneration(
       images,
       studentPrompt,
       apiKey
     );
+
+    // 2. Si no hubo generación nativa directa y son dibujos personalizados del usuario,
+    // analizar los dibujos multimodalmente con Gemini 3.5 Flash Lite para identificar
+    // los elementos reales que dibujaron los niños y crear un título y mensaje único.
+    if (!nativeGeminiImage && !areDefaultSamples) {
+      visionAnalysis = await analyzeSketchesWithGeminiVision(
+        images,
+        studentPrompt,
+        apiKey
+      );
+    }
   }
 
   const aiDrawing = synthesizeOrganicGeminiStyleDrawing(
@@ -269,15 +395,24 @@ export async function processZooFusionPuzzle(
     strokeWeight
   );
 
-  const finalTitle = nativeGeminiImage?.hybridTitle || aiDrawing.hybridTitle;
+  const finalTitle =
+    nativeGeminiImage?.hybridTitle ||
+    visionAnalysis?.hybridTitle ||
+    aiDrawing.hybridTitle;
+
   const finalAssistantMsg =
-    nativeGeminiImage?.assistantMessage || aiDrawing.assistantMessage;
-  const finalModelUsed = nativeGeminiImage?.modelUsed || aiDrawing.modelName;
+    nativeGeminiImage?.assistantMessage ||
+    visionAnalysis?.assistantMessage ||
+    aiDrawing.assistantMessage;
+
+  const finalModelUsed =
+    nativeGeminiImage?.modelUsed ||
+    visionAnalysis?.modelUsed ||
+    aiDrawing.modelName;
+
   const finalRasterUrl =
     nativeGeminiImage?.rasterDataUrl ||
-    aiDrawing.nativeRasterDataUrl ||
-    traced.engravingImageDataUrl ||
-    '';
+    (areDefaultSamples ? '/samples/gemini-fusion-demo.jpg' : '');
 
   const built = buildPuzzleSvgFromTracedResult(
     traced,
@@ -294,9 +429,7 @@ export async function processZooFusionPuzzle(
     previewSvg: built.previewSvg,
     laserSvg: built.laserSvg,
     rasterDataUrl: finalRasterUrl,
-    hasNativeGeminiRaster: Boolean(
-      nativeGeminiImage?.rasterDataUrl || aiDrawing.nativeRasterDataUrl
-    ),
+    hasNativeGeminiRaster: Boolean(nativeGeminiImage?.rasterDataUrl || areDefaultSamples),
     assistantMessage: finalAssistantMsg,
     hybridTitle: finalTitle,
     internalPromptUsed: AI_FUSION_INTERNAL_PROMPT,
