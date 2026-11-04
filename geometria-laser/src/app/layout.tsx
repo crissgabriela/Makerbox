@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title:
     'Geometría Láser · Feria Científica Liceo Bicentenario de Niñas de Maipú | MakerBox UTalca',
   description:
-    'Laboratorio interactivo de herramientas geométricas y matemáticas para generar archivos .SVG listos para cortar y grabar en MDF 3mm con una Creality CR-Laser Falcon 2 10W.',
+    'Plataforma interactiva para la Feria Científica del Liceo Bicentenario de Niñas de Maipú junto a MakerBox UTalca: Geometría en MDF 3mm (.SVG CR-Laser Falcon 2 10W), Fotograbado Láser, Litofanías 3D (.STL) y Llaveros Inclusivos en Braille y Lengua de Señas Chilena.',
 };
 
 export default function RootLayout({

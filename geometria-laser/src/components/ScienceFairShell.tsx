@@ -10,13 +10,12 @@ import {
   Cpu,
   Flame,
   Home,
+  Image as ImageIcon,
   Info,
+  KeyRound,
   PieChart,
-  Puzzle,
-  Ruler,
   Shapes,
   Sparkles,
-  Triangle,
   X,
   CheckCircle2,
   AlertTriangle,
@@ -30,11 +29,10 @@ import {
 const NAV_ITEMS = [
   { href: '/', label: 'Inicio', icon: Home },
   { href: '/fracciones', label: '1. Fracciones', icon: PieChart },
-  { href: '/pitagoras', label: '2. Pitágoras', icon: Triangle },
-  { href: '/poligonos', label: '3. Tangram y Polígonos', icon: Shapes },
-  { href: '/espirografo', label: '4. Espirógrafo', icon: Compass },
-  { href: '/instrumentos', label: '5. Plantilla Áurea', icon: Ruler },
-  { href: '/poliamantes', label: '6. Poliamantes', icon: Puzzle },
+  { href: '/poligonos', label: '2. Tangram y Polígonos', icon: Shapes },
+  { href: '/espirografo', label: '3. Espirógrafo', icon: Compass },
+  { href: '/imagen-laser', label: '4. Imagen y Litofanía', icon: ImageIcon },
+  { href: '/llaveros', label: '5. Llaveros 3D y Láser', icon: KeyRound },
 ];
 
 interface ScienceFairShellProps {
@@ -44,6 +42,10 @@ interface ScienceFairShellProps {
 export function ScienceFairShell({ children }: ScienceFairShellProps) {
   const pathname = usePathname();
   const [showFalconGuide, setShowFalconGuide] = useState(false);
+
+  if (pathname?.startsWith('/subir-foto')) {
+    return <>{children}</>;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans selection:bg-indigo-200 selection:text-indigo-950">
@@ -142,7 +144,7 @@ export function ScienceFairShell({ children }: ScienceFairShellProps) {
             </span>
           </div>
           <div className="text-xs text-indigo-700 font-bold">
-            Generador Vectorial SVG 1:1 · Creality CR-Laser Falcon 2 10W ({FALCON_BED_WIDTH_MM} × {FALCON_BED_HEIGHT_MM} mm · MDF 3 mm)
+            Corte Láser SVG 1:1 (CR Falcon 2 10W · {FALCON_BED_WIDTH_MM} × {FALCON_BED_HEIGHT_MM} mm · MDF 3 mm) + Impresión 3D (.STL PLA)
           </div>
         </div>
       </footer>

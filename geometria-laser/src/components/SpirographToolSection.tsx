@@ -51,7 +51,7 @@ export function SpirographToolSection() {
         <div className="space-y-2 max-w-3xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 text-sky-200 text-xs font-black uppercase tracking-wider">
             <Compass className="w-3.5 h-3.5" />
-            Herramienta 4 · Curvas Paramétricas, MCD y MCM
+            Herramienta 3 · Curvas Paramétricas, MCD y MCM
           </div>
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight">
             Espirógrafo Matemático de Engranajes (MDF 3 mm)

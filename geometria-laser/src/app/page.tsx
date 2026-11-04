@@ -7,14 +7,14 @@ import {
   CheckCircle2,
   Compass,
   Flame,
+  Image as ImageIcon,
+  KeyRound,
   Layers,
   PieChart,
-  Puzzle,
-  Ruler,
+  Printer,
   Scissors,
   Shapes,
   Sparkles,
-  Triangle,
 } from 'lucide-react';
 
 const TOOLS_CATALOG = [
@@ -26,7 +26,8 @@ const TOOLS_CATALOG = [
     description:
       'Genera platos didácticos de doble capa (6 mm total) y fichas de fracciones calibradas con 0,20 mm de holgura mecánica. Graba la fracción, el ángulo central (360°/n), porcentaje o lectura táctil Braille.',
     mathPills: ['Fracciones 1/n', 'Ángulo 360°/n', 'Área πr²/n', 'Braille'],
-    timeBadge: '~2.5 min',
+    timeBadge: 'Corte ~2.5 min',
+    exportBadge: 'Exportación .SVG 1:1',
     gradient: 'from-indigo-600 to-violet-700',
     borderHover: 'hover:border-indigo-500',
     bgSoft: 'bg-indigo-50/70 border-indigo-200/80',
@@ -34,73 +35,63 @@ const TOOLS_CATALOG = [
   },
   {
     number: 'Herramienta 2',
-    href: '/pitagoras',
-    title: 'Teorema de Pitágoras (Perigal)',
-    subtitle: 'Demostración física a² + b² = c² por disección geométrica',
-    description:
-      'Diseña un rompecabezas matemático donde el cuadrado menor a² y los 4 cuadriláteros congruentes de Perigal de b² se trasladan sin rotar para rellenar exactamente el cuadrado de la hipotenusa c².',
-    mathPills: ['a² + b² = c²', 'Ternas Pitagóricas', 'Disección de Perigal'],
-    timeBadge: '~3.5 min',
-    gradient: 'from-emerald-600 to-teal-700',
-    borderHover: 'hover:border-teal-500',
-    bgSoft: 'bg-teal-50/70 border-teal-200/80',
-    icon: Triangle,
-  },
-  {
-    number: 'Herramienta 3',
     href: '/poligonos',
     title: 'Tangram + Polígonos y Teselaciones',
     subtitle: 'Áreas proporcionales (1/4, 1/8, 1/16) y mosaicos de 360°',
     description:
       'Incluye el Tangram clásico con bandeja de encaje y fracciones de área grabadas, más un generador de Polígonos Regulares de arista común para comprobar teselaciones puras {3,4,6} y arquimedianas.',
     mathPills: ['Ángulo (n−2)·180°/n', 'Suma Vértice 360°', 'Apotema y Área'],
-    timeBadge: '~3.0 min',
+    timeBadge: 'Corte ~3.0 min',
+    exportBadge: 'Exportación .SVG 1:1',
     gradient: 'from-amber-500 to-orange-600',
     borderHover: 'hover:border-orange-500',
     bgSoft: 'bg-amber-50/70 border-amber-200/80',
     icon: Shapes,
   },
   {
-    number: 'Herramienta 4',
+    number: 'Herramienta 3',
     href: '/espirografo',
     title: 'Espirógrafo Matemático (MCD/MCM)',
     subtitle: 'Anillo dentado interior + piñones planetarios cicloidales',
     description:
       'Fabrica engranajes reales en MDF 3 mm con perforaciones para lápiz y predice matemáticamente el número de pétalos y vueltas de la curva hipotrocoide usando el Máximo Común Divisor.',
     mathPills: ['Curvas Hipotrocoides', 'Pétalos = R / MCD(R,r)', 'Engranajes'],
-    timeBadge: '~4.0 min',
+    timeBadge: 'Corte ~4.0 min',
+    exportBadge: 'Exportación .SVG 1:1',
     gradient: 'from-sky-600 to-blue-700',
     borderHover: 'hover:border-sky-500',
     bgSoft: 'bg-sky-50/70 border-sky-200/80',
     icon: Compass,
   },
   {
-    number: 'Herramienta 5',
-    href: '/instrumentos',
-    title: 'Plantilla Matemática y Compás Áureo',
-    subtitle: 'Regla + Transportador + Parábola y=x² o Calibrador Φ = 1,618',
+    number: 'Herramienta 4',
+    href: '/imagen-laser',
+    title: 'Imágenes Grabadas y Litofanías 3D',
+    subtitle: 'Fotograbado láser en madera MDF 3 mm + Litofanía translúcida + QR Celular',
     description:
-      'Personaliza con el nombre de cada estudiante una regla-transportador con esténciles geométricos y Espiral de Fibonacci, o corta las 4 barras articuladas de un Compás de Proporción Áurea.',
-    mathPills: ['Razón Áurea Φ=1,618', 'Parábola y=x²', 'Recuerdo con Nombre'],
-    timeBadge: '~1.8 min',
-    gradient: 'from-fuchsia-600 to-purple-700',
-    borderHover: 'hover:border-purple-500',
-    bgSoft: 'bg-purple-50/70 border-purple-200/80',
-    icon: Ruler,
+      'Envía una fotografía desde el celular escaneando un código QR en vivo y transfórmala en un fotograbado tramado con marco de corte láser (.SVG / .PNG) para CR Falcon 2 10W o en una Litofanía 3D (.STL) revelada a contraluz.',
+    mathPills: [' Fotograbado MDF', 'Litofanía 3D (.STL)', 'Trama Jarvis / Atkinson', 'QR en Vivo'],
+    timeBadge: 'Láser / 3D',
+    exportBadge: '.SVG + .PNG + .STL',
+    gradient: 'from-cyan-600 to-teal-700',
+    borderHover: 'hover:border-cyan-500',
+    bgSoft: 'bg-cyan-50/70 border-cyan-200/80',
+    icon: ImageIcon,
   },
   {
-    number: 'Herramienta 6',
-    href: '/poliamantes',
-    title: 'Poliamantes: «9 P» y «10 Azadas»',
-    subtitle: 'Pentiamantes quirales (N=7) y Hexiamantes con retos numéricos (N=8)',
+    number: 'Herramienta 5',
+    href: '/llaveros',
+    title: 'Llaveros Inclusivos: Corte Láser y 3D',
+    subtitle: 'Nombre + Braille Español o Lengua de Señas Chilena (LSCh)',
     description:
-      'Rompecabezas lógicos de doble capa sobre redes de triángulos equiláteros. Experimenta cómo voltear fichas con punto invierte la quiralidad y deja una única solución matemática exacta.',
-    mathPills: ['Red Triangular N²', 'Quiralidad y Reflexión', 'Solución Única'],
-    timeBadge: '~7.0 min',
-    gradient: 'from-emerald-700 to-indigo-700',
-    borderHover: 'hover:border-emerald-600',
-    bgSoft: 'bg-emerald-50/70 border-emerald-200/80',
-    icon: Puzzle,
+      'Generador unificado de llaveros personalizados: elige entre Nombre + Braille táctil de 6 puntos o señas anatómicas en Lengua de Señas Chilena (Cápsula 25 mm y Corazón Dúo 60 mm), listos para cortar en MDF 3 mm (.SVG) o imprimir en 3D (.STL / .ZIP).',
+    mathPills: ['Nombre + Braille', 'Lengua de Señas Chilena', 'Corte Láser .SVG', 'Relieve 3D .STL'],
+    timeBadge: '~1.5 – 6 min',
+    exportBadge: '.SVG 1:1 + .STL / .ZIP',
+    gradient: 'from-purple-600 to-pink-600',
+    borderHover: 'hover:border-purple-500',
+    bgSoft: 'bg-purple-50/70 border-purple-200/80',
+    icon: KeyRound,
   },
 ];
 
@@ -121,21 +112,26 @@ export default function HomePage() {
               </span>
               <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/10 border border-white/20 text-indigo-100 text-xs font-bold">
                 <Flame className="w-3.5 h-3.5 text-orange-400" />
-                Creality CR-Laser Falcon 2 · 10W (MDF 3 mm)
+                CR-Laser Falcon 2 · 10W (MDF 3 mm)
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/10 border border-white/20 text-cyan-100 text-xs font-bold">
+                <Printer className="w-3.5 h-3.5 text-cyan-300" />
+                Impresión 3D (.STL PLA)
               </span>
             </div>
 
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">
-              Laboratorio de Geometría y Fabricación Láser
+              Geometría, Arte e Inclusión en Fabricación Digital
             </h1>
 
             <p className="text-slate-200 text-sm sm:text-base leading-relaxed">
-              Bienvenidas a la estación interactiva de diseño matemático del{' '}
+              Bienvenidas a la estación interactiva de diseño matemático y fabricación inclusiva del{' '}
               <strong className="text-amber-200">
                 Liceo Bicentenario de Niñas de Maipú
               </strong>{' '}
-              junto a <strong>MakerBox · Ingeniería UTalca</strong>. Explora los simuladores geométricos, personaliza tus piezas didácticas y exporta archivos{' '}
-              <strong>.SVG a escala 1:1 en milímetros</strong> listos para cortar y grabar en madera MDF de 3 mm.
+              junto a <strong>MakerBox · Ingeniería UTalca</strong>. Explora 3 herramientas de{' '}
+              <strong>Geometría en MDF 3 mm (.SVG 1:1)</strong>, <strong>Fotograbado y Litofanías 3D</strong>{' '}
+              con conexión QR desde celular, y el <strong>Generador de Llaveros Inclusivos</strong> en Braille y Lengua de Señas Chilena.
             </p>
           </div>
 
@@ -166,13 +162,13 @@ export default function HomePage() {
               </li>
             </ul>
             <div className="pt-2 border-t border-white/15 text-[11px] font-mono text-indigo-200">
-              Cama validada: 400 × 415 mm · Curvas 100% &lt;path&gt;
+              Cama láser: 400 × 415 mm · Salida .SVG y .STL
             </div>
           </div>
         </div>
       </section>
 
-      {/* CATÁLOGO DE LAS 5 HERRAMIENTAS DE GEOMETRÍA Y MATEMÁTICAS */}
+      {/* CATÁLOGO DE LAS 5 HERRAMIENTAS */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {TOOLS_CATALOG.map((tool) => {
           const Icon = tool.icon;
@@ -188,7 +184,7 @@ export default function HomePage() {
                     {tool.number}
                   </span>
                   <span className="text-[11px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-                    Corte {tool.timeBadge}
+                    {tool.timeBadge}
                   </span>
                 </div>
 
@@ -226,7 +222,7 @@ export default function HomePage() {
 
               <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-400 flex items-center gap-1">
-                  <Layers className="w-3.5 h-3.5" /> Exportación .SVG 1:1
+                  <Layers className="w-3.5 h-3.5" /> {tool.exportBadge}
                 </span>
                 <span
                   className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r ${tool.gradient} text-white text-xs font-black shadow-xs group-hover:translate-x-0.5 transition-transform`}
@@ -246,10 +242,10 @@ export default function HomePage() {
           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5 sm:mt-0" />
           <p className="text-xs text-slate-600 leading-relaxed">
             <strong className="text-slate-900">
-              Ingeniería Vectorial Lista para Stand:
+              Ingeniería Lista para el Stand de Feria Científica:
             </strong>{' '}
-            Todas las herramientas exportan textos, exponentes, letras griegas y tildes convertidos en geometría{' '}
-            <code>&lt;path&gt;</code> cerrada (sin depender de fuentes instaladas en el computador del láser) y ordenan automáticamente primero el grabado, luego el marcado y al final los cortes interiores y exteriores.
+            Los planos láser exportan textos, tildes, señas y celdas Braille en geometría vectorial{' '}
+            <code>&lt;path&gt;</code> a escala 1:1 en milímetros para <strong>CR-Laser Falcon 2 10W (MDF 3 mm)</strong>, mientras que los módulos 3D generan mallas binarias <code>.STL</code> y paquetes multicolor <code>.ZIP</code> listos para cualquier laminador FDM.
           </p>
         </div>
       </section>
