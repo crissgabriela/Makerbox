@@ -13,6 +13,8 @@ import {
   CheckCircle2,
   Upload,
   Compass,
+  Box,
+  Clock,
 } from 'lucide-react';
 
 export default function HomePage() {
@@ -43,8 +45,8 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Tarjetas de Selección Visual de los 2 Talleres */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+        {/* Tarjetas de Selección Visual de los 3 Talleres */}
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* TALLER 1: Zoológico Low-Poly */}
           <Link
             href="/zoologico"
@@ -168,6 +170,68 @@ export default function HomePage() {
               </span>
             </div>
           </Link>
+
+          {/* TALLER 3: Desafío Tangrama CAD & Manufactura Híbrida */}
+          <Link
+            href="/tangrama"
+            className="group relative bg-white rounded-3xl border-2 border-emerald-200 hover:border-emerald-500 p-6 sm:p-8 shadow-sm hover:shadow-2xl transition-all duration-300 flex flex-col justify-between overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 w-44 h-44 bg-gradient-to-bl from-emerald-100/80 to-transparent rounded-bl-full pointer-events-none transition-transform group-hover:scale-110" />
+
+            <div className="space-y-5 relative z-10">
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-emerald-100 text-emerald-900 font-extrabold text-xs uppercase tracking-wider border border-emerald-300">
+                  Taller 3
+                </span>
+                <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-full">
+                  Láser .SVG + 3D .STL
+                </span>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center text-3xl shadow-md group-hover:scale-105 transition-transform shrink-0">
+                  📐
+                </div>
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-black text-slate-900 group-hover:text-emerald-700 transition-colors">
+                    Tangrama CAD Híbrido
+                  </h2>
+                  <p className="text-xs sm:text-sm font-bold text-emerald-700">
+                    Trazado CAD · Reto por Equipos · Láser + Borde 3D
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Supera en equipo un juego de ingeniería en dos fases: subdivide el cuadrado de <strong>100 × 100 mm</strong> mediante nodos magnéticos CAD y ensambla una de las <strong>5 siluetas clásicas</strong> contra reloj para desbloquear la manufactura híbrida.
+              </p>
+
+              <ul className="space-y-2 text-xs font-semibold text-slate-700 bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-4">
+                <li className="flex items-center gap-2">
+                  <Compass className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Fase 1 Trazado CAD con snap magnético y validación en vivo</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Fase 2 Rompecabezas Virtual (Cisne, Cohete, Gato, Casa, Barco)</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Box className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Descarga .SVG personalizado (#FF0000/#0000FF) + Kit 4 Bordes .STL</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500">
+                Corte Láser (.SVG) + Impresión 3D (.STL)
+              </span>
+              <span className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-extrabold text-xs sm:text-sm shadow-sm group-hover:shadow-md group-hover:translate-x-0.5 transition-all">
+                <span>Abrir Taller 3</span>
+                <ArrowRight className="w-4 h-4" />
+              </span>
+            </div>
+          </Link>
         </section>
 
         {/* Barra Informativa Inferior para Docentes y Estudiantes */}
@@ -175,7 +239,7 @@ export default function HomePage() {
           <div className="flex items-start sm:items-center gap-3">
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5 sm:mt-0" />
             <div className="text-xs text-slate-600">
-              <strong className="text-slate-900">Estándar de Fabricación MakerBox:</strong> Ambos talleres generan archivos vectoriales con unidades exactas en <strong>milímetros (mm)</strong>, trazos de corte cerrados en color <strong className="text-red-600">#FF0000</strong> y tolerancia para planchas de madera de balsa de <strong>300 × 100 × 3 mm</strong>.
+              <strong className="text-slate-900">Estándar de Fabricación MakerBox:</strong> Los tres talleres generan archivos parametrizados con unidades exactas en <strong>milímetros (mm)</strong>, trazos de corte láser en <strong className="text-red-600">#FF0000</strong>, grabado vectorial en <strong className="text-blue-600">#0000FF</strong> y mallas 3D listas para laminar en <strong>.STL</strong>.
             </div>
           </div>
         </section>
