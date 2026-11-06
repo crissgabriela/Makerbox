@@ -430,7 +430,7 @@ export function thinBinaryMask(
   }
 
   const result = new Uint8Array(mask);
-  const maxIterations = mode === 'ultra-thin' ? 8 : 2;
+  const maxIterations = mode === 'ultra-thin' ? 32 : 2;
   const toDelete: number[] = [];
 
   for (let iter = 0; iter < maxIterations; iter++) {

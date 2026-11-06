@@ -223,75 +223,150 @@ async function processSingleDrawingForLaser(
 
       const rgba = ctx.getImageData(0, 0, w, h).data;
 
-      // Estimación adaptativa del brillo del papel para tolerar fotos de celular o escaneos
-      const lumHist = new Uint32Array(256);
-      let opaqueCount = 0;
+      // 1. Mapa de luminancia + suavizado Gaussiano 3x3 para eliminar grano de sensor de cámara
+      const lum = new Float32Array(w * h);
       for (let i = 0; i < w * h; i++) {
         const a = rgba[i * 4 + 3];
-        if (a > 40) {
-          const lum = Math.min(
-            255,
-            Math.max(
-              0,
-              Math.round(
-                0.299 * rgba[i * 4] +
-                  0.587 * rgba[i * 4 + 1] +
-                  0.114 * rgba[i * 4 + 2]
-              )
-            )
-          );
-          lumHist[lum]++;
-          opaqueCount++;
+        if (a <= 40) {
+          lum[i] = 255;
+        } else {
+          lum[i] =
+            0.299 * rgba[i * 4] +
+            0.587 * rgba[i * 4 + 1] +
+            0.114 * rgba[i * 4 + 2];
         }
       }
 
-      let bgLum = 250;
-      if (opaqueCount > 0) {
-        const targetRank = Math.floor(opaqueCount * 0.85);
-        let acc = 0;
-        for (let l = 0; l < 256; l++) {
-          acc += lumHist[l];
-          if (acc >= targetRank) {
-            bgLum = l;
-            break;
-          }
+      const smoothLum = new Float32Array(w * h);
+      for (let y = 0; y < h; y++) {
+        const y0 = Math.max(0, y - 1) * w;
+        const y1 = y * w;
+        const y2 = Math.min(h - 1, y + 1) * w;
+        for (let x = 0; x < w; x++) {
+          const x0 = Math.max(0, x - 1);
+          const x2 = Math.min(w - 1, x + 1);
+          smoothLum[y1 + x] =
+            (lum[y0 + x0] +
+              2 * lum[y0 + x] +
+              lum[y0 + x2] +
+              2 * lum[y1 + x0] +
+              4 * lum[y1 + x] +
+              2 * lum[y1 + x2] +
+              lum[y2 + x0] +
+              2 * lum[y2 + x] +
+              lum[y2 + x2]) /
+            16;
         }
       }
 
-      const inkThreshold = Math.max(85, Math.min(212, bgLum - 32));
+      // 2. Detector de puente bilateral en 4 ejes (H, V, Diag1, Diag2) inmune a sombras:
+      // Un trazo a mano alzada tiene papel más claro a AMBOS lados opuestos dentro de un radio R,
+      // mientras que cualquier sombra proyectada (suave o de borde marcado) es una meseta de un solo lado.
+      const bridgeRadius = Math.max(16, Math.round(Math.min(w, h) * 0.048));
       const rawInkMask = new Uint8Array(w * h);
-      for (let i = 0; i < w * h; i++) {
-        const a = rgba[i * 4 + 3];
-        if (a <= 40) continue;
-        const lum =
-          0.299 * rgba[i * 4] +
-          0.587 * rgba[i * 4 + 1] +
-          0.114 * rgba[i * 4 + 2];
-        if (lum < inkThreshold) {
-          rawInkMask[i] = 1;
-        }
-      }
 
-      // Limpieza de motas aisladas de 1 píxel (ruido de cámara)
-      const cleanMask = new Uint8Array(rawInkMask);
-      for (let y = 1; y < h - 1; y++) {
-        for (let x = 1; x < w - 1; x++) {
-          const idx = y * w + x;
-          if (rawInkMask[idx] === 0) continue;
-          let neighbors = 0;
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              if (dx === 0 && dy === 0) continue;
-              if (rawInkMask[(y + dy) * w + (x + dx)] === 1) neighbors++;
+      for (let y = 0; y < h; y++) {
+        const rowOff = y * w;
+        for (let x = 0; x < w; x++) {
+          const idx = rowOff + x;
+          const centerL = smoothLum[idx];
+
+          let maxLeft = centerL;
+          let maxRight = centerL;
+          let maxUp = centerL;
+          let maxDown = centerL;
+          let maxNW = centerL;
+          let maxSE = centerL;
+          let maxNE = centerL;
+          let maxSW = centerL;
+
+          for (let k = 1; k <= bridgeRadius; k += k < 6 ? 1 : 2) {
+            if (x - k >= 0) {
+              const v = smoothLum[rowOff + (x - k)];
+              if (v > maxLeft) maxLeft = v;
+            }
+            if (x + k < w) {
+              const v = smoothLum[rowOff + (x + k)];
+              if (v > maxRight) maxRight = v;
+            }
+            if (y - k >= 0) {
+              const v = smoothLum[(y - k) * w + x];
+              if (v > maxUp) maxUp = v;
+            }
+            if (y + k < h) {
+              const v = smoothLum[(y + k) * w + x];
+              if (v > maxDown) maxDown = v;
+            }
+            if (x - k >= 0 && y - k >= 0) {
+              const v = smoothLum[(y - k) * w + (x - k)];
+              if (v > maxNW) maxNW = v;
+            }
+            if (x + k < w && y + k < h) {
+              const v = smoothLum[(y + k) * w + (x + k)];
+              if (v > maxSE) maxSE = v;
+            }
+            if (x + k < w && y - k >= 0) {
+              const v = smoothLum[(y - k) * w + (x + k)];
+              if (v > maxNE) maxNE = v;
+            }
+            if (x - k >= 0 && y + k < h) {
+              const v = smoothLum[(y + k) * w + (x - k)];
+              if (v > maxSW) maxSW = v;
             }
           }
-          if (neighbors === 0) {
-            cleanMask[idx] = 0;
+
+          const bridgeH = Math.min(maxLeft, maxRight);
+          const bridgeV = Math.min(maxUp, maxDown);
+          const bridgeD1 = Math.min(maxNW, maxSE);
+          const bridgeD2 = Math.min(maxNE, maxSW);
+
+          const localPaperBg = Math.max(bridgeH, bridgeV, bridgeD1, bridgeD2);
+          const drop = localPaperBg - centerL;
+          const ratio = centerL / Math.max(35, localPaperBg);
+
+          if (ratio < 0.76 && drop > 20) {
+            rawInkMask[idx] = 1;
           }
         }
       }
 
-      // Esqueletización a eje medial de 1 px para luego trazar todas las líneas a exactamente 1.5 px
+      // 3. Limpieza de componentes conexos diminutos (< 8 píxeles: motas de polvo o textura del papel)
+      const visited = new Uint8Array(w * h);
+      const cleanMask = new Uint8Array(rawInkMask);
+      const bfsQueue = new Int32Array(w * h);
+      for (let i = 0; i < w * h; i++) {
+        if (cleanMask[i] === 1 && visited[i] === 0) {
+          let head = 0;
+          let tail = 0;
+          bfsQueue[tail++] = i;
+          visited[i] = 1;
+          while (head < tail) {
+            const curr = bfsQueue[head++];
+            const cy = Math.floor(curr / w);
+            const cx = curr - cy * w;
+            for (let dy = -1; dy <= 1; dy++) {
+              const ny = cy + dy;
+              if (ny < 0 || ny >= h) continue;
+              for (let dx = -1; dx <= 1; dx++) {
+                const nx = cx + dx;
+                if (nx < 0 || nx >= w) continue;
+                const nIdx = ny * w + nx;
+                if (cleanMask[nIdx] === 1 && visited[nIdx] === 0) {
+                  visited[nIdx] = 1;
+                  bfsQueue[tail++] = nIdx;
+                }
+              }
+            }
+          }
+          if (tail < 8) {
+            for (let k = 0; k < tail; k++) {
+              cleanMask[bfsQueue[k]] = 0;
+            }
+          }
+        }
+      }
+
+      // 4. Esqueletización completa a eje medial de 1 px para trazar todas las líneas a exactamente 1.5 px
       const skeletonMask = thinBinaryMask(cleanMask, w, h, 'ultra-thin');
 
       let inkMinX = w;
@@ -330,24 +405,25 @@ async function processSingleDrawingForLaser(
         y: p.y - inkMinY + padPx,
       }));
 
-      // Dimensionado proporcional del logo MakerBox y márgenes de seguridad
+      // Dimensionado del logo MakerBox (+50% de tamaño para excelente visibilidad en el grabado)
       const approxMmPerPx = targetHeightMm / baseH;
       const approxBaseWidthMm = baseW * approxMmPerPx;
       const logoWidthMm = Math.min(
-        36,
-        approxBaseWidthMm * 0.44,
-        Math.max(22, Math.min(approxBaseWidthMm, targetHeightMm) * 0.27)
+        54,
+        Math.max(33, approxBaseWidthMm * 0.66),
+        Math.max(33, Math.min(approxBaseWidthMm, targetHeightMm) * 0.405)
       );
 
-      const logoW = Math.max(52, Math.round(logoWidthMm / approxMmPerPx));
+      const logoW = Math.max(78, Math.round(logoWidthMm / approxMmPerPx));
       const logoH = Math.max(
-        14,
+        20,
         Math.round(logoW * MAKERBOX_LOGO_ASPECT_RATIO)
       );
       const insetPx = Math.max(6, Math.round(3.0 / approxMmPerPx));
       const clearPx = Math.max(6, Math.round(2.5 / approxMmPerPx));
 
-      // Evaluar las 4 esquinas para ubicar el logo MakerBox sin cruzarse con líneas del dibujo
+      // Evaluar las 4 esquinas (y extensión horizontal o vertical mínima si es necesario)
+      // para ubicar el logo MakerBox sin cruzarse con ninguna línea del dibujo
       const cornerOrder: LogoCornerId[] = [
         'bottom-right',
         'bottom-left',
@@ -357,7 +433,9 @@ async function processSingleDrawingForLaser(
 
       interface CornerCandidate {
         id: LogoCornerId;
-        extPx: number;
+        extX: number;
+        extY: number;
+        totalExt: number;
         minDistSq: number;
         priority: number;
       }
@@ -377,8 +455,10 @@ async function processSingleDrawingForLaser(
         const zoneYMax = isBottom ? baseH : boxY0 + logoH + clearPx;
 
         let hits = 0;
-        let maxYInSpan = -Infinity;
-        let minYInSpan = Infinity;
+        let maxYInXZone = -Infinity;
+        let minYInXZone = Infinity;
+        let maxXInYZone = -Infinity;
+        let minXInYZone = Infinity;
         let minDistSq = Infinity;
 
         for (let i = 0; i < localPts.length; i++) {
@@ -388,36 +468,61 @@ async function processSingleDrawingForLaser(
           const dSq = dx * dx + dy * dy;
           if (dSq < minDistSq) minDistSq = dSq;
 
-          if (pt.x >= zoneXMin && pt.x <= zoneXMax) {
-            if (pt.y > maxYInSpan) maxYInSpan = pt.y;
-            if (pt.y < minYInSpan) minYInSpan = pt.y;
-            if (pt.y >= zoneYMin && pt.y <= zoneYMax) {
-              hits++;
-            }
+          const inX = pt.x >= zoneXMin && pt.x <= zoneXMax;
+          const inY = pt.y >= zoneYMin && pt.y <= zoneYMax;
+
+          if (inX) {
+            if (pt.y > maxYInXZone) maxYInXZone = pt.y;
+            if (pt.y < minYInXZone) minYInXZone = pt.y;
+          }
+          if (inY) {
+            if (pt.x > maxXInYZone) maxXInYZone = pt.x;
+            if (pt.x < minXInYZone) minXInYZone = pt.x;
+          }
+          if (inX && inY) {
+            hits++;
           }
         }
 
-        let extPx = 0;
-        if (hits > 0) {
-          if (isBottom) {
-            extPx = Math.max(
-              0,
-              Math.ceil(maxYInSpan + clearPx + logoH + insetPx - baseH)
-            );
+        let extX = 0;
+        let extY = 0;
+        if (hits > 0 || logoW + insetPx * 2 > baseW) {
+          const needY = isBottom
+            ? Math.max(0, Math.ceil(maxYInXZone + clearPx + logoH + insetPx - baseH))
+            : Math.max(0, Math.ceil(insetPx + logoH + clearPx - minYInXZone));
+          const minFrameWidthForLogo = Math.max(0, logoW + insetPx * 2 - baseW);
+
+          const needX = isRight
+            ? Math.max(
+                minFrameWidthForLogo,
+                Math.ceil(maxXInYZone + clearPx + logoW + insetPx - baseW)
+              )
+            : Math.max(
+                minFrameWidthForLogo,
+                Math.ceil(insetPx + logoW + clearPx - minXInYZone)
+              );
+
+          if (needX <= needY + minFrameWidthForLogo) {
+            extX = needX;
+            extY = 0;
           } else {
-            extPx = Math.max(
-              0,
-              Math.ceil(insetPx + logoH + clearPx - minYInSpan)
-            );
+            extX = minFrameWidthForLogo;
+            extY = needY;
           }
         }
 
-        return { id, extPx, minDistSq, priority };
+        return {
+          id,
+          extX,
+          extY,
+          totalExt: extX + extY,
+          minDistSq,
+          priority,
+        };
       });
 
       candidates.sort((a, b) => {
-        if (a.extPx !== b.extPx) return a.extPx - b.extPx;
-        // Entre esquinas completamente despejadas (extPx === 0), elegir la más alejada de los trazos
+        if (a.totalExt !== b.totalExt) return a.totalExt - b.totalExt;
         if (Math.abs(b.minDistSq - a.minDistSq) > 25) {
           return b.minDistSq - a.minDistSq;
         }
@@ -430,16 +535,17 @@ async function processSingleDrawingForLaser(
       const isRightWinner =
         bestCorner.id === 'bottom-right' || bestCorner.id === 'top-right';
 
-      const shiftDrawingY = isTopWinner ? bestCorner.extPx : 0;
-      const finalW = baseW;
-      const finalH = baseH + bestCorner.extPx;
+      const shiftDrawingX = isRightWinner ? 0 : bestCorner.extX;
+      const shiftDrawingY = isTopWinner ? bestCorner.extY : 0;
+      const finalW = baseW + bestCorner.extX;
+      const finalH = baseH + bestCorner.extY;
 
       const logoX = isRightWinner ? finalW - insetPx - logoW : insetPx;
       const logoY = isTopWinner ? insetPx : finalH - insetPx - logoH;
 
       // Renderizar el patrón final de grabado:
       // 1) Dibujo grupal con líneas continuas de exactamente 1.5 px
-      // 2) Logotipo oficial MakerBox en la esquina despejada
+      // 2) Logotipo oficial MakerBox (+50%) en la esquina despejada
       const cropCanvas = document.createElement('canvas');
       cropCanvas.width = finalW;
       cropCanvas.height = finalH;
@@ -461,7 +567,7 @@ async function processSingleDrawingForLaser(
         for (let sx = inkMinX; sx <= inkMaxX; sx++) {
           if (skeletonMask[sy * w + sx] !== 1) continue;
 
-          const cx = sx - inkMinX + padPx + 0.5;
+          const cx = sx - inkMinX + padPx + shiftDrawingX + 0.5;
           const cy = sy - inkMinY + padPx + shiftDrawingY + 0.5;
 
           const east = sx + 1 < w && skeletonMask[sy * w + (sx + 1)] === 1;

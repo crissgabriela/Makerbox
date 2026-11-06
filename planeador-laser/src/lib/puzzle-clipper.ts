@@ -251,6 +251,8 @@ export function buildPuzzleSvgFromTracedResult(
     lines.push(`<?xml version="1.0" encoding="UTF-8"?>`);
 
     if (withAnnotations) {
+      const topFontSize = Math.min(2.7, Math.max(1.6, Number((sheetW * 0.03).toFixed(2))));
+      const botFontSize = Math.min(2.25, Math.max(1.45, Number((sheetW * 0.025).toFixed(2))));
       lines.push(
         `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${sheetW}mm" height="${sheetH}mm" viewBox="0 0 ${sheetW} ${sheetH}">`
       );
@@ -263,7 +265,7 @@ export function buildPuzzleSvgFromTracedResult(
         `  <rect x="1" y="1" width="${(sheetW - 2).toFixed(1)}" height="${(sheetH - 2).toFixed(1)}" rx="3" fill="#FFFFFF" stroke="#D97706" stroke-width="0.4" stroke-dasharray="2.5,2.5" />`
       );
       lines.push(
-        `  <text x="${(sheetW / 2).toFixed(1)}" y="5.2" text-anchor="middle" font-family="sans-serif" font-size="2.7" font-weight="bold" fill="#92400E">${hybridTitle} · Contrachapado 3 mm (${puzzleResult.cols}×${puzzleResult.rows} = ${totalPieces} Piezas · ${frameWidthMm}×${frameHeightMm} mm)</text>`
+        `  <text x="${(sheetW / 2).toFixed(1)}" y="5.2" text-anchor="middle" font-family="sans-serif" font-size="${topFontSize}" font-weight="bold" fill="#92400E">${hybridTitle} · Contrachapado 3 mm (${puzzleResult.cols}×${puzzleResult.rows} = ${totalPieces} Piezas · ${frameWidthMm}×${frameHeightMm} mm)</text>`
       );
       lines.push(`  <g transform="translate(${marginMm}, ${marginMm})">`);
     } else {
@@ -311,8 +313,9 @@ export function buildPuzzleSvgFromTracedResult(
     lines.push(`  </g>`);
 
     if (withAnnotations) {
+      const botFontSize = Math.min(2.25, Math.max(1.4, Number((sheetW * 0.025).toFixed(2))));
       lines.push(
-        `  <text x="${(sheetW / 2).toFixed(1)}" y="${(sheetH - 2.2).toFixed(1)}" text-anchor="middle" font-family="sans-serif" font-size="2.35" fill="#B91C1C">Capa Imagen: Grabado 1.5 px + Logo MakerBox · Vectores Rojos (#FF0000): Marco + Cortes Rectos Horizontales y Verticales</text>`
+        `  <text x="${(sheetW / 2).toFixed(1)}" y="${(sheetH - 2.2).toFixed(1)}" text-anchor="middle" font-family="sans-serif" font-size="${botFontSize}" fill="#B91C1C">Grabado: 1.5 px + Logo MakerBox · Corte (#FF0000): Marco + Cuadrícula Recta</text>`
       );
     }
 
