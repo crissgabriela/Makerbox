@@ -27,3 +27,34 @@ export function buildMakerboxLogoVectorPath(
   }
   return cmds.join(' ');
 }
+
+/**
+ * Dibuja el logotipo oficial MakerBox | Ingeniería UTalca directamente sobre un Canvas 2D
+ * en la posición superior-izquierda (leftX, topY) con ancho widthPx y regla par-impar (evenodd)
+ * para preservar intactos los huecos internos de las letras.
+ */
+export function drawMakerboxLogoOnCanvas(
+  ctx: CanvasRenderingContext2D,
+  leftX: number,
+  topY: number,
+  widthPx: number,
+  fillColor = '#000000'
+): void {
+  ctx.save();
+  ctx.fillStyle = fillColor;
+  ctx.beginPath();
+  for (const loop of MAKERBOX_LOGO_LOOPS) {
+    loop.forEach(([nx, ny], idx) => {
+      const px = leftX + nx * widthPx;
+      const py = topY + ny * widthPx;
+      if (idx === 0) {
+        ctx.moveTo(px, py);
+      } else {
+        ctx.lineTo(px, py);
+      }
+    });
+    ctx.closePath();
+  }
+  ctx.fill('evenodd');
+  ctx.restore();
+}

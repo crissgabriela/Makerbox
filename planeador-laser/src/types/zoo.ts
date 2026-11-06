@@ -12,19 +12,19 @@ export const ENGRAVING_STROKE_OPTIONS: {
     id: 'ultra-thin',
     label: 'Ultra Fina (1 px)',
     badge: 'Máxima Velocidad ⚡',
-    description: 'Trazo de línea esqueleto ultra delgado (1 px). Reduce al mínimo el tiempo de grabado láser en la Falcon 10W.',
+    description: 'Trazo de línea esqueleto ultra delgado (1 px) para grabado láser rápido.',
   },
   {
     id: 'thin',
-    label: 'Fina (Recomendada)',
+    label: 'Estándar (1.5 px)',
     badge: 'Grabado Rápido ✨',
-    description: 'Líneas finas y nítidas (~1.5–2 px) con excelente contraste en madera de balsa y grabado veloz.',
+    description: 'Líneas uniformes de 1.5 px optimizadas para grabado láser en contrachapado de 3 mm.',
   },
   {
     id: 'normal',
     label: 'Normal / Original',
     badge: 'Grosor Original',
-    description: 'Mantiene el grosor original de los trazos de la imagen sin adelgazar.',
+    description: 'Mantiene el grosor original de los trazos de la imagen.',
   },
 ];
 
@@ -42,7 +42,7 @@ export const PUZZLE_PIECE_OPTIONS: {
     rows: 4,
     label: '20 Piezas',
     difficulty: 'Nivel Inicial',
-    description: '20 piezas grandes en marco ajustado al dibujo con encaje reforzado antideslizante.',
+    description: 'Cuadrícula de 20 piezas con cortes rectos horizontales y verticales para corte rápido en contrachapado de 3 mm.',
   },
   {
     count: 30,
@@ -50,7 +50,7 @@ export const PUZZLE_PIECE_OPTIONS: {
     rows: 5,
     label: '30 Piezas',
     difficulty: 'Nivel Explorador',
-    description: '30 piezas en cuadrícula equilibrada con pestañas de bulbo profundo de lado a lado.',
+    description: 'Cuadrícula de 30 piezas sin pestañas de encaje, ideal para corte láser ágil y armado grupal.',
   },
   {
     count: 40,
@@ -58,7 +58,7 @@ export const PUZZLE_PIECE_OPTIONS: {
     rows: 5,
     label: '40 Piezas',
     difficulty: 'Nivel Intermedio',
-    description: '40 piezas de tamaño medio, desafiante y ordenado con todas las piezas grabadas.',
+    description: 'Cuadrícula de 40 piezas rectangulares con líneas continuas de lado a lado.',
   },
   {
     count: 50,
@@ -66,7 +66,7 @@ export const PUZZLE_PIECE_OPTIONS: {
     rows: 5,
     label: '50 Piezas',
     difficulty: 'Nivel Avanzado',
-    description: '50 piezas de encastre mecánico continuo de borde a borde dentro del marco.',
+    description: 'Cuadrícula de 50 piezas mediante trazos rectos horizontales y verticales de alta velocidad.',
   },
   {
     count: 60,
@@ -74,13 +74,13 @@ export const PUZZLE_PIECE_OPTIONS: {
     rows: 6,
     label: '60 Piezas',
     difficulty: 'Nivel Maestro',
-    description: '60 piezas de máxima precisión y agarre firme para corte láser en madera/MDF.',
+    description: 'Cuadrícula de 60 piezas rectangulares en contrachapado de 3 mm para mayor desafío visual.',
   },
 ];
 
 /**
  * Calcula la cuadrícula óptima (columnas x filas) para una cantidad dada de piezas
- * adaptándose automáticamente a la orientación y relación de aspecto (ancho/alto) del dibujo.
+ * adaptándose automáticamente a la orientación (ancho/alto) del dibujo.
  */
 export function getAdaptiveGridForPieceCount(
   count: PuzzlePieceCount,
@@ -103,9 +103,9 @@ export function getAdaptiveGridForPieceCount(
       : { cols: 8, rows: 5, totalPieces: 40 };
   }
   if (count === 50) {
-    if (aspectRatio < 0.75) return { cols: 5, rows: 10, totalPieces: 50 };
-    if (aspectRatio <= 1.35) return { cols: 7, rows: 7, totalPieces: 49 };
-    return { cols: 10, rows: 5, totalPieces: 50 };
+    return aspectRatio < 0.95
+      ? { cols: 5, rows: 10, totalPieces: 50 }
+      : { cols: 10, rows: 5, totalPieces: 50 };
   }
   if (count === 60) {
     return aspectRatio < 0.95
@@ -150,7 +150,7 @@ export interface ZooFusionRequest {
   images: UploadedSketchInput[];
   /** Cantidad de piezas del rompecabezas: 20, 25, 30 o 40 */
   puzzlePieces: PuzzlePieceCount;
-  /** Grosor de línea para el grabado láser en Creality Falcon 10W */
+  /** Grosor de línea para el grabado láser */
   strokeWeight?: EngravingStrokeWeight;
   /** Instrucción adicional opcional del niño/joven para el asistente IA */
   studentPrompt?: string;

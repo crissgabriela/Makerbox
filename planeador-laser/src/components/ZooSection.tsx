@@ -1,78 +1,212 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import Link from 'next/link';
 import {
   Upload,
-  Sparkles,
   Download,
-  Trash2,
   Puzzle,
-  Wand2,
-  Bot,
   CheckCircle2,
   AlertTriangle,
   ArrowLeft,
   Eye,
-  Image as ImageIcon,
   Layers,
-  Send,
-  KeyRound,
   FileImage,
+  RotateCcw,
+  Ruler,
 } from 'lucide-react';
 import {
-  AI_FUSION_INTERNAL_PROMPT,
-  AssistantChatMessage,
-  ENGRAVING_STROKE_OPTIONS,
-  EngravingStrokeWeight,
   PUZZLE_PIECE_OPTIONS,
   PuzzlePieceCount,
-  SketchFeatureAnalysis,
-  UploadedSketchInput,
-  ZooFusionResponse,
 } from '@/types/zoo';
 import {
-  extractOuterContourFromRgba,
+  TracedVectorResult,
   thinBinaryMask,
 } from '@/lib/potrace-vectorizer';
 import { buildPuzzleSvgFromTracedResult } from '@/lib/puzzle-clipper';
+import {
+  MAKERBOX_LOGO_ASPECT_RATIO,
+  drawMakerboxLogoOnCanvas,
+} from '@/lib/makerbox-logo-vector';
 
 interface ZooSectionProps {
   onBackToMenu?: () => void;
 }
 
-/**
- * Procesa la imagen generada por Gemini para la Creality Falcon 10W:
- * 1. Limpia el fondo y adelgaza los trazos (Zhang-Suen thinning) dejando una IMAGEN RASTER PNG de alta velocidad (SIN vectorizar) para Grabado Láser.
- * 2. Detecta y vectoriza ÚNICAMENTE el contorno exterior cerrado (#FF0000) y las líneas del rompecabezas (#FF0000) para Corte Láser.
- */
-async function buildFalconEngravingAndVectorCutClient(
-  rasterUrl: string,
-  puzzlePieces: PuzzlePieceCount,
-  targetHeightMm: number,
-  hybridTitle: string,
-  includeAnnotations: boolean,
-  strokeWeight: EngravingStrokeWeight = 'thin'
-): Promise<{
+const FIXED_ENGRAVING_LINE_PX = 1.5;
+
+type LogoCornerId = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+
+const CORNER_LABELS: Record<LogoCornerId, string> = {
+  'bottom-right': 'Esquina inferior derecha',
+  'bottom-left': 'Esquina inferior izquierda',
+  'top-right': 'Esquina superior derecha',
+  'top-left': 'Esquina superior izquierda',
+};
+
+interface ProcessedDrawingResult {
   previewSvg: string;
   laserSvg: string;
-  cleanedEngravingPngUrl: string;
-  outerNodes: number;
-  clippedSegmentsCount: number;
+  engravingPngUrl: string;
   widthMm: number;
   heightMm: number;
   cols: number;
   rows: number;
-} | null> {
+  cutLinesCount: number;
+  selectedCorner: LogoCornerId;
+}
+
+/**
+ * Genera un dibujo grupal de ejemplo a mano alzada en blanco y negro
+ * para que la vista previa funcione de inmediato al abrir el Taller 1.
+ */
+function createSampleGroupSketchDataUrl(): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = 640;
+  canvas.height = 460;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = '#111827';
+  ctx.lineWidth = 2.4;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // Sol en esquina superior izquierda
+  ctx.beginPath();
+  ctx.arc(92, 82, 28, 0, Math.PI * 2);
+  ctx.stroke();
+  for (let i = 0; i < 8; i++) {
+    const ang = (i * Math.PI) / 4;
+    ctx.beginPath();
+    ctx.moveTo(92 + Math.cos(ang) * 35, 82 + Math.sin(ang) * 35);
+    ctx.lineTo(92 + Math.cos(ang) * 48, 82 + Math.sin(ang) * 48);
+    ctx.stroke();
+  }
+
+  // Nube suave arriba al centro-derecha
+  ctx.beginPath();
+  ctx.arc(455, 78, 20, Math.PI * 0.6, Math.PI * 1.55);
+  ctx.arc(482, 68, 24, Math.PI * 1.05, Math.PI * 1.95);
+  ctx.arc(512, 80, 18, Math.PI * 1.4, Math.PI * 0.45);
+  ctx.closePath();
+  ctx.stroke();
+
+  // Personaje central: Robot explorador dibujado en grupo
+  // Antena
+  ctx.beginPath();
+  ctx.moveTo(310, 96);
+  ctx.lineTo(310, 62);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(310, 54, 8, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Cabeza
+  ctx.strokeRect(250, 96, 120, 86);
+  // Ojos
+  ctx.beginPath();
+  ctx.arc(285, 132, 12, 0, Math.PI * 2);
+  ctx.moveTo(347, 132);
+  ctx.arc(335, 132, 12, 0, Math.PI * 2);
+  ctx.stroke();
+  // Sonrisa
+  ctx.beginPath();
+  ctx.arc(310, 148, 22, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.stroke();
+
+  // Cuerpo
+  ctx.strokeRect(232, 194, 156, 126);
+  // Corazón/engrane en el pecho
+  ctx.beginPath();
+  ctx.arc(310, 252, 28, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(298, 252);
+  ctx.lineTo(307, 262);
+  ctx.lineTo(325, 242);
+  ctx.stroke();
+
+  // Brazos saludando
+  ctx.beginPath();
+  ctx.moveTo(232, 224);
+  ctx.lineTo(175, 182);
+  ctx.lineTo(155, 156);
+  ctx.moveTo(388, 224);
+  ctx.lineTo(446, 190);
+  ctx.lineTo(472, 168);
+  ctx.stroke();
+
+  // Piernas
+  ctx.beginPath();
+  ctx.moveTo(272, 320);
+  ctx.lineTo(272, 388);
+  ctx.lineTo(246, 388);
+  ctx.moveTo(348, 320);
+  ctx.lineTo(348, 388);
+  ctx.lineTo(374, 388);
+  ctx.stroke();
+
+  // Árbol a la izquierda
+  ctx.beginPath();
+  ctx.moveTo(118, 390);
+  ctx.lineTo(118, 305);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(118, 272, 42, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Montañas suaves de fondo a la izquierda-centro (dejando esquina inferior derecha limpia)
+  ctx.beginPath();
+  ctx.moveTo(58, 390);
+  ctx.lineTo(410, 390);
+  ctx.stroke();
+
+  // Estrellas decorativas
+  const drawStar = (cx: number, cy: number, r: number) => {
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const rad = i % 2 === 0 ? r : r * 0.45;
+      const a = (i * Math.PI) / 5 - Math.PI / 2;
+      const px = cx + Math.cos(a) * rad;
+      const py = cy + Math.sin(a) * rad;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  };
+  drawStar(198, 96, 13);
+  drawStar(428, 128, 12);
+
+  return canvas.toDataURL('image/png');
+}
+
+/**
+ * Procesa el único dibujo a mano alzada subido por el grupo:
+ * 1. Extrae los trazos oscuros limpiando el fondo del papel.
+ * 2. Esqueletiza y normaliza todas las líneas a un grosor uniforme fijo de 1.5 px.
+ * 3. Analiza las 4 esquinas para ubicar el logotipo oficial de MakerBox sin cruzarse con ninguna línea del dibujo.
+ * 4. Genera el SVG con grabado + corte recto horizontal/vertical (#FF0000) para contrachapado de 3 mm.
+ */
+async function processSingleDrawingForLaser(
+  imageUrl: string,
+  puzzlePieces: PuzzlePieceCount,
+  targetHeightMm: number,
+  drawingTitle: string,
+  includeAnnotations: boolean
+): Promise<ProcessedDrawingResult | null> {
   return new Promise((resolve) => {
     const img = new window.Image();
     img.crossOrigin = 'anonymous';
     img.onerror = () => resolve(null);
     img.onload = () => {
-      const maxDim = 480;
+      const maxDim = 720;
       const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
-      const w = Math.max(160, Math.round(img.width * scale));
-      const h = Math.max(160, Math.round(img.height * scale));
+      const w = Math.max(200, Math.round(img.width * scale));
+      const h = Math.max(200, Math.round(img.height * scale));
 
       const canvas = document.createElement('canvas');
       canvas.width = w;
@@ -87,1101 +221,568 @@ async function buildFalconEngravingAndVectorCutClient(
       ctx.fillRect(0, 0, w, h);
       ctx.drawImage(img, 0, 0, w, h);
 
-      const imgData = ctx.getImageData(0, 0, w, h);
-      const { traced, inkMask } = extractOuterContourFromRgba(
-        imgData.data,
-        w,
-        h,
-        targetHeightMm,
-        {
-          alphaMax: 0.88,
-          optTolerance: 0.55,
-        }
-      );
+      const rgba = ctx.getImageData(0, 0, w, h).data;
 
-      if (traced.outerPolygon.length < 6) {
+      // Estimación adaptativa del brillo del papel para tolerar fotos de celular o escaneos
+      const lumHist = new Uint32Array(256);
+      let opaqueCount = 0;
+      for (let i = 0; i < w * h; i++) {
+        const a = rgba[i * 4 + 3];
+        if (a > 40) {
+          const lum = Math.min(
+            255,
+            Math.max(
+              0,
+              Math.round(
+                0.299 * rgba[i * 4] +
+                  0.587 * rgba[i * 4 + 1] +
+                  0.114 * rgba[i * 4 + 2]
+              )
+            )
+          );
+          lumHist[lum]++;
+          opaqueCount++;
+        }
+      }
+
+      let bgLum = 250;
+      if (opaqueCount > 0) {
+        const targetRank = Math.floor(opaqueCount * 0.85);
+        let acc = 0;
+        for (let l = 0; l < 256; l++) {
+          acc += lumHist[l];
+          if (acc >= targetRank) {
+            bgLum = l;
+            break;
+          }
+        }
+      }
+
+      const inkThreshold = Math.max(85, Math.min(212, bgLum - 32));
+      const rawInkMask = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) {
+        const a = rgba[i * 4 + 3];
+        if (a <= 40) continue;
+        const lum =
+          0.299 * rgba[i * 4] +
+          0.587 * rgba[i * 4 + 1] +
+          0.114 * rgba[i * 4 + 2];
+        if (lum < inkThreshold) {
+          rawInkMask[i] = 1;
+        }
+      }
+
+      // Limpieza de motas aisladas de 1 píxel (ruido de cámara)
+      const cleanMask = new Uint8Array(rawInkMask);
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const idx = y * w + x;
+          if (rawInkMask[idx] === 0) continue;
+          let neighbors = 0;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              if (rawInkMask[(y + dy) * w + (x + dx)] === 1) neighbors++;
+            }
+          }
+          if (neighbors === 0) {
+            cleanMask[idx] = 0;
+          }
+        }
+      }
+
+      // Esqueletización a eje medial de 1 px para luego trazar todas las líneas a exactamente 1.5 px
+      const skeletonMask = thinBinaryMask(cleanMask, w, h, 'ultra-thin');
+
+      let inkMinX = w;
+      let inkMinY = h;
+      let inkMaxX = 0;
+      let inkMaxY = 0;
+      const skelPoints: { x: number; y: number }[] = [];
+
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          if (skeletonMask[y * w + x] === 1) {
+            if (x < inkMinX) inkMinX = x;
+            if (y < inkMinY) inkMinY = y;
+            if (x > inkMaxX) inkMaxX = x;
+            if (y > inkMaxY) inkMaxY = y;
+            skelPoints.push({ x, y });
+          }
+        }
+      }
+
+      if (skelPoints.length < 10 || inkMinX >= inkMaxX || inkMinY >= inkMaxY) {
         resolve(null);
         return;
       }
 
-      // Adelgazamiento morfológico (Zhang-Suen) de las líneas para grabado ultra veloz en Falcon 10W
-      const finalEngraveMask = thinBinaryMask(inkMask, w, h, strokeWeight);
+      const rawInkW = Math.max(24, inkMaxX - inkMinX + 1);
+      const rawInkH = Math.max(24, inkMaxY - inkMinY + 1);
+      const padPx = Math.max(8, Math.round(Math.max(rawInkW, rawInkH) * 0.03));
 
-      // Crear el PNG recortado exactamente al bounding box del contorno (alineación 1:1 milimétrica)
-      // con trazos negros finos (#000000) y fondo transparente para grabar en Creality Falcon 10W
-      const { minX, minY, widthPx, heightPx } = traced.cropBoxPx;
-      const cropCanvas = document.createElement('canvas');
-      cropCanvas.width = widthPx;
-      cropCanvas.height = heightPx;
-      const cropCtx = cropCanvas.getContext('2d');
+      const baseW = rawInkW + padPx * 2;
+      const baseH = rawInkH + padPx * 2;
 
-      if (cropCtx) {
-        const outData = cropCtx.createImageData(widthPx, heightPx);
-        for (let y = 0; y < heightPx; y++) {
-          for (let x = 0; x < widthPx; x++) {
-            const srcX = minX + x;
-            const srcY = minY + y;
-            const isInk =
-              srcX >= 0 &&
-              srcX < w &&
-              srcY >= 0 &&
-              srcY < h &&
-              finalEngraveMask[srcY * w + srcX] === 1;
-            const dstIdx = (y * widthPx + x) * 4;
-            if (isInk) {
-              outData.data[dstIdx + 0] = 0;
-              outData.data[dstIdx + 1] = 0;
-              outData.data[dstIdx + 2] = 0;
-              outData.data[dstIdx + 3] = 255;
-            } else {
-              outData.data[dstIdx + 0] = 255;
-              outData.data[dstIdx + 1] = 255;
-              outData.data[dstIdx + 2] = 255;
-              outData.data[dstIdx + 3] = 0;
+      // Puntos del dibujo en coordenadas locales del recuadro base [0..baseW, 0..baseH]
+      const localPts = skelPoints.map((p) => ({
+        x: p.x - inkMinX + padPx,
+        y: p.y - inkMinY + padPx,
+      }));
+
+      // Dimensionado proporcional del logo MakerBox y márgenes de seguridad
+      const approxMmPerPx = targetHeightMm / baseH;
+      const approxBaseWidthMm = baseW * approxMmPerPx;
+      const logoWidthMm = Math.min(
+        36,
+        approxBaseWidthMm * 0.44,
+        Math.max(22, Math.min(approxBaseWidthMm, targetHeightMm) * 0.27)
+      );
+
+      const logoW = Math.max(52, Math.round(logoWidthMm / approxMmPerPx));
+      const logoH = Math.max(
+        14,
+        Math.round(logoW * MAKERBOX_LOGO_ASPECT_RATIO)
+      );
+      const insetPx = Math.max(6, Math.round(3.0 / approxMmPerPx));
+      const clearPx = Math.max(6, Math.round(2.5 / approxMmPerPx));
+
+      // Evaluar las 4 esquinas para ubicar el logo MakerBox sin cruzarse con líneas del dibujo
+      const cornerOrder: LogoCornerId[] = [
+        'bottom-right',
+        'bottom-left',
+        'top-right',
+        'top-left',
+      ];
+
+      interface CornerCandidate {
+        id: LogoCornerId;
+        extPx: number;
+        minDistSq: number;
+        priority: number;
+      }
+
+      const candidates: CornerCandidate[] = cornerOrder.map((id, priority) => {
+        const isRight = id === 'bottom-right' || id === 'top-right';
+        const isBottom = id === 'bottom-right' || id === 'bottom-left';
+
+        const boxX0 = isRight ? baseW - insetPx - logoW : insetPx;
+        const boxY0 = isBottom ? baseH - insetPx - logoH : insetPx;
+        const boxCenterX = boxX0 + logoW / 2;
+        const boxCenterY = boxY0 + logoH / 2;
+
+        const zoneXMin = isRight ? boxX0 - clearPx : 0;
+        const zoneXMax = isRight ? baseW : boxX0 + logoW + clearPx;
+        const zoneYMin = isBottom ? boxY0 - clearPx : 0;
+        const zoneYMax = isBottom ? baseH : boxY0 + logoH + clearPx;
+
+        let hits = 0;
+        let maxYInSpan = -Infinity;
+        let minYInSpan = Infinity;
+        let minDistSq = Infinity;
+
+        for (let i = 0; i < localPts.length; i++) {
+          const pt = localPts[i];
+          const dx = pt.x - boxCenterX;
+          const dy = pt.y - boxCenterY;
+          const dSq = dx * dx + dy * dy;
+          if (dSq < minDistSq) minDistSq = dSq;
+
+          if (pt.x >= zoneXMin && pt.x <= zoneXMax) {
+            if (pt.y > maxYInSpan) maxYInSpan = pt.y;
+            if (pt.y < minYInSpan) minYInSpan = pt.y;
+            if (pt.y >= zoneYMin && pt.y <= zoneYMax) {
+              hits++;
             }
           }
         }
-        cropCtx.putImageData(outData, 0, 0);
+
+        let extPx = 0;
+        if (hits > 0) {
+          if (isBottom) {
+            extPx = Math.max(
+              0,
+              Math.ceil(maxYInSpan + clearPx + logoH + insetPx - baseH)
+            );
+          } else {
+            extPx = Math.max(
+              0,
+              Math.ceil(insetPx + logoH + clearPx - minYInSpan)
+            );
+          }
+        }
+
+        return { id, extPx, minDistSq, priority };
+      });
+
+      candidates.sort((a, b) => {
+        if (a.extPx !== b.extPx) return a.extPx - b.extPx;
+        // Entre esquinas completamente despejadas (extPx === 0), elegir la más alejada de los trazos
+        if (Math.abs(b.minDistSq - a.minDistSq) > 25) {
+          return b.minDistSq - a.minDistSq;
+        }
+        return a.priority - b.priority;
+      });
+
+      const bestCorner = candidates[0];
+      const isTopWinner =
+        bestCorner.id === 'top-right' || bestCorner.id === 'top-left';
+      const isRightWinner =
+        bestCorner.id === 'bottom-right' || bestCorner.id === 'top-right';
+
+      const shiftDrawingY = isTopWinner ? bestCorner.extPx : 0;
+      const finalW = baseW;
+      const finalH = baseH + bestCorner.extPx;
+
+      const logoX = isRightWinner ? finalW - insetPx - logoW : insetPx;
+      const logoY = isTopWinner ? insetPx : finalH - insetPx - logoH;
+
+      // Renderizar el patrón final de grabado:
+      // 1) Dibujo grupal con líneas continuas de exactamente 1.5 px
+      // 2) Logotipo oficial MakerBox en la esquina despejada
+      const cropCanvas = document.createElement('canvas');
+      cropCanvas.width = finalW;
+      cropCanvas.height = finalH;
+      const cropCtx = cropCanvas.getContext('2d');
+      if (!cropCtx) {
+        resolve(null);
+        return;
       }
 
-      const cleanedEngravingPngUrl = cropCanvas.toDataURL('image/png');
+      cropCtx.clearRect(0, 0, finalW, finalH);
+      cropCtx.strokeStyle = '#000000';
+      cropCtx.lineWidth = FIXED_ENGRAVING_LINE_PX;
+      cropCtx.lineCap = 'round';
+      cropCtx.lineJoin = 'round';
+
+      // Trazar conexiones del esqueleto con grosor exacto de 1.5 px
+      cropCtx.beginPath();
+      for (let sy = inkMinY; sy <= inkMaxY; sy++) {
+        for (let sx = inkMinX; sx <= inkMaxX; sx++) {
+          if (skeletonMask[sy * w + sx] !== 1) continue;
+
+          const cx = sx - inkMinX + padPx + 0.5;
+          const cy = sy - inkMinY + padPx + shiftDrawingY + 0.5;
+
+          const east = sx + 1 < w && skeletonMask[sy * w + (sx + 1)] === 1;
+          const south = sy + 1 < h && skeletonMask[(sy + 1) * w + sx] === 1;
+          const west = sx - 1 >= 0 && skeletonMask[sy * w + (sx - 1)] === 1;
+          const north = sy - 1 >= 0 && skeletonMask[(sy - 1) * w + sx] === 1;
+          const se =
+            sx + 1 < w &&
+            sy + 1 < h &&
+            skeletonMask[(sy + 1) * w + (sx + 1)] === 1;
+          const sw =
+            sx - 1 >= 0 &&
+            sy + 1 < h &&
+            skeletonMask[(sy + 1) * w + (sx - 1)] === 1;
+          const ne =
+            sx + 1 < w &&
+            sy - 1 >= 0 &&
+            skeletonMask[(sy - 1) * w + (sx + 1)] === 1;
+          const nw =
+            sx - 1 >= 0 &&
+            sy - 1 >= 0 &&
+            skeletonMask[(sy - 1) * w + (sx - 1)] === 1;
+
+          if (east) {
+            cropCtx.moveTo(cx, cy);
+            cropCtx.lineTo(cx + 1, cy);
+          }
+          if (south) {
+            cropCtx.moveTo(cx, cy);
+            cropCtx.lineTo(cx, cy + 1);
+          }
+          if (se && !east && !south) {
+            cropCtx.moveTo(cx, cy);
+            cropCtx.lineTo(cx + 1, cy + 1);
+          }
+          if (sw && !west && !south) {
+            cropCtx.moveTo(cx, cy);
+            cropCtx.lineTo(cx - 1, cy + 1);
+          }
+
+          if (!east && !south && !west && !north && !se && !sw && !ne && !nw) {
+            cropCtx.moveTo(cx, cy);
+            cropCtx.lineTo(cx + 0.01, cy);
+          }
+        }
+      }
+      cropCtx.stroke();
+
+      // Integrar logo oficial MakerBox en la esquina despejada
+      drawMakerboxLogoOnCanvas(cropCtx, logoX, logoY, logoW, '#000000');
+
+      const engravingPngUrl = cropCanvas.toDataURL('image/png');
+
+      // Calcular dimensiones exactas en mm manteniendo relación de aspecto 1:1
+      const frameHeightMm = Math.max(60, Number(targetHeightMm.toFixed(1)));
+      const frameWidthMm = Math.max(
+        45,
+        Number(((finalW / finalH) * frameHeightMm).toFixed(1))
+      );
+
+      const tracedRect: TracedVectorResult = {
+        outerPolygon: [
+          { x: 0, y: 0 },
+          { x: frameWidthMm, y: 0 },
+          { x: frameWidthMm, y: frameHeightMm },
+          { x: 0, y: frameHeightMm },
+        ],
+        outerPathD: `M 0 0 L ${frameWidthMm} 0 L ${frameWidthMm} ${frameHeightMm} L 0 ${frameHeightMm} Z`,
+        outerContourNodes: 4,
+        widthMm: frameWidthMm,
+        heightMm: frameHeightMm,
+        cropBoxPx: {
+          minX: 0,
+          minY: 0,
+          widthPx: finalW,
+          heightPx: finalH,
+        },
+        engravingImageDataUrl: engravingPngUrl,
+      };
 
       const built = buildPuzzleSvgFromTracedResult(
-        traced,
+        tracedRect,
         puzzlePieces,
-        hybridTitle,
+        drawingTitle,
         includeAnnotations,
-        cleanedEngravingPngUrl
+        engravingPngUrl
       );
 
       resolve({
         previewSvg: built.previewSvg,
         laserSvg: built.laserSvg,
-        cleanedEngravingPngUrl,
-        outerNodes: traced.outerPolygon.length,
-        clippedSegmentsCount: built.puzzleResult.clippedPuzzlePathsD.length,
+        engravingPngUrl,
         widthMm: built.puzzleResult.frameWidthMm,
         heightMm: built.puzzleResult.frameHeightMm,
         cols: built.puzzleResult.cols,
         rows: built.puzzleResult.rows,
+        cutLinesCount: built.puzzleResult.clippedPuzzlePathsD.length + 1,
+        selectedCorner: bestCorner.id,
       });
     };
-    img.src = rasterUrl;
-  });
-}
 
-/**
- * Analiza en el cliente (Canvas 2D) un archivo JPG/PNG de un dibujo a mano alzada
- */
-async function analyzeAndNormalizeSketchFile(
-  file: File
-): Promise<UploadedSketchInput> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('No se pudo leer la imagen.'));
-    reader.onload = () => {
-      const img = new window.Image();
-      img.onerror = () => reject(new Error('Formato de imagen no válido.'));
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const size = 240;
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve({
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-            name: file.name,
-            mimeType: file.type || 'image/png',
-            dataUrl: String(reader.result),
-          });
-          return;
-        }
-
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, size, size);
-        ctx.drawImage(img, 0, 0, size, size);
-
-        const imgData = ctx.getImageData(0, 0, size, size).data;
-        let topInk = 0;
-        let sideInk = 0;
-        let centerInk = 0;
-        let bottomInk = 0;
-
-        for (let y = 0; y < size; y += 3) {
-          for (let x = 0; x < size; x += 3) {
-            const idx = (y * size + x) * 4;
-            const lum =
-              0.299 * imgData[idx] +
-              0.587 * imgData[idx + 1] +
-              0.114 * imgData[idx + 2];
-            if (lum < 195) {
-              if (y < size * 0.35) topInk++;
-              else if (y > size * 0.68) bottomInk++;
-              else if (x < size * 0.28 || x > size * 0.72) sideInk++;
-              else centerInk++;
-            }
-          }
-        }
-
-        const totalSampled = Math.max(1, topInk + sideInk + centerInk + bottomInk);
-        const analysis: SketchFeatureAnalysis = {
-          topDensity: Number((topInk / totalSampled).toFixed(2)),
-          sideDensity: Number((sideInk / totalSampled).toFixed(2)),
-          centerDensity: Number((centerInk / totalSampled).toFixed(2)),
-          bottomDensity: Number((bottomInk / totalSampled).toFixed(2)),
-        };
-
-        const normalizedDataUrl = canvas.toDataURL('image/png');
-        resolve({
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          name: file.name,
-          mimeType: 'image/png',
-          dataUrl: normalizedDataUrl,
-          analysis,
-        });
-      };
-      img.src = String(reader.result);
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-/**
- * Fusiona de forma dinámica los 3 a 4 dibujos a mano alzada subidos por el usuario:
- * - Extrae la caja delimitadora de trazos negros de cada boceto (eliminando márgenes de papel en blanco).
- * - Clasifica y ensambla armónicamente los elementos morfológicamente (cabeza/superior, alas/laterales, base/patas).
- * - Genera una sola imagen raster combinada donde los trazos de los estudiantes se integran armónicamente
- *   para grabado veloz en Creality Falcon 10W y corte láser exterior + puzzle.
- */
-async function createHybridSketchCompositeClient(
-  images: UploadedSketchInput[]
-): Promise<string> {
-  if (images.length > 0 && images.every((img) => img.id.startsWith('sample-'))) {
-    return '/samples/gemini-fusion-demo.jpg';
-  }
-
-  const canvas = document.createElement('canvas');
-  const size = 512;
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return images[0]?.dataUrl || '';
-
-  // Fondo blanco puro
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, size, size);
-
-  // Cargar cada imagen y obtener sus píxeles de tinta
-  const loadedImgs = await Promise.all(
-    images.slice(0, 4).map(
-      (sketch) =>
-        new Promise<{ img: HTMLImageElement; sketch: UploadedSketchInput }>((resolve, reject) => {
-          const img = new window.Image();
-          img.crossOrigin = 'anonymous';
-          img.onload = () => resolve({ img, sketch });
-          img.onerror = () => reject(new Error('Error cargando imagen'));
-          img.src = sketch.dataUrl;
-        })
-    )
-  );
-
-  // Extraer el bounding box de tinta de cada imagen (ignorando fondo blanco/grisáceo)
-  const elements = loadedImgs.map(({ img, sketch }, index) => {
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = img.width;
-    tempCanvas.height = img.height;
-    const tCtx = tempCanvas.getContext('2d');
-    if (!tCtx) {
-      return { img, sketch, index, minX: 0, minY: 0, width: img.width, height: img.height };
-    }
-    tCtx.drawImage(img, 0, 0);
-    const data = tCtx.getImageData(0, 0, img.width, img.height).data;
-    let minX = img.width;
-    let minY = img.height;
-    let maxX = 0;
-    let maxY = 0;
-    let inkCount = 0;
-
-    for (let y = 0; y < img.height; y += 2) {
-      for (let x = 0; x < img.width; x += 2) {
-        const i = (y * img.width + x) * 4;
-        const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-        const alpha = data[i + 3];
-        if (alpha > 40 && lum < 210) {
-          inkCount++;
-          if (x < minX) minX = x;
-          if (y < minY) minY = y;
-          if (x > maxX) maxX = x;
-          if (y > maxY) maxY = y;
-        }
-      }
-    }
-
-    if (minX >= maxX || minY >= maxY || inkCount < 20) {
-      minX = 0;
-      minY = 0;
-      maxX = img.width;
-      maxY = img.height;
-    }
-
-    return {
-      img,
-      sketch,
-      index,
-      minX,
-      minY,
-      width: Math.max(10, maxX - minX),
-      height: Math.max(10, maxY - minY),
-      analysis: sketch.analysis,
-    };
-  });
-
-  // Clasificar roles morfológicos según densidades espaciales o posición de carga:
-  // 1) Lateral / Alas / Brazos (mayor sideDensity o index 1)
-  // 2) Base / Patas / Tentáculos (mayor bottomDensity o index 2)
-  // 3) Cabeza / Rostro / Superior (mayor topDensity o index 0)
-  // 4) Cuerpo / Centro (si hay 4ª imagen)
-  let headElem = elements[0];
-  let wingsElem = elements[1] || elements[0];
-  let baseElem = elements[2] || elements[0];
-  let centerElem = elements[3];
-
-  if (elements.length >= 3) {
-    const sortedByTop = [...elements].sort(
-      (a, b) => (b.analysis?.topDensity ?? 0) - (a.analysis?.topDensity ?? 0)
-    );
-    headElem = sortedByTop[0];
-
-    const remaining1 = elements.filter((e) => e !== headElem);
-    const sortedByBottom = [...remaining1].sort(
-      (a, b) => (b.analysis?.bottomDensity ?? 0) - (a.analysis?.bottomDensity ?? 0)
-    );
-    baseElem = sortedByBottom[0];
-
-    const remaining2 = remaining1.filter((e) => e !== baseElem);
-    const sortedBySide = [...remaining2].sort(
-      (a, b) => (b.analysis?.sideDensity ?? 0) - (a.analysis?.sideDensity ?? 0)
-    );
-    wingsElem = sortedBySide[0] || remaining2[0] || headElem;
-
-    const remaining3 = remaining2.filter((e) => e !== wingsElem);
-    centerElem = remaining3[0];
-  }
-
-  // Dibujar capa a capa usando 'darken' para que todos los trazos de los niños se sumen limpiamente
-  ctx.globalCompositeOperation = 'darken';
-
-  const drawCropped = (
-    elem: typeof elements[0],
-    destX: number,
-    destY: number,
-    destW: number,
-    destH: number
-  ) => {
-    ctx.drawImage(
-      elem.img,
-      elem.minX,
-      elem.minY,
-      elem.width,
-      elem.height,
-      destX,
-      destY,
-      destW,
-      destH
-    );
-  };
-
-  // 1. Alas / Laterales (fondo intermedio, amplia envergadura)
-  if (wingsElem) {
-    const w = size * 0.76;
-    const h = size * 0.44;
-    const x = (size - w) / 2;
-    const y = size * 0.22;
-    drawCropped(wingsElem, x, y, w, h);
-  }
-
-  // 2. Base / Patas / Tentáculos (abajo, sostiene la figura)
-  if (baseElem) {
-    const w = size * 0.62;
-    const h = size * 0.46;
-    const x = (size - w) / 2;
-    const y = size * 0.48;
-    drawCropped(baseElem, x, y, w, h);
-  }
-
-  // 3. Si hay 4ª imagen: cuerpo / pecho / centro
-  if (centerElem) {
-    const w = size * 0.44;
-    const h = size * 0.36;
-    const x = (size - w) / 2;
-    const y = size * 0.34;
-    drawCropped(centerElem, x, y, w, h);
-  }
-
-  // 4. Cabeza / Rostro / Cuernos (arriba al frente)
-  if (headElem) {
-    const w = size * 0.54;
-    const h = size * 0.42;
-    const x = (size - w) / 2;
-    const y = size * 0.08;
-    drawCropped(headElem, x, y, w, h);
-  }
-
-  ctx.globalCompositeOperation = 'source-over';
-  return canvas.toDataURL('image/png');
-}
-
-/**
- * Genera los 3 dibujos a mano alzada en formato PNG que dan origen a la fusión de ejemplo de Gemini:
- * 1. Gato sentado con bigotes
- * 2. Alas puntiagudas de murciélago/dragón
- * 3. Medusa con tentáculos ondulados
- */
-function createSampleHandDrawnSketches(): UploadedSketchInput[] {
-  if (typeof document === 'undefined') return [];
-
-  const presets: {
-    name: string;
-    draw: (ctx: CanvasRenderingContext2D) => void;
-    analysis: SketchFeatureAnalysis;
-  }[] = [
-    {
-      name: 'boceto1-gato-sentado.png',
-      analysis: {
-        topDensity: 0.75,
-        sideDensity: 0.35,
-        centerDensity: 0.6,
-        bottomDensity: 0.2,
-      },
-      draw: (ctx) => {
-        ctx.beginPath();
-        ctx.moveTo(60, 72);
-        ctx.lineTo(56, 36);
-        ctx.lineTo(78, 52);
-        ctx.quadraticCurveTo(90, 48, 102, 52);
-        ctx.lineTo(124, 36);
-        ctx.lineTo(120, 72);
-        ctx.quadraticCurveTo(132, 95, 110, 105);
-        ctx.quadraticCurveTo(90, 110, 70, 105);
-        ctx.quadraticCurveTo(48, 95, 60, 72);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(76, 76, 5, 0, Math.PI * 2);
-        ctx.moveTo(109, 76);
-        ctx.arc(104, 76, 5, 0, Math.PI * 2);
-        ctx.moveTo(85, 88);
-        ctx.lineTo(95, 88);
-        ctx.lineTo(90, 94);
-        ctx.closePath();
-        ctx.moveTo(42, 82);
-        ctx.lineTo(68, 86);
-        ctx.moveTo(40, 92);
-        ctx.lineTo(68, 92);
-        ctx.moveTo(112, 86);
-        ctx.lineTo(138, 82);
-        ctx.moveTo(112, 92);
-        ctx.lineTo(140, 92);
-        ctx.moveTo(68, 105);
-        ctx.quadraticCurveTo(46, 138, 66, 162);
-        ctx.quadraticCurveTo(90, 170, 114, 162);
-        ctx.quadraticCurveTo(134, 138, 112, 105);
-        ctx.stroke();
-      },
-    },
-    {
-      name: 'boceto2-alas-dragon.png',
-      analysis: {
-        topDensity: 0.4,
-        sideDensity: 0.88,
-        centerDensity: 0.35,
-        bottomDensity: 0.2,
-      },
-      draw: (ctx) => {
-        ctx.beginPath();
-        ctx.moveTo(35, 115);
-        ctx.lineTo(115, 25);
-        ctx.lineTo(108, 52);
-        ctx.lineTo(122, 52);
-        ctx.lineTo(114, 72);
-        ctx.lineTo(165, 42);
-        ctx.lineTo(142, 82);
-        ctx.lineTo(155, 96);
-        ctx.lineTo(130, 108);
-        ctx.lineTo(142, 128);
-        ctx.lineTo(118, 130);
-        ctx.lineTo(122, 152);
-        ctx.lineTo(98, 140);
-        ctx.lineTo(90, 156);
-        ctx.lineTo(52, 138);
-        ctx.closePath();
-        ctx.stroke();
-      },
-    },
-    {
-      name: 'boceto3-medusa-tentaculos.png',
-      analysis: {
-        topDensity: 0.2,
-        sideDensity: 0.35,
-        centerDensity: 0.4,
-        bottomDensity: 0.92,
-      },
-      draw: (ctx) => {
-        ctx.beginPath();
-        ctx.arc(90, 58, 38, Math.PI, 0, false);
-        ctx.closePath();
-        ctx.stroke();
-        const xs = [60, 72, 84, 96, 108, 120];
-        for (const x of xs) {
-          ctx.beginPath();
-          ctx.moveTo(x, 60);
-          ctx.bezierCurveTo(x - 14, 92, x + 14, 124, x - 6, 164);
-          ctx.stroke();
-        }
-      },
-    },
-  ];
-
-  return presets.map((p, idx) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 180;
-    canvas.height = 180;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, 180, 180);
-      ctx.strokeStyle = '#1E293B';
-      ctx.lineWidth = 1.5;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      p.draw(ctx);
-    }
-    return {
-      id: `sample-${idx + 1}`,
-      name: p.name,
-      mimeType: 'image/png',
-      dataUrl: canvas.toDataURL('image/png'),
-      analysis: p.analysis,
-    };
+    img.src = imageUrl;
   });
 }
 
 export function ZooSection({ onBackToMenu }: ZooSectionProps) {
-  const [images, setImages] = useState<UploadedSketchInput[]>([]);
+  const [drawingUrl, setDrawingUrl] = useState<string>('');
+  const [drawingName, setDrawingName] = useState<string>('Dibujo Grupal de Ejemplo');
+  const [isCustomDrawing, setIsCustomDrawing] = useState<boolean>(false);
+
   const [puzzlePieces, setPuzzlePieces] = useState<PuzzlePieceCount>(30);
-  const [engravingStroke, setEngravingStroke] = useState<EngravingStrokeWeight>('thin');
   const [targetHeightMm, setTargetHeightMm] = useState<number>(120);
   const [showAnnotations, setShowAnnotations] = useState<boolean>(true);
-  const [activePreviewTab, setActivePreviewTab] = useState<'vector-puzzle' | 'ai-raster'>('vector-puzzle');
+  const [activePreviewTab, setActivePreviewTab] = useState<'vector-puzzle' | 'engraving-only'>('vector-puzzle');
 
-  // Estado del Asistente IA para niños y jóvenes
-  const [studentPrompt, setStudentPrompt] = useState<string>('');
-  const [chatInput, setChatInput] = useState<string>('');
-  const [customApiKey, setCustomApiKey] = useState<string>('');
-  const [showApiConfig, setShowApiConfig] = useState<boolean>(false);
-  const [chatMessages, setChatMessages] = useState<AssistantChatMessage[]>([
-    {
-      id: 'welcome-1',
-      role: 'assistant',
-      text: '¡Hola creador! 👋 Sube de 3 a 4 dibujos a mano alzada (JPG/PNG) y presiona "Fusionar Dibujos". Ahora los trazos de la imagen son mucho más delgados para que la Creality Falcon 10W grabe a toda velocidad, y el contorno exterior con las piezas del rompecabezas se vectorizan para el corte láser.',
-      timestamp: 'Ahora',
-    },
-  ]);
-
-  // Estado de procesamiento y resultados
+  const [processed, setProcessed] = useState<ProcessedDrawingResult | null>(null);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [isFusing, setIsFusing] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [fusionResult, setFusionResult] = useState<ZooFusionResponse | null>(null);
-  const [cleanEngravingPngUrl, setCleanEngravingPngUrl] = useState<string>('');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const directFusedInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Cargar dibujo de ejemplo inicial
   useEffect(() => {
-    const samples = createSampleHandDrawnSketches();
-    if (samples.length >= 3) {
-      setImages(samples);
+    const sampleUrl = createSampleGroupSketchDataUrl();
+    if (sampleUrl) {
+      setDrawingUrl(sampleUrl);
     }
   }, []);
 
-  const executeFusion = useCallback(
+  // Reprocesar automáticamente cada vez que cambia el dibujo, el número de piezas, la altura o las cotas
+  const runProcessing = useCallback(
     async (
-      imgsToFuse: UploadedSketchInput[],
-      piecesCount: PuzzlePieceCount,
-      strokeWeight: EngravingStrokeWeight,
-      promptText: string,
+      srcUrl: string,
+      pieces: PuzzlePieceCount,
       heightMm: number,
-      annotations: boolean,
-      announceInChat = false
+      title: string,
+      annotations: boolean
     ) => {
-      if (imgsToFuse.length < 3 || imgsToFuse.length > 4) {
-        setErrorMsg(
-          `Debes tener entre 3 y 4 imágenes cargadas para fusionar (actualmente tienes ${imgsToFuse.length}).`
-        );
-        return;
-      }
-
-      setIsFusing(true);
+      if (!srcUrl) return;
+      setIsProcessing(true);
       setErrorMsg(null);
-
-      const isCustomUpload = imgsToFuse.some((img) => !img.id.startsWith('sample-'));
-
       try {
-        // 1. Si son dibujos personalizados del estudiante, componer dinámicamente sus trazos reales
-        let dynamicCompositeUrl = '';
-        if (isCustomUpload) {
-          dynamicCompositeUrl = await createHybridSketchCompositeClient(imgsToFuse);
-        }
-
-        // 2. Llamar a la API para análisis multimodal de visión con Gemini (y generación nativa si hay cuota)
-        let data: (ZooFusionResponse & { error?: string }) | null = null;
-        try {
-          const res = await fetch('/api/zoologico', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              images: imgsToFuse,
-              puzzlePieces: piecesCount,
-              strokeWeight,
-              studentPrompt: promptText,
-              targetHeightMm: heightMm,
-              includeAnnotations: annotations,
-              customApiKey,
-            }),
-          });
-
-          if (res.ok) {
-            data = await res.json();
-          }
-        } catch (apiErr) {
-          console.warn('API de Gemini no disponible en este momento, usando motor morfológico local...', apiErr);
-        }
-
-        // Determinar qué imagen raster usar:
-        // - Si Gemini generó una imagen nativa (y no es el demo), usarla
-        // - Si son dibujos subidos por el estudiante, usar la composición dinámica de sus dibujos
-        // - Si es el ejemplo inicial demostrativo, usar el demo
-        let targetRaster = '';
-        if (
-          data?.hasNativeGeminiRaster &&
-          data.rasterDataUrl &&
-          !data.rasterDataUrl.includes('gemini-fusion-demo.jpg')
-        ) {
-          targetRaster = data.rasterDataUrl;
-        } else if (isCustomUpload) {
-          targetRaster =
-            dynamicCompositeUrl || (await createHybridSketchCompositeClient(imgsToFuse));
-        } else {
-          targetRaster = data?.rasterDataUrl || '/samples/gemini-fusion-demo.jpg';
-        }
-
-        const title =
-          data?.hybridTitle ||
-          (isCustomUpload
-            ? `Criatura Híbrida (${imgsToFuse.length} Dibujos Fusionados)`
-            : 'Gato-Dragón-Medusa (Fusión Híbrida Gemini)');
-
-        const assistantMsg =
-          data?.assistantMessage ||
-          (isCustomUpload
-            ? `¡He fusionado tus ${imgsToFuse.length} dibujos a mano alzada! Cada elemento se integró en el lienzo respetando tus trazos para grabado y corte en Creality Falcon 10W.`
-            : '¡He cargado el ejemplo de Gemini (Gato + Alas + Medusa)!');
-
-        const falconBuilt = await buildFalconEngravingAndVectorCutClient(
-          targetRaster,
-          piecesCount,
+        const res = await processSingleDrawingForLaser(
+          srcUrl,
+          pieces,
           heightMm,
           title,
-          annotations,
-          strokeWeight
+          annotations
         );
-
-        if (!falconBuilt) {
-          throw new Error('No se pudo extraer el contorno exterior de los dibujos combinados.');
+        if (!res) {
+          setErrorMsg(
+            'No se detectaron trazos oscuros suficientes en la imagen. Sube un dibujo con trazos claros sobre fondo claro.'
+          );
+          return;
         }
-
-        setCleanEngravingPngUrl(falconBuilt.cleanedEngravingPngUrl);
-
-        const updatedResult: ZooFusionResponse = {
-          previewSvg: falconBuilt.previewSvg,
-          laserSvg: falconBuilt.laserSvg,
-          rasterDataUrl: targetRaster,
-          hasNativeGeminiRaster: Boolean(data?.hasNativeGeminiRaster && !isCustomUpload),
-          assistantMessage: assistantMsg,
-          hybridTitle: title,
-          internalPromptUsed: data?.internalPromptUsed || AI_FUSION_INTERNAL_PROMPT,
-          metrics: {
-            imagesCount: imgsToFuse.length,
-            puzzlePieces: piecesCount,
-            gridCols: falconBuilt.cols,
-            gridRows: falconBuilt.rows,
-            widthMm: falconBuilt.widthMm,
-            heightMm: falconBuilt.heightMm,
-            strokeWeight,
-            outerContourNodes: falconBuilt.outerNodes,
-            innerVectorPathsCount: 1,
-            clippedPuzzleSegmentsCount: falconBuilt.clippedSegmentsCount,
-            vectorizerEngine: 'Imagen PNG (Grabado Falcon 10W) + Contorno y Puzzle Vectorizados (#FF0000)',
-            aiModelUsed: data?.metrics?.aiModelUsed || 'Google Gemini Vision + Motor Morfológico Falcon 10W',
-          },
-        };
-
-        setFusionResult(updatedResult);
-
-        if (announceInChat) {
-          setChatMessages((prev) => [
-            ...prev,
-            {
-              id: `ai-${Date.now()}`,
-              role: 'assistant',
-              text: assistantMsg,
-              timestamp: new Date().toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              }),
-            },
-          ]);
-        }
+        setProcessed(res);
       } catch (err) {
-        console.error(err);
         setErrorMsg(
           err instanceof Error
             ? err.message
-            : 'Hubo un error al ejecutar la fusión con IA Generativa.'
+            : 'Ocurrió un error al preparar el dibujo para grabado láser.'
         );
       } finally {
-        setIsFusing(false);
+        setIsProcessing(false);
       }
     },
-    [customApiKey]
+    []
   );
 
-  const handleStrokeWeightChange = async (newWeight: EngravingStrokeWeight) => {
-    setEngravingStroke(newWeight);
-    if (fusionResult?.rasterDataUrl) {
-      const falconBuilt = await buildFalconEngravingAndVectorCutClient(
-        fusionResult.rasterDataUrl,
-        puzzlePieces,
-        targetHeightMm,
-        fusionResult.hybridTitle,
-        showAnnotations,
-        newWeight
-      );
-      if (falconBuilt) {
-        setCleanEngravingPngUrl(falconBuilt.cleanedEngravingPngUrl);
-        setFusionResult((prev) => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            previewSvg: falconBuilt.previewSvg,
-            laserSvg: falconBuilt.laserSvg,
-            metrics: {
-              ...prev.metrics,
-              strokeWeight: newWeight,
-              outerContourNodes: falconBuilt.outerNodes,
-              clippedPuzzleSegmentsCount: falconBuilt.clippedSegmentsCount,
-              widthMm: falconBuilt.widthMm,
-              heightMm: falconBuilt.heightMm,
-              gridCols: falconBuilt.cols,
-              gridRows: falconBuilt.rows,
-            },
-          };
-        });
-      }
-    }
-  };
-
-  const handlePuzzlePiecesChange = async (newPieces: PuzzlePieceCount) => {
-    setPuzzlePieces(newPieces);
-    if (fusionResult?.rasterDataUrl) {
-      const falconBuilt = await buildFalconEngravingAndVectorCutClient(
-        fusionResult.rasterDataUrl,
-        newPieces,
-        targetHeightMm,
-        fusionResult.hybridTitle,
-        showAnnotations,
-        engravingStroke
-      );
-      if (falconBuilt) {
-        setCleanEngravingPngUrl(falconBuilt.cleanedEngravingPngUrl);
-        setFusionResult((prev) => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            previewSvg: falconBuilt.previewSvg,
-            laserSvg: falconBuilt.laserSvg,
-            metrics: {
-              ...prev.metrics,
-              puzzlePieces: newPieces,
-              gridCols: falconBuilt.cols,
-              gridRows: falconBuilt.rows,
-              outerContourNodes: falconBuilt.outerNodes,
-              clippedPuzzleSegmentsCount: falconBuilt.clippedSegmentsCount,
-              widthMm: falconBuilt.widthMm,
-              heightMm: falconBuilt.heightMm,
-            },
-          };
-        });
-      }
-    }
-  };
-
-  const handleTargetHeightChange = async (newHeight: number) => {
-    setTargetHeightMm(newHeight);
-    if (fusionResult?.rasterDataUrl) {
-      const falconBuilt = await buildFalconEngravingAndVectorCutClient(
-        fusionResult.rasterDataUrl,
-        puzzlePieces,
-        newHeight,
-        fusionResult.hybridTitle,
-        showAnnotations,
-        engravingStroke
-      );
-      if (falconBuilt) {
-        setCleanEngravingPngUrl(falconBuilt.cleanedEngravingPngUrl);
-        setFusionResult((prev) => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            previewSvg: falconBuilt.previewSvg,
-            laserSvg: falconBuilt.laserSvg,
-            metrics: {
-              ...prev.metrics,
-              widthMm: falconBuilt.widthMm,
-              heightMm: falconBuilt.heightMm,
-              gridCols: falconBuilt.cols,
-              gridRows: falconBuilt.rows,
-            },
-          };
-        });
-      }
-    }
-  };
-
-  const handleShowAnnotationsChange = async (checked: boolean) => {
-    setShowAnnotations(checked);
-    if (fusionResult?.rasterDataUrl) {
-      const falconBuilt = await buildFalconEngravingAndVectorCutClient(
-        fusionResult.rasterDataUrl,
-        puzzlePieces,
-        targetHeightMm,
-        fusionResult.hybridTitle,
-        checked,
-        engravingStroke
-      );
-      if (falconBuilt) {
-        setFusionResult((prev) => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            previewSvg: falconBuilt.previewSvg,
-            laserSvg: falconBuilt.laserSvg,
-          };
-        });
-      }
-    }
-  };
-
   useEffect(() => {
-    if (images.length >= 3 && images.length <= 4) {
-      const timer = setTimeout(() => {
-        executeFusion(
-          images,
-          puzzlePieces,
-          engravingStroke,
-          studentPrompt,
-          targetHeightMm,
-          showAnnotations,
-          false
-        );
-      }, 120);
-      return () => clearTimeout(timer);
-    }
-  }, [images, puzzlePieces, engravingStroke, targetHeightMm, showAnnotations, studentPrompt, executeFusion]);
+    if (!drawingUrl) return;
+    void runProcessing(
+      drawingUrl,
+      puzzlePieces,
+      targetHeightMm,
+      drawingName,
+      showAnnotations
+    );
+  }, [drawingUrl, puzzlePieces, targetHeightMm, drawingName, showAnnotations, runProcessing]);
 
-  const handleFilesSelected = async (fileList: FileList | File[]) => {
-    const incomingFiles = Array.from(fileList).filter(
+  const handleUploadSingleFile = (files: FileList | File[]) => {
+    const file = Array.from(files).find(
       (f) =>
         f.type === 'image/jpeg' ||
         f.type === 'image/png' ||
-        /\.(jpe?g|png)$/i.test(f.name)
+        f.type === 'image/webp' ||
+        /\.(jpg|jpeg|png|webp)$/i.test(f.name)
     );
 
-    if (incomingFiles.length === 0) {
-      setErrorMsg('Por favor sube archivos de imagen en formato JPG o PNG.');
+    if (!file) {
+      setErrorMsg('Por favor sube una imagen en formato JPG o PNG.');
       return;
     }
 
-    try {
-      setErrorMsg(null);
-      const analyzed = await Promise.all(
-        incomingFiles.slice(0, 4).map((file) => analyzeAndNormalizeSketchFile(file))
-      );
-
-      setImages((prev) => {
-        const areAllSamples = prev.every((img) => img.id.startsWith('sample-'));
-        const base = areAllSamples ? [] : prev;
-        return [...base, ...analyzed].slice(0, 4);
-      });
-    } catch (err) {
-      console.error(err);
-      setErrorMsg('No se pudieron procesar algunas de las imágenes seleccionadas.');
-    }
-  };
-
-  /**
-   * Permite subir directamente una imagen ya fusionada por Gemini:
-   * Conserva el dibujo como imagen PNG para grabar en la Creality Falcon 10W
-   * y vectoriza únicamente el contorno exterior y las líneas del rompecabezas.
-   */
-  const handleDirectFusedImageUpload = async (file: File) => {
-    setIsFusing(true);
-    setErrorMsg(null);
     const reader = new FileReader();
-    reader.onload = async () => {
-      const dataUrl = String(reader.result);
-      const option =
-        PUZZLE_PIECE_OPTIONS.find((o) => o.count === puzzlePieces) ||
-        PUZZLE_PIECE_OPTIONS[1];
-      const title = `Fusión Gemini (${file.name.replace(/\.[^.]+$/, '')})`;
-      const falconBuilt = await buildFalconEngravingAndVectorCutClient(
-        dataUrl,
-        puzzlePieces,
-        targetHeightMm,
-        title,
-        showAnnotations,
-        engravingStroke
-      );
-
-      if (falconBuilt) {
-        setCleanEngravingPngUrl(falconBuilt.cleanedEngravingPngUrl);
-        setFusionResult({
-          previewSvg: falconBuilt.previewSvg,
-          laserSvg: falconBuilt.laserSvg,
-          rasterDataUrl: dataUrl,
-          hasNativeGeminiRaster: true,
-          assistantMessage: `¡Listo para la Creality Falcon 10W! Tu imagen "${file.name}" se enmarcó dentro de un recuadro rectangular ajustado al dibujo para el grabado láser con trazos optimizados para alta velocidad, garantizando que el 100% de las piezas tengan grabado y encastres reforzados antideslizantes (${puzzlePieces} piezas · ${falconBuilt.cols}×${falconBuilt.rows}) con corte perimetral en rojo #FF0000.`,
-          hybridTitle: title,
-          internalPromptUsed: AI_FUSION_INTERNAL_PROMPT,
-          metrics: {
-            imagesCount: images.length,
-            puzzlePieces,
-            gridCols: falconBuilt.cols,
-            gridRows: falconBuilt.rows,
-            widthMm: falconBuilt.widthMm,
-            heightMm: falconBuilt.heightMm,
-            strokeWeight: engravingStroke,
-            outerContourNodes: falconBuilt.outerNodes,
-            innerVectorPathsCount: 1,
-            clippedPuzzleSegmentsCount: falconBuilt.clippedSegmentsCount,
-            vectorizerEngine: 'Imagen PNG (Grabado Falcon 10W) + Recuadro y Puzzle Vectorizados (#FF0000)',
-            aiModelUsed: 'Gemini 3 Pro / Imagen 3 + Creality Falcon 10W Processor',
-          },
-        });
-      } else {
-        setErrorMsg('No se pudo extraer el contorno exterior de la imagen subida.');
-      }
-      setIsFusing(false);
+    reader.onerror = () => setErrorMsg('No se pudo leer el archivo seleccionado.');
+    reader.onload = () => {
+      const cleanTitle = file.name.replace(/\.[^/.]+$/, '').trim() || 'Dibujo Grupal';
+      setDrawingName(cleanTitle);
+      setDrawingUrl(String(reader.result));
+      setIsCustomDrawing(true);
+      setErrorMsg(null);
     };
     reader.readAsDataURL(file);
   };
 
-  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      await handleFilesSelected(e.dataTransfer.files);
-    }
-  };
-
-  const handleRemoveImage = (id: string) => {
-    setImages((prev) => prev.filter((img) => img.id !== id));
-  };
-
-  const handleLoadSampleDrawings = () => {
-    const samples = createSampleHandDrawnSketches();
-    setImages(samples);
-    setErrorMsg(null);
-    setChatMessages((prev) => [
-      ...prev,
-      {
-        id: `sample-msg-${Date.now()}`,
-        role: 'assistant',
-        text: '¡He cargado el ejemplo de Gemini (Gato + Alas + Medusa)! La ilustración se mantiene como imagen para grabar en la Creality Falcon 10W y solo el contorno y el rompecabezas están vectorizados.',
-        timestamp: 'Ahora',
-      },
-    ]);
-  };
-
-  const handleSendStudentInstruction = (customText?: string) => {
-    const text = (customText ?? chatInput).trim();
-    if (!text) return;
-
-    setChatMessages((prev) => [
-      ...prev,
-      {
-        id: `user-${Date.now()}`,
-        role: 'user',
-        text,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-      },
-    ]);
-    setStudentPrompt(text);
-    setChatInput('');
-
-    if (images.length >= 3 && images.length <= 4) {
-      executeFusion(images, puzzlePieces, engravingStroke, text, targetHeightMm, showAnnotations, true);
+  const handleRestoreSample = () => {
+    const sampleUrl = createSampleGroupSketchDataUrl();
+    if (sampleUrl) {
+      setDrawingName('Dibujo Grupal de Ejemplo');
+      setDrawingUrl(sampleUrl);
+      setIsCustomDrawing(false);
+      setErrorMsg(null);
     }
   };
 
   const handleDownloadLaserSvg = () => {
-    if (!fusionResult?.laserSvg) return;
-    const blob = new Blob([fusionResult.laserSvg], {
+    if (!processed) return;
+    const blob = new Blob([processed.laserSvg], {
       type: 'image/svg+xml;charset=utf-8',
     });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `falcon10w-grabado-y-corte-puzzle-${puzzlePieces}piezas.svg`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `puzzle-laser-${puzzlePieces}piezas.svg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
   const handleDownloadEngravingPngOnly = () => {
-    const targetUrl = cleanEngravingPngUrl || fusionResult?.rasterDataUrl;
-    if (!targetUrl) return;
-    const a = document.createElement('a');
-    a.href = targetUrl;
-    a.download = `falcon10w-imagen-grabado-${puzzlePieces}piezas.png`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    if (!processed) return;
+    const link = document.createElement('a');
+    link.href = processed.engravingPngUrl;
+    link.download = `patron-grabado-${puzzlePieces}piezas.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
-
-  const hasValidImageCount = images.length >= 3 && images.length <= 4;
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Barra Superior de Navegación */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-xs">
-        <div className="flex items-center gap-3">
-          {onBackToMenu ? (
-            <button
-              type="button"
-              onClick={onBackToMenu}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 font-bold text-xs sm:text-sm transition-colors cursor-pointer"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Volver al Menú Principal
-            </button>
-          ) : (
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 font-bold text-xs sm:text-sm transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Volver al Menú Principal
-            </Link>
-          )}
-          <span className="hidden sm:inline-block h-5 w-px bg-slate-200" />
-          <span className="text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
-            🧩 Taller 1 · Falcon 10W (Recuadro Rectangular · Grabado PNG + Corte Puzzle de lado a lado #FF0000)
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
+      {onBackToMenu && (
+        <div className="flex items-center">
           <button
             type="button"
-            onClick={() => setShowApiConfig((v) => !v)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 text-xs font-extrabold transition-colors cursor-pointer"
+            onClick={onBackToMenu}
+            className="inline-flex items-center gap-2 text-xs sm:text-sm font-bold text-slate-700 hover:text-amber-700 transition-colors cursor-pointer bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-2xs"
           >
-            <KeyRound className="w-3.5 h-3.5 text-amber-700" />
-            <span>Configurar Modelos Gemini 3 Pro / Imagen 3</span>
+            <ArrowLeft className="w-4 h-4" />
+            <span>Volver al Menú Principal</span>
           </button>
-        </div>
-      </div>
-
-      {/* Configuración de API Key de Google Gemini */}
-      {showApiConfig && (
-        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-          <div className="space-y-1 max-w-2xl">
-            <div className="font-extrabold text-amber-950 flex items-center gap-2">
-              <span>Agente Avanzado Google Gemini 3 Pro / 3.1 & Imagen 3</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-black">
-                Modelos Pro & Imagen 3
-              </span>
-            </div>
-            <p className="text-amber-900 leading-relaxed">
-              Compatible con los motores más elaborados de Google: <strong>Gemini 3 Pro Image</strong>, <strong>Gemini 3.1 Pro</strong>, <strong>Gemini 3.1 Flash Image</strong> e <strong>Imagen 3</strong>. Si tu API Key cuenta con facturación activa en Google Cloud, la app generará las imágenes con estos motores de máxima elaboración artística. Si usas el plan gratuito (Free Tier), el motor morfológico y de visión multimodal ensamblará y afinará tus dibujos automáticamente.
-            </p>
-          </div>
-          <input
-            type="password"
-            value={customApiKey}
-            onChange={(e) => setCustomApiKey(e.target.value)}
-            placeholder="Pega aquí tu Clave de API (AQ... o AIzaSy...)"
-            className="w-full sm:w-72 px-3 py-2 rounded-xl bg-white border border-amber-300 text-slate-800 font-mono text-xs"
-          />
         </div>
       )}
 
       {/* Banner Compacto del Taller 1 */}
-      <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 rounded-2xl py-3 px-4 sm:px-6 text-white shadow-md relative overflow-hidden">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="space-y-0.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/20 text-amber-100 text-[10px] font-black uppercase tracking-wide">
-                <Sparkles className="w-3 h-3" /> Creality Falcon 10W
-              </span>
-              <h1 className="text-base sm:text-lg font-black tracking-tight">
-                Fusión IA para Grabado + Rompecabezas en Recuadro (20–60 Piezas) 🧩
-              </h1>
+      <div className="rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 text-white px-5 py-3.5 sm:px-6 sm:py-4 shadow-md relative overflow-hidden">
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div className="space-y-1 max-w-2xl">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 text-[11px] font-extrabold uppercase tracking-wider">
+              <span>Contrachapado de 3 mm · Grabado 1.5 px + Corte Recto</span>
             </div>
-            <p className="text-amber-100 text-xs leading-normal">
-              Sube de 3 a 4 dibujos a mano alzada. Grabado en imagen PNG enmarcada + corte del recuadro y líneas del puzzle de lado a lado (#FF0000).
+            <h1 className="text-lg sm:text-xl font-black tracking-tight">
+              Dibujo a Mano Alzada + Rompecabezas Láser 🧩
+            </h1>
+            <p className="text-amber-50 text-xs leading-snug">
+              Sube el <strong>dibujo grupal a mano alzada (JPG/PNG)</strong>. La herramienta ajusta el trazo a{' '}
+              <strong>1.5 px</strong>, ubica el <strong>logo de MakerBox</strong> en una esquina despejada y genera el puzzle con{' '}
+              <strong>líneas rectas horizontales y verticales (#FF0000)</strong> sin encaje.
             </p>
           </div>
 
-          {fusionResult && (
-            <div className="flex items-center gap-2 shrink-0 bg-slate-950/25 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-white/15 text-xs">
-              <span className="text-[11px] font-bold text-amber-200">
-                Grabado: <span className="text-white font-black">PNG Falcon 10W</span>
-              </span>
-              <span className="text-white/30">|</span>
-              <span className="text-[11px] font-bold text-amber-200">
-                Corte: <span className="text-emerald-300 font-black">{fusionResult.metrics.puzzlePieces} Piezas Vector</span>
-              </span>
+          <div className="grid grid-cols-2 gap-2.5 bg-black/20 backdrop-blur-xs rounded-xl p-2.5 border border-white/15 shrink-0">
+            <div className="px-2.5 py-1.5 rounded-lg bg-white/10">
+              <div className="text-[10px] uppercase tracking-wider text-amber-200 font-bold">
+                Patrón a Grabar
+              </div>
+              <div className="text-xs sm:text-sm font-black">Dibujo 1.5 px + Logo</div>
+              <div className="text-[10px] text-amber-100">Contrachapado 3 mm</div>
             </div>
-          )}
+            <div className="px-2.5 py-1.5 rounded-lg bg-white/10">
+              <div className="text-[10px] uppercase tracking-wider text-amber-200 font-bold">
+                Corte Rápido
+              </div>
+              <div className="text-xs sm:text-sm font-black">{puzzlePieces} Piezas Rectas</div>
+              <div className="text-[10px] text-emerald-200 font-semibold">
+                ✓ Líneas H/V #FF0000
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Grilla Principal */}
+      {/* Layout Principal en 2 Columnas */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* COLUMNA IZQUIERDA (5 cols) */}
+        {/* COLUMNA IZQUIERDA (5 cols): Carga de Dibujo Único + Parámetros */}
         <div className="lg:col-span-5 space-y-5">
-          {/* Tarjeta 1: Zona de Carga Múltiple (3 a 4 dibujos JPG/PNG) + Botón "Fusionar Dibujos" */}
-          <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
+          {/* PASO 1: Subir único dibujo grupal a mano alzada */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between gap-2">
-              <label className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                <Upload className="w-4 h-4 text-amber-600" />
-                1. Sube de 3 a 4 Dibujos a Mano Alzada (JPG/PNG)
-              </label>
-              <span
-                className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full border ${
-                  hasValidImageCount
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-amber-50 text-amber-800 border-amber-300'
-                }`}
-              >
-                {images.length} / 4 imágenes
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-amber-600 text-white text-xs font-black flex items-center justify-center">
+                  1
+                </span>
+                <h2 className="text-sm sm:text-base font-extrabold text-slate-900">
+                  Subir Dibujo Grupal (JPG / PNG)
+                </h2>
+              </div>
+
+              {isCustomDrawing && (
+                <button
+                  type="button"
+                  onClick={handleRestoreSample}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 hover:text-amber-900 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Usar ejemplo</span>
+                </button>
+              )}
             </div>
 
             <div
@@ -1190,193 +791,151 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                 setIsDragging(true);
               }}
               onDragLeave={() => setIsDragging(false)}
-              onDrop={handleDrop}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                if (e.dataTransfer.files?.length) {
+                  handleUploadSingleFile(e.dataTransfer.files);
+                }
+              }}
               onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-2xl p-4 text-center transition-all cursor-pointer ${
+              className={`border-2 border-dashed rounded-2xl p-5 text-center transition-all cursor-pointer ${
                 isDragging
-                  ? 'border-amber-500 bg-amber-50/70 scale-[1.01]'
-                  : 'border-slate-300 bg-slate-50/70 hover:border-amber-400 hover:bg-amber-50/30'
+                  ? 'border-amber-500 bg-amber-50'
+                  : 'border-slate-300 hover:border-amber-400 hover:bg-amber-50/40'
               }`}
             >
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-                multiple
+                accept="image/jpeg,image/png,image/webp"
                 className="hidden"
                 onChange={(e) => {
-                  if (e.target.files && e.target.files.length > 0) {
-                    handleFilesSelected(e.target.files);
+                  if (e.target.files?.length) {
+                    handleUploadSingleFile(e.target.files);
+                    e.target.value = '';
                   }
                 }}
               />
-              <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto mb-2">
-                <ImageIcon className="w-5 h-5" />
-              </div>
+              <Upload className="w-7 h-7 text-amber-600 mx-auto mb-2" />
               <p className="text-xs sm:text-sm font-bold text-slate-800">
-                Arrastra aquí <span className="text-amber-600 underline">3 o 4 dibujos JPG/PNG</span> o haz clic para buscarlos
+                Arrastra aquí el dibujo grupal o haz clic para seleccionarlo
               </p>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Ej: 1) Gato · 2) Alas · 3) Medusa (se fusionarán en una imagen para grabar)
+              <p className="text-[11px] text-slate-500 mt-1">
+                1 único dibujo a mano alzada en formato JPG o PNG (sin fusión)
               </p>
             </div>
 
-            {/* Cuadrícula de las 3 a 4 imágenes cargadas */}
-            <div className="grid grid-cols-4 gap-2.5">
-              {[0, 1, 2, 3].map((slotIdx) => {
-                const img = images[slotIdx];
-                return (
-                  <div
-                    key={img ? img.id : `empty-slot-${slotIdx}`}
-                    className={`relative aspect-square rounded-2xl border overflow-hidden flex flex-col items-center justify-center ${
-                      img
-                        ? 'border-amber-300 bg-white shadow-2xs'
-                        : 'border-dashed border-slate-200 bg-slate-50 text-slate-400'
-                    }`}
-                  >
-                    {img ? (
-                      <>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={img.dataUrl}
-                          alt={img.name}
-                          className="w-full h-full object-contain p-1"
-                        />
-                        <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-slate-900/75 text-white text-[9px] font-bold">
-                          #{slotIdx + 1}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveImage(img.id);
-                          }}
-                          className="absolute top-1 right-1 p-1 rounded-lg bg-red-600/90 hover:bg-red-700 text-white cursor-pointer"
-                          title="Quitar imagen"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </>
-                    ) : (
-                      <div className="text-center p-1">
-                        <div className="text-xs font-extrabold">#{slotIdx + 1}</div>
-                        <div className="text-[9px]">
-                          {slotIdx < 3 ? 'Requerido' : 'Opcional'}
-                        </div>
-                      </div>
-                    )}
+            {/* Vista previa compacta del dibujo cargado */}
+            {drawingUrl && (
+              <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={drawingUrl}
+                  alt={drawingName}
+                  className="w-16 h-16 object-contain rounded-xl bg-white border border-slate-200 p-1 shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-extrabold text-slate-900 truncate">
+                    {drawingName}
                   </div>
-                );
-              })}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-              <button
-                type="button"
-                onClick={handleLoadSampleDrawings}
-                className="font-bold text-amber-700 hover:text-amber-900 underline cursor-pointer"
-              >
-                🐱🦇🪼 Cargar ejemplo Gemini (Gato + Alas + Medusa)
-              </button>
-              {images.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setImages([])}
-                  className="font-semibold text-slate-400 hover:text-red-600 cursor-pointer"
-                >
-                  Limpiar todos
-                </button>
-              )}
-            </div>
-
-            {/* Botón Principal de Ejecución: "Fusionar Dibujos" */}
-            <button
-              type="button"
-              disabled={!hasValidImageCount || isFusing}
-              onClick={() =>
-                executeFusion(
-                  images,
-                  puzzlePieces,
-                  engravingStroke,
-                  studentPrompt,
-                  targetHeightMm,
-                  showAnnotations,
-                  true
-                )
-              }
-              className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-amber-500 via-orange-600 to-rose-600 hover:from-amber-600 hover:via-orange-700 hover:to-rose-700 text-white font-black text-sm sm:text-base shadow-lg hover:shadow-xl active:scale-[0.99] transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50"
-            >
-              <Wand2 className={`w-5 h-5 ${isFusing ? 'animate-spin' : ''}`} />
-              <span>{isFusing ? 'Generando Imagen y Contorno...' : 'Fusionar Dibujos'}</span>
-            </button>
-
-            <div className="pt-2 border-t border-slate-100">
-              <input
-                ref={directFusedInputRef}
-                type="file"
-                accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleDirectFusedImageUpload(file);
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => directFusedInputRef.current?.click()}
-                className="w-full py-2 px-3 rounded-xl bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-900 border border-slate-200 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-              >
-                <FileImage className="w-4 h-4 text-amber-600" />
-                <span>¿Ya tienes una imagen fusionada por Gemini? Súbela directo aquí</span>
-              </button>
-            </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    {isCustomDrawing
+                      ? 'Dibujo grupal cargado listo para grabar'
+                      : 'Dibujo de demostración activo'}
+                  </div>
+                  {processed && (
+                    <div className="text-[11px] font-semibold text-emerald-700 mt-1">
+                      ✓ Logo MakerBox en {CORNER_LABELS[processed.selectedCorner].toLowerCase()}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Tarjeta 2: Selector de Patrón de Rompecabezas (20, 30, 40, 50 o 60 Piezas) */}
-          <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                <Puzzle className="w-4 h-4 text-amber-600" />
-                2. Cantidad de Piezas (20 a 60 Piezas en Recuadro)
-              </label>
-              <span className="text-[11px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-full">
-                Corte Vectorial #FF0000
+          {/* PASO 2: Configuración del Puzzle y Especificación Fija */}
+          <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-xs space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="w-6 h-6 rounded-full bg-amber-600 text-white text-xs font-black flex items-center justify-center">
+                2
               </span>
+              <h2 className="text-sm sm:text-base font-extrabold text-slate-900 flex items-center gap-1.5">
+                <Puzzle className="w-4 h-4 text-amber-600" />
+                Cuadrícula de Corte y Material
+              </h2>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-              {PUZZLE_PIECE_OPTIONS.map((opt) => {
-                const isSelected = puzzlePieces === opt.count;
-                return (
-                  <button
-                    key={opt.count}
-                    type="button"
-                    onClick={() => handlePuzzlePiecesChange(opt.count)}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                      isSelected
-                        ? 'bg-amber-50 border-amber-500 text-amber-950 ring-2 ring-amber-500/20 shadow-2xs'
-                        : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-black">{opt.label}</span>
-                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-amber-700">
+            {/* Parámetros técnicos fijos solicitados */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200">
+                <div className="text-[10px] font-extrabold uppercase text-amber-800">
+                  Material a Utilizar
+                </div>
+                <div className="text-xs sm:text-sm font-black text-amber-950 mt-0.5">
+                  Contrachapado de 3 mm
+                </div>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                <div className="text-[10px] font-extrabold uppercase text-slate-500">
+                  Grosor de Grabado
+                </div>
+                <div className="text-xs sm:text-sm font-black text-slate-900 mt-0.5">
+                  1.5 px (Fijo)
+                </div>
+              </div>
+            </div>
+
+            {/* Selector de cantidad de piezas */}
+            <div className="space-y-2">
+              <div className="text-xs font-bold text-slate-700">
+                Cantidad de piezas (solo cortes horizontales y verticales):
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {PUZZLE_PIECE_OPTIONS.map((opt) => {
+                  const active = puzzlePieces === opt.count;
+                  return (
+                    <button
+                      key={opt.count}
+                      type="button"
+                      onClick={() => setPuzzlePieces(opt.count)}
+                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                        active
+                          ? 'border-amber-600 bg-amber-50/90 ring-2 ring-amber-500/20'
+                          : 'border-slate-200 hover:border-amber-300 bg-slate-50/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-black text-slate-900">
+                          {opt.label}
+                        </span>
+                        <span
+                          className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                            active
+                              ? 'bg-amber-600 text-white'
+                              : 'bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          {opt.cols}×{opt.rows}
+                        </span>
+                      </div>
+                      <div className="text-[11px] font-semibold text-amber-800 mt-0.5">
                         {opt.difficulty}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1 leading-snug">
-                      {opt.description}
-                    </p>
-                  </button>
-                );
-              })}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Control de Altura Final del Rompecabezas */}
+            {/* Control de tamaño físico en milímetros */}
             <div className="pt-2 border-t border-slate-100 space-y-1.5">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                <span>Altura Final para Creality Falcon 10W:</span>
-                <span className="text-amber-800 font-black">{targetHeightMm} mm</span>
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                  <Ruler className="w-3.5 h-3.5 text-amber-600" />
+                  Altura del Puzzle en Madera:
+                </span>
+                <span className="font-black text-amber-700">{targetHeightMm} mm</span>
               </div>
               <input
                 type="range"
@@ -1384,135 +943,30 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                 max={180}
                 step={5}
                 value={targetHeightMm}
-                onChange={(e) => handleTargetHeightChange(Number(e.target.value))}
+                onChange={(e) => setTargetHeightMm(Number(e.target.value))}
                 className="w-full accent-amber-600 cursor-pointer"
               />
-              <div className="flex justify-between text-[10px] text-slate-400">
-                <span>80 mm</span>
-                <span className="text-emerald-700 font-semibold">
-                  120 mm (Recomendado 20–60 piezas)
-                </span>
-                <span>180 mm</span>
+              <div className="flex justify-between text-[10px] text-slate-400 font-medium">
+                <span>80 mm (Compacto)</span>
+                <span>120 mm (Estándar)</span>
+                <span>180 mm (Grande)</span>
               </div>
-            </div>
-          </div>
-
-          {/* Tarjeta 3: Grosor de Línea para Grabado Láser (Creality Falcon 10W) */}
-          <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-3.5">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                <Layers className="w-4 h-4 text-amber-600" />
-                3. Grosor de Línea para Grabado (Velocidad Falcon 10W)
-              </label>
-              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-                Grabado Rápido
-              </span>
-            </div>
-
-            <p className="text-[11px] text-slate-500 leading-snug">
-              Las líneas más delgadas reducen la cantidad de pasadas del cabezal láser, acelerando significativamente el tiempo de grabado en madera. El corte exterior y del rompecabezas se mantiene intacto.
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {ENGRAVING_STROKE_OPTIONS.map((opt) => {
-                const isSelected = engravingStroke === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => handleStrokeWeightChange(opt.id)}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                      isSelected
-                        ? 'bg-amber-50 border-amber-500 text-amber-950 ring-2 ring-amber-500/20 shadow-2xs'
-                        : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-black">{opt.label}</span>
-                      </div>
-                      <span className="inline-block text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-white/90 border border-slate-200 text-amber-700 mt-1">
-                        {opt.badge}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-slate-500 mt-1.5 leading-tight">
-                      {opt.description}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Tarjeta 4: Asistente IA Creativo */}
-          <div className="bg-white rounded-3xl border border-purple-200 p-5 shadow-xs space-y-3.5">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-xs">
-                <Bot className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-sm font-extrabold text-slate-900">
-                  Asistente IA para Niños y Jóvenes
-                </h3>
-                <p className="text-[11px] text-purple-700 font-semibold">
-                  Pídele cómo combinar los rasgos de tus dibujos
-                </p>
-              </div>
-            </div>
-
-            <div className="max-h-40 overflow-y-auto space-y-2 pr-1 bg-slate-50 rounded-2xl p-3 border border-slate-200/80">
-              {chatMessages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`p-2.5 rounded-xl text-xs leading-relaxed ${
-                    msg.role === 'assistant'
-                      ? 'bg-white border border-purple-100 text-slate-800 shadow-2xs'
-                      : 'bg-purple-600 text-white ml-6 font-medium'
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-[10px] opacity-75 mb-0.5 font-bold">
-                    <span>{msg.role === 'assistant' ? '🤖 Agente Gemini IA' : '🎨 Tu Equipo'}</span>
-                    <span>{msg.timestamp}</span>
-                  </div>
-                  <p>{msg.text}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSendStudentInstruction();
-                }}
-                placeholder="Ej: Ponle cuerpo de gato, alas de dragón y tentáculos..."
-                className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-              <button
-                type="button"
-                onClick={() => handleSendStudentInstruction()}
-                className="p-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white transition-colors cursor-pointer"
-                title="Enviar instrucción al Asistente IA"
-              >
-                <Send className="w-4 h-4" />
-              </button>
             </div>
           </div>
         </div>
 
-        {/* COLUMNA DERECHA (7 cols): Previsualización del Diseño Híbrido + Rompecabezas + Descarga Láser */}
+        {/* COLUMNA DERECHA (7 cols): Previsualización + Descarga */}
         <div className="lg:col-span-7 space-y-5">
           <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-base sm:text-lg font-extrabold text-slate-900">
-                  {fusionResult?.hybridTitle || 'Previsualización para Creality Falcon 10W'}
+                  {drawingName}
                 </h2>
                 <p className="text-xs text-slate-500">
-                  <strong>Imagen Interior (PNG sin vectorizar)</strong>: Grabado láser ·{' '}
-                  <strong className="text-red-600">Vectores Rojos (#FF0000)</strong>: Corte de contorno exterior y {puzzlePieces} piezas
+                  <strong>Grabado (1.5 px + Logo MakerBox)</strong> ·{' '}
+                  <strong className="text-red-600">Corte Recto (#FF0000)</strong>: Marco y cuadrícula de{' '}
+                  {processed ? processed.cols * processed.rows : puzzlePieces} piezas
                 </p>
               </div>
 
@@ -1526,18 +980,18 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  🧩 Imagen + Corte {puzzlePieces} Piezas
+                  🧩 Grabado + Corte {puzzlePieces} Piezas
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActivePreviewTab('ai-raster')}
+                  onClick={() => setActivePreviewTab('engraving-only')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
-                    activePreviewTab === 'ai-raster'
+                    activePreviewTab === 'engraving-only'
                       ? 'bg-white text-amber-900 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  🖼️ Solo Imagen de Grabado
+                  🖼️ Solo Patrón a Grabar
                 </button>
               </div>
             </div>
@@ -1560,35 +1014,35 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                 }}
               />
 
-              {isFusing && (
+              {isProcessing && (
                 <div className="absolute top-3 right-3 px-3 py-1 rounded-full bg-amber-500 text-slate-950 text-xs font-black animate-pulse z-10">
-                  ⚡ Preparando Imagen de Grabado + Vectores de Corte ({puzzlePieces} piezas)...
+                  ⚡ Generando grabado de 1.5 px + cuadrícula recta...
                 </div>
               )}
 
-              {fusionResult ? (
+              {processed ? (
                 activePreviewTab === 'vector-puzzle' ? (
                   <div
                     className="w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[450px] [&>svg]:bg-white [&>svg]:rounded-xl [&>svg]:p-3 [&>svg]:shadow-lg"
-                    dangerouslySetInnerHTML={{ __html: fusionResult.previewSvg }}
+                    dangerouslySetInnerHTML={{ __html: processed.previewSvg }}
                   />
                 ) : (
                   <div className="flex flex-col items-center gap-3">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={cleanEngravingPngUrl || fusionResult.rasterDataUrl}
-                      alt="Imagen para grabar en Creality Falcon 10W (sin vectorizar)"
+                      src={processed.engravingPngUrl}
+                      alt="Patrón de grabado láser con dibujo de 1.5 px y logo MakerBox"
                       className="max-h-[390px] w-auto rounded-xl border-2 border-slate-700 bg-white p-3 shadow-lg"
                     />
                     <span className="text-xs text-slate-300 font-medium text-center">
-                      Imagen raster limpia (sin vectorizar) lista para modo Grabado de Imagen en Creality Falcon 10W
+                      Patrón de grabado limpio (líneas de 1.5 px + logo MakerBox en{' '}
+                      {CORNER_LABELS[processed.selectedCorner].toLowerCase()})
                     </span>
                   </div>
                 )
               ) : (
                 <div className="text-slate-400 text-sm text-center max-w-sm">
-                  Sube de 3 a 4 dibujos en formato JPG/PNG y presiona{' '}
-                  <strong className="text-white">&ldquo;Fusionar Dibujos&rdquo;</strong>.
+                  Sube un dibujo grupal a mano alzada en formato JPG o PNG para generar el puzzle.
                 </div>
               )}
             </div>
@@ -1599,7 +1053,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
                 <input
                   type="checkbox"
                   checked={showAnnotations}
-                  onChange={(e) => handleShowAnnotationsChange(e.target.checked)}
+                  onChange={(e) => setShowAnnotations(e.target.checked)}
                   className="w-4 h-4 rounded accent-amber-600"
                 />
                 <Eye className="w-3.5 h-3.5 text-slate-500" />
@@ -1609,7 +1063,7 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  disabled={!fusionResult || isFusing}
+                  disabled={!processed || isProcessing}
                   onClick={handleDownloadEngravingPngOnly}
                   className="py-3 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                   title="Descargar únicamente la imagen PNG limpia para grabado"
@@ -1620,67 +1074,58 @@ export function ZooSection({ onBackToMenu }: ZooSectionProps) {
 
                 <button
                   type="button"
-                  disabled={!fusionResult || isFusing}
+                  disabled={!processed || isProcessing}
                   onClick={handleDownloadLaserSvg}
                   className="py-3.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   <Download className="w-4 h-4" />
-                  <span>Descargar SVG para Corte Láser (Falcon 10W)</span>
+                  <span>Descargar SVG para Corte Láser</span>
                 </button>
               </div>
             </div>
 
-            {/* Resumen Técnico del Pipeline para Creality Falcon 10W */}
-            {fusionResult && (
+            {/* Resumen Técnico */}
+            {processed && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100">
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
-                  <div className="text-[10px] font-extrabold text-slate-500 uppercase">
-                    1. Dibujo Híbrido (Grabado)
+                  <div className="text-[10px] font-extrabold text-slate-500 uppercase flex items-center gap-1">
+                    <Layers className="w-3 h-3 text-slate-500" />
+                    1. Grabado + Marca
                   </div>
                   <div className="text-xs font-extrabold text-slate-900 mt-1">
-                    Línea {engravingStroke === 'ultra-thin' ? 'Ultra Fina (1 px)' : engravingStroke === 'thin' ? 'Fina (Recomendada)' : 'Original'} (100% Cobertura)
+                    Línea fija 1.5 px + Logo MakerBox
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5">
-                    {engravingStroke === 'ultra-thin' ? 'Máxima velocidad Falcon 10W' : engravingStroke === 'thin' ? 'Grabado rápido en madera' : 'Grosor estándar'} · Sin piezas en blanco
+                    {CORNER_LABELS[processed.selectedCorner]} (sin cruzar trazos)
                   </div>
                 </div>
 
                 <div className="p-3 rounded-2xl bg-amber-50/60 border border-amber-200">
                   <div className="text-[10px] font-extrabold text-amber-800 uppercase">
-                    2. Marco Rectangular (Corte #FF0000)
+                    2. Material y Marco (#FF0000)
                   </div>
                   <div className="text-xs font-extrabold text-amber-950 mt-1">
-                    Ajustado al dibujo ({fusionResult.metrics.widthMm} × {fusionResult.metrics.heightMm} mm)
+                    Contrachapado 3 mm ({processed.widthMm} × {processed.heightMm} mm)
                   </div>
                   <div className="text-[11px] text-amber-800 mt-0.5">
-                    Trazo exterior cerrado para recorte perimetral
+                    Recuadro exterior ajustado al dibujo
                   </div>
                 </div>
 
                 <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200">
                   <div className="text-[10px] font-extrabold text-emerald-700 uppercase">
-                    3. Rompecabezas ({fusionResult.metrics.gridCols}×{fusionResult.metrics.gridRows} = {puzzlePieces} Piezas)
+                    3. Puzzle ({processed.cols}×{processed.rows} = {processed.cols * processed.rows} Piezas)
                   </div>
                   <div className="text-xs font-extrabold text-emerald-900 mt-1 flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    Encastre reforzado antideslizante ({fusionResult.metrics.clippedPuzzleSegmentsCount} líneas)
+                    Cortes rectos H/V ({processed.cutLinesCount} trazos)
                   </div>
                   <div className="text-[11px] text-emerald-700 mt-0.5">
-                    Bloqueo mecánico firme de lado a lado
+                    Sin piezas de encaje · Corte rápido
                   </div>
                 </div>
               </div>
             )}
-
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
-              <div className="font-extrabold text-slate-800 flex items-center gap-1.5">
-                <Layers className="w-3.5 h-3.5 text-amber-600" />
-                Prompt Interno Enviado al Agente Gemini Multimodal:
-              </div>
-              <p className="italic text-[11px] text-slate-600 bg-white px-3 py-2 rounded-xl border border-slate-200/80">
-                &ldquo;{AI_FUSION_INTERNAL_PROMPT}&rdquo;
-              </p>
-            </div>
           </div>
         </div>
       </div>

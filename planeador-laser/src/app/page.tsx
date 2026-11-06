@@ -47,7 +47,7 @@ export default function HomePage() {
 
         {/* Tarjetas de Selección Visual de los 3 Talleres */}
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* TALLER 1: Zoológico Low-Poly */}
+          {/* TALLER 1: Dibujo Grupal + Rompecabezas Láser */}
           <Link
             href="/zoologico"
             className="group relative bg-white rounded-3xl border-2 border-amber-200 hover:border-amber-500 p-6 sm:p-8 shadow-sm hover:shadow-2xl transition-all duration-300 flex flex-col justify-between overflow-hidden"
@@ -60,7 +60,7 @@ export default function HomePage() {
                   Taller 1
                 </span>
                 <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
-                  Madera Balsa 3 mm
+                  Contrachapado 3 mm
                 </span>
               </div>
 
@@ -70,30 +70,30 @@ export default function HomePage() {
                 </div>
                 <div>
                   <h2 className="text-2xl sm:text-3xl font-black text-slate-900 group-hover:text-amber-700 transition-colors">
-                    Fusión IA + Rompecabezas
+                    Dibujo Grupal + Puzzle
                   </h2>
                   <p className="text-xs sm:text-sm font-bold text-amber-700">
-                    Dibujos a Mano Alzada · Vectorización Potrace · Puzzle Láser
+                    Dibujo a Mano Alzada · Grabado 1.5 px · Corte Recto
                   </p>
                 </div>
               </div>
 
               <p className="text-sm text-slate-600 leading-relaxed">
-                Sube de <strong>3 a 4 dibujos a mano alzada (JPG/PNG)</strong>, utiliza el <strong>Agente Gemini Image Generation</strong> para fusionarlos en una ilustración lineal en blanco y negro, vectorízala con <strong>Potrace</strong> y superpón un patrón de <strong>rompecabezas de 20, 25, 30 o 40 piezas</strong> recortado exactamente a la silueta exterior.
+                Sube un <strong>único dibujo a mano alzada realizado en grupo (JPG/PNG)</strong>. La herramienta normaliza los trazos a <strong>1.5 px</strong>, incorpora el <strong>logo de MakerBox</strong> en una esquina despejada y genera un <strong>puzzle de 20 a 60 piezas</strong> con cortes rectos horizontales y verticales.
               </p>
 
               <ul className="space-y-2 text-xs font-semibold text-slate-700 bg-amber-50/60 border border-amber-200/80 rounded-2xl p-4">
                 <li className="flex items-center gap-2">
                   <Upload className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Carga múltiple (Drag & Drop) de 3 a 4 dibujos en formato JPG/PNG</span>
+                  <span>Carga directa de 1 dibujo grupal a mano alzada (JPG/PNG)</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Ruler className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Agente Gemini Multimodal Image Gen + Vectorización Potrace de alta precisión</span>
+                  <span>Líneas de grabado fijas a 1.5 px + logo MakerBox sin cruzar trazos</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Scissors className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>Patrón de rompecabezas de 20, 25, 30 o 40 piezas con recorte booleano exacto</span>
+                  <span>Puzzle rectangular (20–60 piezas) con cortes rectos H/V sin encaje</span>
                 </li>
               </ul>
             </div>
