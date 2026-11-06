@@ -4,6 +4,7 @@ import {
   CAD_VARIANT_SEGMENTS,
   computeSilhouetteBoundaryLoops,
 } from '@/lib/tangram-geometry';
+import { buildMakerboxLogoVectorPath } from '@/lib/makerbox-logo-vector';
 import {
   CadSubdivisionVariant,
   TangramParams,
@@ -704,9 +705,9 @@ export function generateTangramLaserSvg({
   const sMidX = (sMinX + sMaxX) / 2;
   const sMidY = (sMinY + sMaxY) / 2;
 
-  const miniMaxBox = L * 0.44;
+  const miniMaxBox = L * 0.41;
   const miniScale = Math.min(miniMaxBox / sWidth, miniMaxBox / sHeight);
-  const miniCenterY = guideY + L * 0.41;
+  const miniCenterY = guideY + L * 0.465;
 
   const silhouettePathCommands: string[] = [];
   for (const loop of loops) {
@@ -718,36 +719,34 @@ export function generateTangramLaserSvg({
     silhouettePathCommands.push('Z');
   }
 
-  // 2. Textos vectoriales single-stroke (#0000FF) dentro de la Placa Base
+  // 2. Logotipo oficial MakerBox centrado sobre la línea superior + Textos vectoriales (#0000FF)
   const safeTeam = (teamName.trim() || 'EQUIPO ALFA').toUpperCase();
   const timeStr = formatStopwatch(elapsedSeconds);
-  const headerPath = buildCenteredVectorTextPath(
-    'MAKERBOX UTALCA · DESAFIO TANGRAMA CAD',
+  const makerboxLogoPath = buildMakerboxLogoVectorPath(
     baseCenterX,
-    guideY + L * 0.075,
-    L * 0.028,
-    L * 0.88
+    guideY + L * 0.036,
+    L * 0.56
   );
   const teamPath = buildCenteredVectorTextPath(
     safeTeam,
     baseCenterX,
-    guideY + L * 0.73,
-    L * 0.052,
+    guideY + L * 0.76,
+    L * 0.05,
     L * 0.86
   );
   const metaPath = buildCenteredVectorTextPath(
     `SILUETA: ${silhouette.name.toUpperCase()}  -  RECORD: ${timeStr}`,
     baseCenterX,
-    guideY + L * 0.835,
-    L * 0.032,
+    guideY + L * 0.855,
+    L * 0.031,
     L * 0.88
   );
 
   // Líneas decorativas técnicas del bloque de grabado (#0000FF)
   const dividerLeft = (guideX + L * 0.08).toFixed(3);
   const dividerRight = (guideX + L * 0.92).toFixed(3);
-  const dividerTopY = (guideY + L * 0.135).toFixed(3);
-  const dividerBotY = (guideY + L * 0.685).toFixed(3);
+  const dividerTopY = (guideY + L * 0.214).toFixed(3);
+  const dividerBotY = (guideY + L * 0.715).toFixed(3);
 
   // 3. Los 5 segmentos internos de corte del Tangrama (#FF0000, 0.1 mm)
   // Transformación de coordenadas CAD (Y hacia arriba) a SVG (Y hacia abajo):
@@ -780,8 +779,8 @@ export function generateTangramLaserSvg({
     <line x1="${dividerLeft}" y1="${dividerBotY}" x2="${dividerRight}" y2="${dividerBotY}" />
     <!-- Contorno en miniatura de la silueta resuelta (${silhouette.name}) -->
     <path d="${silhouettePathCommands.join(' ')}" />
-    <!-- Encabezado, Nombre del Equipo y Tiempo Record -->
-    <path d="${headerPath}" />
+    <!-- Logotipo MakerBox centrado en la parte superior, Nombre del Equipo y Tiempo Record -->
+    <path d="${makerboxLogoPath}" stroke-width="0.12" />
     <path d="${teamPath}" />
     <path d="${metaPath}" />
   </g>

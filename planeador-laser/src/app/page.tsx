@@ -23,24 +23,24 @@ export default function HomePage() {
       activeBadgeText="Menú Principal · Talleres de Fabricación Digital"
       showHomeButton={false}
     >
-      <div className="space-y-8 animate-fade-in">
-        {/* Hero de Bienvenida al Menú Multi-Taller */}
-        <section className="rounded-3xl bg-gradient-to-br from-purple-900 via-indigo-900 to-slate-900 text-white p-6 sm:p-10 shadow-xl relative overflow-hidden border border-purple-700/40">
+      <div className="space-y-6 animate-fade-in">
+        {/* Hero Compacto de Bienvenida al Menú Multi-Taller */}
+        <section className="rounded-3xl bg-gradient-to-br from-purple-900 via-indigo-900 to-slate-900 text-white px-5 py-4 sm:px-8 sm:py-5 shadow-xl relative overflow-hidden border border-purple-700/40">
           <div className="absolute -top-16 -right-16 w-72 h-72 rounded-full bg-amber-400/15 blur-3xl pointer-events-none" />
           <div className="absolute -bottom-16 -left-16 w-72 h-72 rounded-full bg-sky-400/15 blur-3xl pointer-events-none" />
 
-          <div className="relative z-10 max-w-3xl space-y-4">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/15 border border-white/20 text-amber-200 text-xs font-extrabold uppercase tracking-wider">
+          <div className="relative z-10 max-w-5xl space-y-1.5">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 border border-white/20 text-amber-200 text-[11px] font-extrabold uppercase tracking-wider">
               <Sparkles className="w-3.5 h-3.5" />
-              Plataforma Educativa MakerBox · Corte Láser en Madera de Balsa (300 × 100 × 3 mm)
+              Plataforma Educativa MakerBox · Diseño y Manufactura Digital
             </div>
 
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">
-              ¡Elige tu Taller de Diseño y Fabricación Láser!
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight leading-snug">
+              ¡Elige tu Taller de Diseño y Fabricación Digital!
             </h1>
 
-            <p className="text-slate-200 text-sm sm:text-base leading-relaxed">
-              Bienvenido a la estación de diseño paramétrico. Selecciona el taller en el que estás trabajando hoy para personalizar tus piezas, verificar el calce de las ranuras de <strong>3 mm</strong> y descargar tu archivo <strong>.SVG listo para cortar en LightBurn</strong>.
+            <p className="text-slate-200 text-xs sm:text-sm leading-relaxed max-w-4xl">
+              Bienvenido a la estación de diseño paramétrico. Selecciona el taller en el que estás trabajando hoy para personalizar tus piezas, verificar tolerancias de calce y descargar tus archivos listos para fabricar.
             </p>
           </div>
         </section>

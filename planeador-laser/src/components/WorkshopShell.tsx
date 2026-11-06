@@ -19,9 +19,9 @@ export function WorkshopShell({
   onHomeClick,
 }: WorkshopShellProps) {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans selection:bg-purple-200 selection:text-purple-900 pb-20">
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans selection:bg-purple-200 selection:text-purple-900">
       <header className="w-full bg-white border-b border-slate-200 text-slate-800 sticky top-0 z-30 shadow-xs backdrop-blur-md bg-white/95">
-        <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between gap-4 flex-wrap">
+        <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 min-h-16 sm:h-20 py-1 sm:py-0 flex items-center justify-between gap-4 flex-wrap overflow-hidden">
           <div className="flex items-center gap-4 sm:gap-6">
             <Link href="/" onClick={onHomeClick} className="flex items-center gap-4 sm:gap-6">
               <Image
@@ -29,16 +29,16 @@ export function WorkshopShell({
                 alt="MakerBox - Co Creación e Innovación | Ingeniería UTalca"
                 width={712}
                 height={259}
-                className="object-contain h-10 sm:h-13 w-auto"
+                className="object-contain h-[60px] sm:h-[78px] w-auto"
                 priority
               />
-              <div className="h-9 w-px bg-slate-200" />
+              <div className="h-11 w-px bg-slate-200" />
               <Image
                 src="/logos/utalca-ingenieria.png"
                 alt="Facultad de Ingeniería - Universidad de Talca"
                 width={1024}
                 height={368}
-                className="object-contain h-9 sm:h-11 w-auto"
+                className="object-contain h-[54px] sm:h-[66px] w-auto"
                 priority
               />
             </Link>
@@ -77,17 +77,12 @@ export function WorkshopShell({
         {children}
       </main>
 
-      <footer className="w-full bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500 mt-12">
-        <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Award className="w-4 h-4 text-purple-600" />
-            <span>
-              <strong>MakerBox</strong> — Co Creación e Innovación · Facultad de Ingeniería, Universidad de Talca
-            </span>
-          </div>
-          <div className="text-xs text-purple-700 font-bold">
-            Talleres de Fabricación Digital · Madera de Balsa 300 × 100 × 3 mm
-          </div>
+      <footer className="w-full bg-white border-t border-slate-200 py-5 text-center text-xs text-slate-500 mt-12">
+        <div className="max-w-6xl mx-auto px-4 flex items-center justify-center gap-2">
+          <Award className="w-4 h-4 text-purple-600 shrink-0" />
+          <span>
+            <strong>MakerBox</strong> — Co Creación e Innovación · Facultad de Ingeniería, Universidad de Talca
+          </span>
         </div>
       </footer>
     </div>

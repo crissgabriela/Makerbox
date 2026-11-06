@@ -7,10 +7,10 @@ import {
   CheckCircle2,
   Clock,
   Compass,
+  Dices,
   Download,
   FlipHorizontal2,
   GraduationCap,
-  HelpCircle,
   Lock,
   Play,
   RefreshCw,
@@ -66,11 +66,41 @@ interface StrokeHistoryItem {
   prevVariant: CadSubdivisionVariant | null;
 }
 
+/**
+ * Posiciones específicas (libres de cruce con los 5 segmentos internos y con los bordes)
+ * para las etiquetas de coordenadas de los 10 nodos magnéticos en el plano CAD.
+ */
+const NODE_LABEL_OFFSETS: Record<
+  string,
+  { dx: number; dy: number; align: CanvasTextAlign }
+> = {
+  n_0_0: { dx: -10, dy: 18, align: 'right' },
+  n_1_0: { dx: 10, dy: 18, align: 'left' },
+  n_1_1: { dx: 10, dy: -10, align: 'left' },
+  n_0_1: { dx: -10, dy: -10, align: 'right' },
+  n_0_05: { dx: -12, dy: 4, align: 'right' },
+  n_05_1: { dx: 0, dy: -12, align: 'center' },
+  // Nodos internos ubicados en sectores angulares donde jamás cruza ningún segmento válido:
+  n_025_025: { dx: 12, dy: 15, align: 'left' }, // Interior libre de Triángulo Grande 1
+  n_05_05: { dx: 16, dy: 4, align: 'left' }, // Interior libre derecho (Triángulo Grande 2)
+  n_025_075: { dx: 6, dy: -18, align: 'right' }, // Interior libre superior-izq (Triángulo Mediano)
+  n_075_075: { dx: -8, dy: 24, align: 'left' }, // Interior libre inferior-der (Triángulo Grande 2)
+};
+
+function pickRandomSilhouetteId(excludeId?: TangramSilhouetteId): TangramSilhouetteId {
+  const pool = excludeId
+    ? TANGRAM_SILHOUETTES.filter((s) => s.id !== excludeId)
+    : TANGRAM_SILHOUETTES;
+  const chosen = pool[Math.floor(Math.random() * pool.length)] ?? TANGRAM_SILHOUETTES[0];
+  return chosen.id;
+}
+
 export function TangramSection() {
-  // 1. Registro del Equipo y Parámetros
+  // 1. Registro del Equipo, Desafío Aleatorio y Parámetros
   const [teamName, setTeamName] = useState<string>('Equipo Alfa');
   const [selectedSilhouetteId, setSelectedSilhouetteId] =
     useState<TangramSilhouetteId>('swan');
+  const [challengeAssigned, setChallengeAssigned] = useState<boolean>(false);
   const [params, setParams] = useState<TangramParams>(DEFAULT_PARAMS);
 
   // Estado general de fases y cronómetro
@@ -91,10 +121,9 @@ export function TangramSection() {
     text: string;
   }>({
     type: 'info',
-    text: 'Haz clic en un nodo magnético y luego en otro para trazar los 5 segmentos internos del Tangrama.',
+    text: 'Inicia el cronómetro para sortear tu desafío aleatorio o haz clic en un nodo magnético para comenzar.',
   });
   const [cadCelebrating, setCadCelebrating] = useState<boolean>(false);
-  const [showCadGuideHint, setShowCadGuideHint] = useState<boolean>(false);
 
   // 3. Estado de Fase 2: Ensamble Virtual de Silueta
   const [pieces, setPieces] = useState<VirtualPieceState[]>(() =>
@@ -145,47 +174,54 @@ export function TangramSection() {
     return () => window.clearInterval(interval);
   }, [timerRunning]);
 
-  // Asegurar inicio automático del cronómetro si el usuario empieza a interactuar
-  const ensureTimerStarted = useCallback(() => {
+  // Iniciar cronómetro y asignar silueta aleatoria si aún no se había sorteado
+  const startTimerAndAssignChallenge = useCallback(() => {
+    if (!challengeAssigned) {
+      const randomId = pickRandomSilhouetteId(selectedSilhouetteId);
+      setSelectedSilhouetteId(randomId);
+      setChallengeAssigned(true);
+    }
     if (!timerRunning && phase !== 'completed') {
       setTimerRunning(true);
     }
-  }, [timerRunning, phase]);
+  }, [challengeAssigned, selectedSilhouetteId, timerRunning, phase]);
 
-  // Reiniciar desafío completo
-  const handleResetChallenge = useCallback(
-    (newSilhouetteId?: TangramSilhouetteId) => {
-      if (newSilhouetteId) {
-        setSelectedSilhouetteId(newSilhouetteId);
-      }
-      setPhase('phase1-cad');
-      setTimerRunning(false);
-      setElapsedSeconds(0);
-      setTeacherBypassed(false);
-      setActiveAtomicKeys(new Set());
-      setCadHistory([]);
-      setCadVariant(null);
-      setSelectedStartNodeId(null);
-      setCadCelebrating(false);
-      setCadFeedback({
-        type: 'info',
-        text: 'Cronómetro listo: haz clic en "Iniciar Cronómetro" o traza tu primer segmento CAD para comenzar.',
-      });
-      setPieces(createInitialLoosePieces());
-      setSelectedPieceId('parallelogram');
-      setDraggingState(null);
-    },
-    []
-  );
+  // Reiniciar desafío completo (deja listo un nuevo sorteo aleatorio)
+  const handleResetChallenge = useCallback(() => {
+    setPhase('phase1-cad');
+    setTimerRunning(false);
+    setElapsedSeconds(0);
+    setChallengeAssigned(false);
+    setTeacherBypassed(false);
+    setActiveAtomicKeys(new Set());
+    setCadHistory([]);
+    setCadVariant(null);
+    setSelectedStartNodeId(null);
+    setCadCelebrating(false);
+    setCadFeedback({
+      type: 'info',
+      text: 'Cronómetro reiniciado: haz clic en "Iniciar" para sortear aleatoriamente una nueva silueta desafío.',
+    });
+    setPieces(createInitialLoosePieces());
+    setSelectedPieceId('parallelogram');
+    setDraggingState(null);
+  }, []);
 
-  // Modo Profesor / Saltar Reto
+  // Modo Profesora / Saltar Reto
   const handleTeacherSkip = useCallback(() => {
+    let targetSil = activeSilhouette;
+    if (!challengeAssigned) {
+      const randomId = pickRandomSilhouetteId();
+      setSelectedSilhouetteId(randomId);
+      setChallengeAssigned(true);
+      targetSil = getSilhouetteById(randomId);
+    }
     setTimerRunning(false);
     setTeacherBypassed(true);
     setPhase('completed');
-    // Colocar las 7 piezas resueltas en la silueta para visualización completa
+
     const solvedPieces: VirtualPieceState[] = (
-      Object.entries(activeSilhouette.pieces) as [TangramPieceId, [number, number][]][]
+      Object.entries(targetSil.pieces) as [TangramPieceId, [number, number][]][]
     ).map(([pid, targetVerts]) => {
       const meta = CANONICAL_PIECE_MAP[pid];
       const solved = solvePieceTransformForTarget(pid, targetVerts);
@@ -207,7 +243,7 @@ export function TangramSection() {
     window.setTimeout(() => {
       downloadsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 150);
-  }, [activeSilhouette]);
+  }, [activeSilhouette, challengeAssigned]);
 
   // ============================================================================
   // LÓGICA E INTERACCIÓN DE FASE 1: TRAZADO CAD (CANVAS 2D)
@@ -215,10 +251,19 @@ export function TangramSection() {
 
   const getCadCanvasTransform = (canvas: HTMLCanvasElement) => {
     const rect = canvas.getBoundingClientRect();
-    const pad = Math.min(rect.width, rect.height) * 0.14;
-    const size = Math.min(rect.width, rect.height) - pad * 2;
-    const ox = (rect.width - size) / 2;
-    const oy = (rect.height - size) / 2;
+    const isCompact = rect.width < 500;
+    // Márgenes amplios a izquierda y derecha para que la leyenda del Eje Y jamás toque (0, 0.5)
+    const padLeft = isCompact ? 74 : Math.max(94, rect.width * 0.14);
+    const padRight = isCompact ? 58 : Math.max(82, rect.width * 0.12);
+    const padTop = 42;
+    const padBottom = 50;
+
+    const availW = Math.max(140, rect.width - padLeft - padRight);
+    const availH = Math.max(140, rect.height - padTop - padBottom);
+    const size = Math.min(availW, availH);
+
+    const ox = padLeft + (availW - size) / 2;
+    const oy = padTop + (availH - size) / 2;
 
     const toScreen = (nx: number, ny: number): [number, number] => [
       ox + nx * size,
@@ -229,7 +274,7 @@ export function TangramSection() {
       1 - (sy - oy) / size,
     ];
 
-    return { rect, pad, size, ox, oy, toScreen, toNorm };
+    return { rect, size, ox, oy, toScreen, toNorm };
   };
 
   const findNearestCadNode = (
@@ -251,7 +296,7 @@ export function TangramSection() {
 
   const commitCadSegment = useCallback(
     (fromId: string, toId: string) => {
-      ensureTimerStarted();
+      startTimerAndAssignChallenge();
       const res = validateCadStroke(fromId, toId, activeAtomicKeys, cadVariant);
       if (!res.valid) {
         setCadFeedback({
@@ -294,7 +339,7 @@ export function TangramSection() {
         });
       }
     },
-    [activeAtomicKeys, cadVariant, ensureTimerStarted]
+    [activeAtomicKeys, cadVariant, startTimerAndAssignChallenge]
   );
 
   const handleUndoCad = () => {
@@ -342,7 +387,7 @@ export function TangramSection() {
       return;
     }
 
-    ensureTimerStarted();
+    startTimerAndAssignChallenge();
 
     if (!selectedStartNodeId) {
       setSelectedStartNodeId(hitNodeId);
@@ -380,7 +425,7 @@ export function TangramSection() {
     ctx.fillStyle = '#0f172a';
     ctx.fillRect(0, 0, rect.width, rect.height);
 
-    // Grilla milimétrica / cuartos proporcionales
+    // Grilla milimétrica proporcional
     ctx.strokeStyle = 'rgba(148, 163, 184, 0.12)';
     ctx.lineWidth = 1;
     for (let i = 0; i <= 20; i++) {
@@ -433,41 +478,24 @@ export function TangramSection() {
       }
     }
 
-    // Guía tenue opcional para apoyo pedagógico
-    if (showCadGuideHint && !cadCelebrating) {
-      ctx.save();
-      ctx.strokeStyle = 'rgba(250, 204, 21, 0.32)';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([7, 6]);
-      for (const seg of cadProgress.allSegmentsForVariant) {
-        const n1 = CAD_NODE_MAP[seg.fromId];
-        const n2 = CAD_NODE_MAP[seg.toId];
-        const [x1, y1] = toScreen(n1.x, n1.y);
-        const [x2, y2] = toScreen(n2.x, n2.y);
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-
     // Cuadrado exterior 100 x 100 unidades
     ctx.strokeStyle = '#e2e8f0';
     ctx.lineWidth = 3;
     ctx.strokeRect(ox, oy, size, size);
 
-    // Cotas exteriores L mm
+    // Leyendas exteriores de Eje X y Eje Y separadas holgadamente de las coordenadas
+    const isCompact = rect.width < 500;
     ctx.fillStyle = '#94a3b8';
-    ctx.font = 'bold 11px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.font = `${isCompact ? 'bold 9.5px' : 'bold 11px'} ui-monospace, SFMono-Regular, Menlo, monospace`;
     ctx.textAlign = 'center';
     ctx.fillText(
       `L = ${params.sideMm} mm (Eje X: 0 → 1)`,
       ox + size / 2,
-      oy + size + 36
+      oy + size + 38
     );
     ctx.save();
-    ctx.translate(ox - 36, oy + size / 2);
+    // Desplazado completamente a la izquierda de "(0, 0.5)" sin tocarla
+    ctx.translate(Math.max(14, ox - (isCompact ? 62 : 78)), oy + size / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.fillText(`L = ${params.sideMm} mm (Eje Y: 0 → 1)`, 0, 0);
     ctx.restore();
@@ -510,13 +538,12 @@ export function TangramSection() {
       ctx.restore();
     }
 
-    // Dibujar los 10 Nodos Magnéticos (Snap Points) y sus etiquetas de coordenadas
+    // 1. Dibujar los círculos de los 10 Nodos Magnéticos
     for (const node of CAD_SNAP_NODES) {
       const [sx, sy] = toScreen(node.x, node.y);
       const isSelected = node.id === selectedStartNodeId;
       const isHovered = node.id === hoveredNodeId;
 
-      // Halo magnético exterior
       if (isSelected || isHovered) {
         ctx.beginPath();
         ctx.arc(sx, sy, 14, 0, Math.PI * 2);
@@ -541,23 +568,47 @@ export function TangramSection() {
       ctx.lineWidth = 2;
       ctx.strokeStyle = '#0f172a';
       ctx.stroke();
+    }
 
-      // Etiqueta de coordenada proporcional
-      ctx.font =
-        isSelected || isHovered
-          ? 'bold 11.5px ui-monospace, SFMono-Regular, monospace'
-          : '600 10.5px ui-monospace, SFMono-Regular, monospace';
+    // 2. Dibujar todas las etiquetas de coordenadas al final (con fondo sutil y en sectores libres de líneas)
+    for (const node of CAD_SNAP_NODES) {
+      const [sx, sy] = toScreen(node.x, node.y);
+      const isSelected = node.id === selectedStartNodeId;
+      const isHovered = node.id === hoveredNodeId;
+      const pos = NODE_LABEL_OFFSETS[node.id] ?? {
+        dx: 0,
+        dy: -12,
+        align: 'center' as CanvasTextAlign,
+      };
+
+      ctx.font = isCompact
+        ? 'bold 9px ui-monospace, SFMono-Regular, monospace'
+        : isSelected || isHovered
+        ? 'bold 11.5px ui-monospace, SFMono-Regular, monospace'
+        : '600 10.5px ui-monospace, SFMono-Regular, monospace';
+      ctx.textAlign = pos.align;
+
+      const lx = sx + pos.dx;
+      const ly = sy + pos.dy;
+      const metrics = ctx.measureText(node.label);
+      const w = metrics.width + 8;
+      const h = 15;
+      let bgX = lx - 4;
+      if (pos.align === 'center') bgX = lx - w / 2;
+      else if (pos.align === 'right') bgX = lx - w + 4;
+      const bgY = ly - 11.5;
+
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+      ctx.beginPath();
+      ctx.roundRect(bgX, bgY, w, h, 4);
+      ctx.fill();
+
       ctx.fillStyle = isSelected
         ? '#fde68a'
         : isHovered
         ? '#bae6fd'
-        : 'rgba(226, 232, 240, 0.9)';
-
-      const offsetX = node.x === 0 ? -8 : node.x === 1 ? 8 : 0;
-      const offsetY = node.y === 1 ? -12 : node.y === 0 ? 18 : -11;
-      ctx.textAlign =
-        node.x === 0 ? 'right' : node.x === 1 ? 'left' : 'center';
-      ctx.fillText(node.label, sx + offsetX, sy + offsetY);
+        : 'rgba(241, 245, 249, 0.95)';
+      ctx.fillText(node.label, lx, ly);
     }
   }, [
     phase,
@@ -567,8 +618,6 @@ export function TangramSection() {
     cadCursorNorm,
     cadCelebrating,
     cadVariant,
-    showCadGuideHint,
-    cadProgress.allSegmentsForVariant,
     params.sideMm,
   ]);
 
@@ -578,7 +627,6 @@ export function TangramSection() {
 
   const getPuzzleCanvasTransform = (canvas: HTMLCanvasElement) => {
     const rect = canvas.getBoundingClientRect();
-    // Escala para mostrar cómodamente [-1.85..+1.85] en X y [-1.15..+1.15] en Y
     const scale = Math.min(rect.width / 3.7, rect.height / 2.35);
     const cx = rect.width / 2;
     const cy = rect.height / 2;
@@ -598,7 +646,7 @@ export function TangramSection() {
   // Verificar automáticamente si se completó la Fase 2 tras actualizar las piezas
   useEffect(() => {
     if (phase !== 'phase2-puzzle') return;
-    if (draggingState) return; // Esperar a que suelte la pieza para evaluar cierre limpio
+    if (draggingState) return;
     if (puzzleEvaluation.solved) {
       setTimerRunning(false);
       setPhase('completed');
@@ -611,7 +659,7 @@ export function TangramSection() {
   const rotatePieceBy = useCallback(
     (pieceId: TangramPieceId, deltaDeg: number) => {
       if (phase === 'completed' && !teacherBypassed) return;
-      ensureTimerStarted();
+      startTimerAndAssignChallenge();
       setPieces((prev) => {
         const updated = prev.map((p) => {
           if (p.id !== pieceId) return p;
@@ -633,13 +681,13 @@ export function TangramSection() {
         );
       });
     },
-    [activeSilhouette, ensureTimerStarted, phase, teacherBypassed]
+    [activeSilhouette, startTimerAndAssignChallenge, phase, teacherBypassed]
   );
 
   const flipPiece = useCallback(
     (pieceId: TangramPieceId) => {
       if (phase === 'completed' && !teacherBypassed) return;
-      ensureTimerStarted();
+      startTimerAndAssignChallenge();
       setPieces((prev) => {
         const updated = prev.map((p) =>
           p.id === pieceId
@@ -661,7 +709,7 @@ export function TangramSection() {
         );
       });
     },
-    [activeSilhouette, ensureTimerStarted, phase, teacherBypassed]
+    [activeSilhouette, startTimerAndAssignChallenge, phase, teacherBypassed]
   );
 
   // Atajos de teclado (R = rotar +45°, Q = rotar -45°, F = voltear) en Fase 2
@@ -686,7 +734,6 @@ export function TangramSection() {
   }, [phase, selectedPieceId, rotatePieceBy, flipPiece]);
 
   const findHitPieceAt = (wx: number, wy: number): VirtualPieceState | null => {
-    // Recorrer en orden inverso para priorizar la pieza dibujada más arriba
     for (let i = pieces.length - 1; i >= 0; i--) {
       const p = pieces[i];
       const verts = getTransformedPieceVertices(
@@ -711,10 +758,9 @@ export function TangramSection() {
     const hit = findHitPieceAt(wx, wy);
     if (!hit) return;
 
-    ensureTimerStarted();
+    startTimerAndAssignChallenge();
     setSelectedPieceId(hit.id);
 
-    // Clic derecho rota 45° directamente
     if (e.button === 2) {
       e.preventDefault();
       rotatePieceBy(hit.id, 45);
@@ -722,7 +768,6 @@ export function TangramSection() {
     }
 
     canvas.setPointerCapture(e.pointerId);
-    // Traer la pieza seleccionada al frente (final del arreglo) y liberar imantado previo
     setPieces((prev) => {
       const others = prev.filter((item) => item.id !== hit.id);
       return [...others, { ...hit, snappedSlotId: null }];
@@ -798,11 +843,9 @@ export function TangramSection() {
 
     const { toScreen } = getPuzzleCanvasTransform(canvas);
 
-    // Fondo mesa de trabajo clara de ingeniería
     ctx.fillStyle = '#f8fafc';
     ctx.fillRect(0, 0, rect.width, rect.height);
 
-    // Retícula suave
     ctx.strokeStyle = '#e2e8f0';
     ctx.lineWidth = 1;
     const stepPx = 28;
@@ -819,7 +862,7 @@ export function TangramSection() {
       ctx.stroke();
     }
 
-    // Dibujar la Silueta "Fantasma" (Sombra Gris) en el centro
+    // Silueta "Fantasma" (Sombra Gris) en el centro
     ctx.save();
     for (const loop of silhouetteLoops) {
       ctx.beginPath();
@@ -838,17 +881,15 @@ export function TangramSection() {
     }
     ctx.restore();
 
-    // Etiqueta sutil de zona objetivo
     ctx.fillStyle = '#64748b';
     ctx.font = 'bold 11px system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(
-      `SILUETA OBJETIVO: ${activeSilhouette.name.toUpperCase()}`,
+      `SILUETA ASIGNADA: ${activeSilhouette.name.toUpperCase()}`,
       rect.width / 2,
       22
     );
 
-    // Dibujar las 7 piezas coloreadas del Tangrama
     for (const piece of pieces) {
       const verts = getTransformedPieceVertices(
         piece.id,
@@ -897,7 +938,6 @@ export function TangramSection() {
       }
       ctx.stroke();
 
-      // Indicador sutil de pieza imantada
       if (isSnapped && phase !== 'completed') {
         const [cx, cy] = toScreen(piece.x, piece.y);
         ctx.beginPath();
@@ -971,9 +1011,41 @@ export function TangramSection() {
 
   const selectedPieceObj = pieces.find((p) => p.id === selectedPieceId) ?? pieces[0];
 
+  // Datos SVG miniatura para mostrar la silueta asignada
+  const assignedSilhouettePreview = useMemo(() => {
+    const previewLoops = computeSilhouetteBoundaryLoops(activeSilhouette);
+    let minX = Infinity,
+      maxX = -Infinity,
+      minY = Infinity,
+      maxY = -Infinity;
+    for (const lp of previewLoops) {
+      for (const [x, y] of lp) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+    const pad = 0.14;
+    const vb = `${(minX - pad).toFixed(3)} ${(minY - pad).toFixed(3)} ${(
+      maxX -
+      minX +
+      pad * 2
+    ).toFixed(3)} ${(maxY - minY + pad * 2).toFixed(3)}`;
+    const dPath = previewLoops
+      .map(
+        (lp) =>
+          lp
+            .map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(3)},${y.toFixed(3)}`)
+            .join(' ') + ' Z'
+      )
+      .join(' ');
+    return { vb, dPath };
+  }, [activeSilhouette]);
+
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* HERO COMPACTO DEL TALLER 3 + BOTÓN DISCRETO MODO PROFESOR */}
+      {/* HERO COMPACTO DEL TALLER 3 + CRONÓMETRO EN VIVO */}
       <section className="rounded-3xl bg-gradient-to-r from-emerald-800 via-teal-800 to-slate-900 text-white px-5 py-4 sm:px-7 sm:py-5 shadow-lg relative overflow-hidden border border-emerald-600/40">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
           <div className="space-y-1.5 max-w-2xl">
@@ -985,11 +1057,11 @@ export function TangramSection() {
               Desafío Tangrama CAD & Manufactura Híbrida 📐
             </h1>
             <p className="text-emerald-100/90 text-xs sm:text-sm leading-relaxed">
-              Supera las <strong>2 fases de ingeniería</strong> en equipo (Trazado CAD + Ensamble Virtual) para desbloquear tu placa personalizada de <strong>corte y grabado láser (.SVG)</strong> y el <strong>kit de 4 bordes perimetrales 3D (.STL)</strong>.
+              Inicia el cronómetro para recibir una <strong>silueta desafío aleatoria</strong> y supera las 2 fases en equipo para desbloquear tu placa de <strong>corte y grabado láser (.SVG)</strong> y el <strong>kit de 4 bordes 3D (.STL)</strong>.
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+          <div className="flex items-center gap-3 shrink-0">
             {/* Cronómetro en Vivo */}
             <div className="bg-slate-950/65 border border-emerald-400/40 rounded-2xl px-4 py-2.5 flex items-center gap-3 shadow-inner">
               <div
@@ -1018,26 +1090,15 @@ export function TangramSection() {
               {!timerRunning && phase !== 'completed' && (
                 <button
                   type="button"
-                  onClick={() => setTimerRunning(true)}
-                  className="ml-1 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs transition-colors cursor-pointer"
-                  title="Iniciar Cronómetro"
+                  onClick={startTimerAndAssignChallenge}
+                  className="ml-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-xs transition-colors cursor-pointer"
+                  title="Iniciar Cronómetro y Asignar Desafío Aleatorio"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
                   <span>Iniciar</span>
                 </button>
               )}
             </div>
-
-            {/* Botón discreto Modo Profesor / Saltar Reto */}
-            <button
-              type="button"
-              onClick={handleTeacherSkip}
-              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-emerald-100 text-[11px] font-bold transition-colors cursor-pointer self-end sm:self-auto"
-              title="Desbloquear archivos inmediatamente para pruebas técnicas"
-            >
-              <GraduationCap className="w-3.5 h-3.5 text-amber-300" />
-              <span>Modo Profesor / Saltar Reto</span>
-            </button>
           </div>
         </div>
       </section>
@@ -1054,14 +1115,14 @@ export function TangramSection() {
                 Registro del Equipo y Parámetros de Manufactura
               </h2>
               <p className="text-xs text-slate-500">
-                Configura la identidad de tu equipo, elige la silueta desafío y verifica las tolerancias híbridas Láser + 3D.
+                Ingresa el nombre de tu equipo, verifica los parámetros físicos e inicia el cronómetro para revelar tu silueta aleatoria.
               </p>
             </div>
           </div>
 
           <button
             type="button"
-            onClick={() => handleResetChallenge()}
+            onClick={handleResetChallenge}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold transition-colors cursor-pointer self-start sm:self-auto"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -1199,111 +1260,68 @@ export function TangramSection() {
             </div>
           </div>
 
-          {/* Selector de las 5 Siluetas Clásicas */}
-          <div className="lg:col-span-7 space-y-2">
+          {/* Panel de Silueta Objetivo (Asignación Aleatoria al Iniciar el Cronómetro) */}
+          <div className="lg:col-span-7 flex flex-col justify-between space-y-3">
             <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
-              Selección de Desafío (5 Siluetas Clásicas de Tangrama)
+              Desafío de Silueta Objetivo (Asignación Aleatoria al Iniciar)
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-              {TANGRAM_SILHOUETTES.map((sil) => {
-                const isSelected = sil.id === selectedSilhouetteId;
-                const previewLoops = computeSilhouetteBoundaryLoops(sil);
-                let minX = Infinity,
-                  maxX = -Infinity,
-                  minY = Infinity,
-                  maxY = -Infinity;
-                for (const lp of previewLoops) {
-                  for (const [x, y] of lp) {
-                    if (x < minX) minX = x;
-                    if (x > maxX) maxX = x;
-                    if (y < minY) minY = y;
-                    if (y > maxY) maxY = y;
-                  }
-                }
-                const pad = 0.15;
-                const vb = `${(minX - pad).toFixed(3)} ${(minY - pad).toFixed(3)} ${(
-                  maxX -
-                  minX +
-                  pad * 2
-                ).toFixed(3)} ${(maxY - minY + pad * 2).toFixed(3)}`;
-                const dPath = previewLoops
-                  .map(
-                    (lp) =>
-                      lp
-                        .map(
-                          ([x, y], i) =>
-                            `${i === 0 ? 'M' : 'L'}${x.toFixed(3)},${y.toFixed(3)}`
-                        )
-                        .join(' ') + ' Z'
-                  )
-                  .join(' ');
 
-                return (
-                  <button
-                    key={sil.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedSilhouetteId(sil.id);
-                      if (phase === 'phase2-puzzle') {
-                        setPieces(createInitialLoosePieces());
-                      } else if (phase === 'completed' && teacherBypassed) {
-                        const updatedPieces: VirtualPieceState[] = (
-                          Object.entries(sil.pieces) as [
-                            TangramPieceId,
-                            [number, number][],
-                          ][]
-                        ).map(([pid, targetVerts]) => {
-                          const meta = CANONICAL_PIECE_MAP[pid];
-                          const solved = solvePieceTransformForTarget(pid, targetVerts);
-                          return {
-                            id: pid,
-                            kind: meta.kind,
-                            name: meta.name,
-                            color: meta.color,
-                            strokeColor: meta.strokeColor,
-                            x: solved.x,
-                            y: solved.y,
-                            rotationDeg: solved.rotationDeg,
-                            flipped: solved.flipped,
-                            snappedSlotId: pid,
-                          };
-                        });
-                        setPieces(updatedPieces);
-                      }
-                    }}
-                    className={`rounded-2xl border-2 p-3 text-center transition-all flex flex-col items-center justify-between gap-1.5 cursor-pointer ${
-                      isSelected
-                        ? 'border-emerald-600 bg-emerald-50/80 shadow-sm ring-2 ring-emerald-500/20'
-                        : 'border-slate-200 bg-white hover:border-emerald-300 hover:bg-slate-50'
-                    }`}
+            {!challengeAssigned ? (
+              <div className="flex-1 rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50/50 p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="space-y-2 text-center sm:text-left">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 text-[11px] font-extrabold uppercase tracking-wider">
+                    <Dices className="w-3.5 h-3.5 text-emerald-700" />
+                    Sorteo Automático entre las 5 Siluetas Clásicas
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-900">
+                    ¿Qué silueta le tocará a {teamName.trim() || 'tu equipo'}?
+                  </h3>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Al presionar <strong>Iniciar Cronómetro</strong>, el sistema asignará al azar una de las 5 siluetas de ingeniería: <strong>Cisne, Cohete/Avión, Gato, Casa o Barco</strong>.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={startTimerAndAssignChallenge}
+                  className="inline-flex items-center gap-2 px-5 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs sm:text-sm shadow-md hover:shadow-lg transition-all cursor-pointer shrink-0"
+                >
+                  <Dices className="w-4 h-4" />
+                  <span>Iniciar Cronómetro y Sortear</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex-1 rounded-2xl border-2 border-emerald-500 bg-emerald-50/70 p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-5 shadow-xs">
+                <div className="w-24 h-24 rounded-2xl bg-white border border-emerald-200 flex items-center justify-center p-2.5 shadow-2xs shrink-0">
+                  <svg
+                    viewBox={assignedSilhouettePreview.vb}
+                    className="w-full h-full overflow-visible"
+                    aria-hidden="true"
                   >
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-                      #{sil.number} · {sil.emoji}
-                    </span>
-                    <svg
-                      viewBox={vb}
-                      className="w-14 h-14 overflow-visible"
-                      aria-hidden="true"
-                    >
-                      <path
-                        d={dPath}
-                        fill={isSelected ? '#059669' : '#475569'}
-                        stroke={isSelected ? '#064e3b' : '#1e293b'}
-                        strokeWidth={0.04}
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                    <div className="text-xs font-black text-slate-900 leading-tight">
-                      {sil.name}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-xs text-slate-500 pt-1">
-              <strong>Desafío activo ({activeSilhouette.name}):</strong>{' '}
-              {activeSilhouette.description}
-            </p>
+                    <path
+                      d={assignedSilhouettePreview.dPath}
+                      fill="#059669"
+                      stroke="#064e3b"
+                      strokeWidth={0.04}
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+
+                <div className="space-y-1.5 text-center sm:text-left flex-1">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold uppercase tracking-wider">
+                    <Sparkles className="w-3 h-3" />
+                    Desafío Aleatorio Asignado · #{activeSilhouette.number}
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-black text-slate-900">
+                    {activeSilhouette.emoji} {activeSilhouette.name}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-700">
+                    {activeSilhouette.description}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -1382,7 +1400,7 @@ export function TangramSection() {
                 Fase 2 · Rompecabezas Virtual
               </div>
               <div className="text-sm font-black text-slate-900">
-                Ensamble de Silueta ({activeSilhouette.name})
+                Ensamble de Silueta ({challengeAssigned ? activeSilhouette.name : 'Sorteo al iniciar'})
               </div>
             </div>
           </div>
@@ -1402,14 +1420,14 @@ export function TangramSection() {
             <div>
               <div className="text-xs font-extrabold uppercase tracking-wider text-emerald-100">
                 {teacherBypassed
-                  ? 'Modo Profesor Activado · Archivos Desbloqueados'
+                  ? 'Modo Profesora Activado · Archivos Desbloqueados'
                   : `¡Excelente Ingeniería, ${teamName || 'Equipo'}!`}
               </div>
               <h3 className="text-xl sm:text-2xl font-black">
                 ¡Desafío Superado en {formatStopwatch(elapsedSeconds)}!
               </h3>
               <p className="text-xs sm:text-sm text-emerald-50">
-                Los archivos parametrizados de manufactura híbrida (<strong>.SVG Láser</strong> y{' '}
+                Los archivos parametrizados de manufactura híbrida (<strong>.SVG Láser</strong> con logo MakerBox y{' '}
                 <strong>.STL 3D</strong>) están listos para descargar abajo.
               </p>
             </div>
@@ -1445,19 +1463,6 @@ export function TangramSection() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowCadGuideHint((v) => !v)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-extrabold transition-colors cursor-pointer ${
-                  showCadGuideHint
-                    ? 'bg-amber-50 border-amber-300 text-amber-900'
-                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <HelpCircle className="w-3.5 h-3.5" />
-                <span>{showCadGuideHint ? 'Ocultar Guía CAD' : 'Ver Guía CAD'}</span>
-              </button>
-
               <button
                 type="button"
                 disabled={cadHistory.length === 0 || cadCelebrating}
@@ -1523,7 +1528,7 @@ export function TangramSection() {
                     e.preventDefault();
                     setSelectedStartNodeId(null);
                   }}
-                  className="w-full h-[380px] sm:h-[460px] block touch-none cursor-crosshair"
+                  className="w-full h-[390px] sm:h-[460px] block touch-none cursor-crosshair"
                 />
               </div>
             </div>
@@ -1592,7 +1597,7 @@ export function TangramSection() {
                 Fase 2 Interactiva · Modo &ldquo;Ensamble de Silueta&rdquo;
               </span>
               <h3 className="text-lg sm:text-xl font-black text-slate-900">
-                Arma la Silueta Objetivo: {activeSilhouette.emoji} {activeSilhouette.name}
+                Arma la Silueta Asignada: {activeSilhouette.emoji} {activeSilhouette.name}
               </h3>
               <p className="text-xs text-slate-500">
                 Arrastra las 7 piezas hacia la sombra central. Usa <strong>clic derecho</strong> (o los botones en pantalla / tecla <strong>R</strong>) para rotar 45°, y <strong>Voltear</strong> (tecla <strong>F</strong>) para el paralelogramo.
@@ -1772,7 +1777,8 @@ export function TangramSection() {
                       .replace(/width="[^"]*"/, 'width="100%"')
                       .replace(/height="[^"]*"/, 'height="auto"')
                       .replace(/stroke-width="0\.1"/g, 'stroke-width="0.6"')
-                      .replace(/stroke-width="0\.15"/g, 'stroke-width="0.55"'),
+                      .replace(/stroke-width="0\.12"/g, 'stroke-width="0.22"')
+                      .replace(/stroke-width="0\.15"/g, 'stroke-width="0.5"'),
                   }}
                 />
               </div>
@@ -1783,7 +1789,7 @@ export function TangramSection() {
                   Corte exterior de Placa Base ({baseTotalMm} × {baseTotalMm} mm) + Tangrama ({params.sideMm} × {params.sideMm} mm) con sus 5 líneas de subdivisión.
                 </li>
                 <li>
-                  <strong className="text-blue-600">Azul (#0000FF):</strong> Recuadro guía centrado ({params.sideMm} × {params.sideMm} mm), silueta <strong>{activeSilhouette.name}</strong>, equipo <strong>{teamName || 'Equipo Alfa'}</strong> y récord <strong>{formatStopwatch(elapsedSeconds)}</strong>.
+                  <strong className="text-blue-600">Azul (#0000FF):</strong> Recuadro guía centrado ({params.sideMm} × {params.sideMm} mm), <strong>logo oficial MakerBox</strong> centrado arriba, silueta <strong>{activeSilhouette.name}</strong>, equipo <strong>{teamName || 'Equipo Alfa'}</strong> y récord <strong>{formatStopwatch(elapsedSeconds)}</strong>.
                 </li>
               </ul>
             </div>
@@ -1826,7 +1832,6 @@ export function TangramSection() {
                     downloadsUnlocked ? '' : 'blur-[2px]'
                   }`}
                 >
-                  {/* Sección Transversal C a la izquierda */}
                   <text
                     x="95"
                     y="18"
@@ -1837,7 +1842,6 @@ export function TangramSection() {
                   >
                     SECCIÓN PERFIL C (COTA EN MM)
                   </text>
-                  {/* Perfil C */}
                   <path
                     d="M 40 32 L 72 32 L 132 32 L 132 64 L 72 64 L 72 104 L 132 104 L 132 130 L 40 130 Z"
                     fill="#38bdf8"
@@ -1845,7 +1849,6 @@ export function TangramSection() {
                     stroke="#38bdf8"
                     strokeWidth="2.2"
                   />
-                  {/* Madera base insertada en ranura */}
                   <rect
                     x="74"
                     y="67"
@@ -1856,7 +1859,6 @@ export function TangramSection() {
                     stroke="#fbbf24"
                     strokeWidth="1.5"
                   />
-                  {/* Pieza Tangrama apoyada arriba contra el tope de 3 mm */}
                   <rect
                     x="134"
                     y="33"
@@ -1867,17 +1869,30 @@ export function TangramSection() {
                     stroke="#34d399"
                     strokeWidth="1.5"
                   />
-                  <text x="114" y="88" fill="#fef3c7" fontSize="8.5" fontWeight="bold" textAnchor="middle">
+                  <text
+                    x="114"
+                    y="88"
+                    fill="#fef3c7"
+                    fontSize="8.5"
+                    fontWeight="bold"
+                    textAnchor="middle"
+                  >
                     Base ({stlMetrics.slotWidthMm}×{stlMetrics.slotDepthMm}mm)
                   </text>
-                  <text x="102" y="51" fill="#bae6fd" fontSize="8.5" fontWeight="bold" textAnchor="middle">
+                  <text
+                    x="102"
+                    y="51"
+                    fill="#bae6fd"
+                    fontSize="8.5"
+                    fontWeight="bold"
+                    textAnchor="middle"
+                  >
                     Tope {stlMetrics.topStopperHeightMm} mm
                   </text>
                   <text x="95" y="149" fill="#cbd5e1" fontSize="8.5" textAnchor="middle">
                     Abraza margen libre de {params.baseMarginMm} mm
                   </text>
 
-                  {/* Vista Superior Inglete 45° a la derecha */}
                   <text
                     x="268"
                     y="18"
@@ -1940,6 +1955,19 @@ export function TangramSection() {
           </div>
         </div>
       </section>
+
+      {/* BOTÓN DISCRETO AL FINAL DE TODA LA PÁGINA: MODO PROFESORA / SALTAR RETO */}
+      <div className="pt-2 flex items-center justify-end">
+        <button
+          type="button"
+          onClick={handleTeacherSkip}
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-200/70 hover:bg-slate-200 border border-slate-300 text-slate-600 hover:text-slate-900 text-xs font-bold transition-colors cursor-pointer"
+          title="Desbloquear archivos inmediatamente para pruebas técnicas"
+        >
+          <GraduationCap className="w-3.5 h-3.5 text-slate-500" />
+          <span>Modo Profesora / Saltar Reto</span>
+        </button>
+      </div>
     </div>
   );
 }
