@@ -122,7 +122,7 @@ export default function HomePage() {
                   Taller 2
                 </span>
                 <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
-                  Madera Balsa 3 mm
+                  Balsa 3 mm .SVG + Pesos PLA .STL
                 </span>
               </div>
 
@@ -135,23 +135,23 @@ export default function HomePage() {
                     Ingeniería de Vuelo
                   </h2>
                   <p className="text-xs sm:text-sm font-bold text-sky-700">
-                    Diseño Paramétrico de Planeadores a Escala
+                    Planeador en Balsa · Contrapesos de Nariz 3D
                   </p>
                 </div>
               </div>
 
               <p className="text-sm text-slate-600 leading-relaxed">
-                Modifica el <strong>largo del fuselaje</strong>, la <strong>envergadura de alas</strong> y el <strong>ancho alar</strong> manteniendo intacto el calce de las ranuras de <strong>3 mm</strong> y analizando el área alar en tiempo real.
+                Modifica el <strong>largo del fuselaje</strong>, la <strong>envergadura de alas</strong> y el <strong>ancho alar</strong> manteniendo el calce de <strong>3 mm</strong> y descargando los <strong>discos de contrapeso en PLA (.STL)</strong> para equilibrar el Centro de Gravedad.
               </p>
 
               <ul className="space-y-2 text-xs font-semibold text-slate-700 bg-sky-50/60 border border-sky-200/80 rounded-2xl p-4">
                 <li className="flex items-center gap-2">
                   <Plane className="w-4 h-4 text-sky-600 shrink-0" />
-                  <span>Control de Fuselaje y Envergadura (170–260 mm) con 0 cruces de líneas</span>
+                  <span>Control de Fuselaje y Envergadura (170–260 mm) con gancho de elástico +2 mm</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Compass className="w-4 h-4 text-sky-600 shrink-0" />
-                  <span>Telemetría aerodinámica: Área Alar (cm²), Alargamiento (AR) y Estabilidad</span>
+                  <span>Cálculo de Centro de Gravedad (CG) y kit de 3 discos ranurados PLA (.STL)</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Layers className="w-4 h-4 text-sky-600 shrink-0" />
@@ -162,7 +162,7 @@ export default function HomePage() {
 
             <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500">
-                Exportación directa para LightBurn (.SVG)
+                Corte Láser (.SVG) + Pesos Nariz (.STL)
               </span>
               <span className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-extrabold text-xs sm:text-sm shadow-sm group-hover:shadow-md group-hover:translate-x-0.5 transition-all">
                 <span>Abrir Taller 2</span>

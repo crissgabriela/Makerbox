@@ -23,8 +23,13 @@ import {
   Target,
   AlertTriangle,
   ArrowLeft,
+  Box,
 } from 'lucide-react';
 import { GliderMetrics, BASE_GLIDER_PARAMS, BALSA_DESIGN_LIMITS } from '@/types/glider';
+import {
+  generateGliderNoseWeightsStl,
+  getGliderNoseWeightsSpec,
+} from '@/lib/glider-stl-generator';
 
 interface GliderSectionProps {
   onBackToMenu?: () => void;
@@ -131,6 +136,30 @@ export const GliderSection: React.FC<GliderSectionProps> = ({ onBackToMenu }) =>
   };
 
   const aero = metrics.aerodynamics;
+  const noseWeightsSpec = getGliderNoseWeightsSpec(
+    slotThicknessMm,
+    aero.recommendedNoseWeightGrams || 4.2
+  );
+
+  const downloadNoseWeightsStl = (mode: 'kit3' | 'custom') => {
+    const stlContent = generateGliderNoseWeightsStl(
+      slotThicknessMm,
+      aero.recommendedNoseWeightGrams || 4.2,
+      mode
+    );
+    const blob = new Blob([stlContent], { type: 'model/stl;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download =
+      mode === 'kit3'
+        ? `pesos-nariz-planeador-kit3-ranura-${slotThicknessMm}mm.stl`
+        : `peso-nariz-planeador-${noseWeightsSpec.customDisc.massGrams}g-ranura-${slotThicknessMm}mm.stl`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="flex flex-col gap-6 w-full animate-in fade-in duration-300">
@@ -195,6 +224,16 @@ export const GliderSection: React.FC<GliderSectionProps> = ({ onBackToMenu }) =>
           >
             <Download className="w-4 h-4" />
             <span>Descargar SVG Completo ({metrics.sheetsRequired} {metrics.sheetsRequired === 1 ? 'Lámina' : 'Láminas'})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => downloadNoseWeightsStl('kit3')}
+            className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+            title="Descargar Kit de 3 Discos de Contrapeso en PLA con ranura para la punta del avión (.STL)"
+          >
+            <Box className="w-4 h-4" />
+            <span>Descargar Pesos Nariz PLA (.STL)</span>
           </button>
 
           {metrics.sheetsRequired === 2 && (
@@ -295,7 +334,7 @@ export const GliderSection: React.FC<GliderSectionProps> = ({ onBackToMenu }) =>
           </span>
         </div>
 
-        {/* 5. Centro de Gravedad (CG) Recomendado */}
+        {/* 5. Centro de Gravedad (CG) Recomendado y Lastre PLA */}
         <div className="bg-white rounded-2xl p-4 border-2 border-indigo-200 shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between text-indigo-700">
             <span className="text-[11px] font-extrabold uppercase tracking-wider">Centro Gravedad</span>
@@ -305,8 +344,8 @@ export const GliderSection: React.FC<GliderSectionProps> = ({ onBackToMenu }) =>
             <span className="text-xl sm:text-2xl font-black text-slate-900">{aero.recommendedCgFromNoseMm}</span>
             <span className="text-xs font-bold text-slate-500 ml-1">mm</span>
           </div>
-          <span className="text-[10px] text-slate-500 font-medium">
-            Medido desde la nariz (30% cuerda)
+          <span className="text-[10px] text-indigo-700 font-bold">
+            Peso nariz PLA: ~{aero.recommendedNoseWeightGrams || 4.2} g
           </span>
         </div>
 
@@ -791,6 +830,143 @@ export const GliderSection: React.FC<GliderSectionProps> = ({ onBackToMenu }) =>
                   <Download className="w-4 h-4" />
                   <span>Descargar SVG Completo</span>
                 </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Tarjeta de Impresión 3D: Discos de Contrapeso con Ranura en PLA (.STL) */}
+          <div className="bg-gradient-to-br from-amber-50/90 via-white to-orange-50/70 rounded-3xl p-5 sm:p-6 border-2 border-amber-300 shadow-sm flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-200/80 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs shrink-0">
+                  <Box className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-sm sm:text-base font-black text-slate-900">
+                      Impresión 3D: Discos de Contrapeso con Ranura en PLA (.STL)
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-200/80 text-amber-950 text-[10px] font-extrabold uppercase">
+                      Ranura Calibrada: {slotThicknessMm} mm
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    Se encajan directamente en el espesor de 3 mm de la punta del avión para adelantar el Centro de Gravedad y lograr un planeo estable.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Explicación física del equilibrio + Esquema visual del disco ranurado */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+              <div className="md:col-span-5 bg-white rounded-2xl border border-amber-200 p-3 flex flex-col items-center justify-center">
+                <svg viewBox="0 0 220 110" className="w-full max-w-[230px] h-auto">
+                  {/* Punta del fuselaje de balsa (vista lateral y superior esquemática) */}
+                  <path
+                    d="M 78 36 L 195 28 L 191 16 L 185 28 L 198 28 L 198 68 L 82 74 C 66 74 58 64 58 55 C 58 44 66 36 78 36 Z"
+                    fill="#FDE68A"
+                    stroke="#D97706"
+                    strokeWidth="2"
+                  />
+                  <text x="135" y="54" textAnchor="middle" fontSize="8.5" fontWeight="bold" fill="#92400E">
+                    Nariz Balsa (3 mm)
+                  </text>
+                  <text x="186" y="12" textAnchor="middle" fontSize="7.5" fontWeight="bold" fill="#B45309">
+                    Gancho +2 mm
+                  </text>
+
+                  {/* Disco PLA con ranura encajando en la punta */}
+                  <circle
+                    cx="56"
+                    cy="55"
+                    r="28"
+                    fill="#F97316"
+                    fillOpacity="0.88"
+                    stroke="#C2410C"
+                    strokeWidth="2"
+                  />
+                  {/* Ranura vista frontal/lateral */}
+                  <rect
+                    x="52"
+                    y="49"
+                    width="34"
+                    height="12"
+                    rx="1.5"
+                    fill="#FFFBEB"
+                    stroke="#9A3412"
+                    strokeWidth="1.5"
+                    strokeDasharray="3,2"
+                  />
+                  <text x="44" y="57" textAnchor="middle" fontSize="7.5" fontWeight="bold" fill="#FFFFFF">
+                    PLA
+                  </text>
+                  <text x="110" y="101" textAnchor="middle" fontSize="8" fontWeight="bold" fill="#78350F">
+                    Disco con ranura de {slotThicknessMm} mm encajado a presión en la punta
+                  </text>
+                </svg>
+              </div>
+
+              <div className="md:col-span-7 flex flex-col gap-2.5 text-xs">
+                <div className="p-3 rounded-2xl bg-white border border-amber-200/90 space-y-1">
+                  <div className="font-black text-slate-900 flex items-center justify-between">
+                    <span>¿Por qué el avión necesita peso en la punta para planear?</span>
+                    <span className="text-amber-800 font-mono">CG Ideal: {aero.recommendedCgFromNoseMm} mm</span>
+                  </div>
+                  <p className="text-slate-600 text-[11px] leading-relaxed">
+                    En madera de balsa sola, el peso de la cola deja el centro de gravedad atrás (<strong>~{aero.unbalancedCgFromNoseMm || 94} mm</strong> desde la nariz), haciendo que el avión suba la nariz y entre en pérdida. Al enganchar un disco ranurado de <strong>~{aero.recommendedNoseWeightGrams || 4.2} g en PLA</strong> en la punta, el CG avanza al 30% del ala (<strong>{aero.recommendedCgFromNoseMm} mm</strong>) logrando un planeo recto y sostenido.
+                  </p>
+                </div>
+
+                {/* Tarjetas de los 3 discos del Kit + Disco Exacto */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {noseWeightsSpec.kitDiscs.map((d) => (
+                    <div
+                      key={d.id}
+                      className="p-2.5 rounded-xl bg-white border border-slate-200 flex flex-col justify-between"
+                    >
+                      <span className="text-[10px] font-extrabold text-slate-500 uppercase">
+                        {d.label}
+                      </span>
+                      <span className="text-sm font-black text-slate-900 my-0.5">
+                        ~{d.massGrams} g
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        Ø{d.diameterMm}×{d.thicknessMm} mm
+                      </span>
+                    </div>
+                  ))}
+                  <div className="p-2.5 rounded-xl bg-amber-100/80 border-2 border-amber-400 flex flex-col justify-between">
+                    <span className="text-[10px] font-extrabold text-amber-900 uppercase">
+                      Ideal este Avión
+                    </span>
+                    <span className="text-sm font-black text-amber-950 my-0.5">
+                      ~{noseWeightsSpec.customDisc.massGrams} g
+                    </span>
+                    <span className="text-[10px] text-amber-800 font-mono">
+                      Ø{noseWeightsSpec.customDisc.diameterMm}×{noseWeightsSpec.customDisc.thicknessMm} mm
+                    </span>
+                  </div>
+                </div>
+
+                {/* Botones de descarga .STL */}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => downloadNoseWeightsStl('kit3')}
+                    className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-black text-xs shadow-sm flex items-center justify-center gap-2 transition cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Descargar Kit 3 Discos Graduados (.STL)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadNoseWeightsStl('custom')}
+                    className="py-2.5 px-3.5 rounded-xl bg-white hover:bg-amber-100 text-amber-950 font-extrabold text-xs border border-amber-400 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Box className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Solo Disco Ideal (~{noseWeightsSpec.customDisc.massGrams} g .STL)</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

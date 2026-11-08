@@ -29,6 +29,10 @@ export interface AerodynamicData {
   tailVolumeCoefficient: number;
   /** Posición recomendada del Centro de Gravedad (CG) medida desde la punta de la nariz (mm) */
   recommendedCgFromNoseMm: number;
+  /** Posición natural del Centro de Gravedad (CG) de la madera de balsa sola sin lastre en la nariz (mm) */
+  unbalancedCgFromNoseMm: number;
+  /** Masa recomendada del disco de contrapeso impreso en PLA para la punta de la nariz (g) */
+  recommendedNoseWeightGrams: number;
   /** Masa total estimada del planeador armado en madera de balsa de 3 mm (densidad ~0.14 g/cm³) */
   estimatedWeightGrams: number;
   /** Carga alar estimada en g/dm² */
@@ -124,7 +128,9 @@ export const BASE_GLIDER_PARAMS: GliderMetrics = {
     spanToFuselageRatio: 1.04,
     finenessRatio: 6.39,
     tailVolumeCoefficient: 0.48,
-    recommendedCgFromNoseMm: 75.8,
+    recommendedCgFromNoseMm: 57.0,
+    unbalancedCgFromNoseMm: 94.2,
+    recommendedNoseWeightGrams: 4.5,
     estimatedWeightGrams: 6.8,
     wingLoadingGPerDm2: 8.82,
     estimatedGlideSpeedMs: 3.4,

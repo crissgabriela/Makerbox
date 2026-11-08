@@ -160,7 +160,7 @@ function transformFuselageCommands(
 
   const dstNose = 0;
   const dstSaddleStart = dstNose + L_NOSE_0 * kx;
-  const dstCanopyStep = Math.max(dstNose + 15, dstSaddleStart - 1.625);
+  const dstCanopyStep = Math.max(dstNose + 15, dstSaddleStart - 2.3);
   const dstSaddleEnd = dstSaddleStart + wingWidthMm;
   const dstWingSlotCenter = dstSaddleStart + 0.5525 * wingWidthMm;
   const dstWingSlotL = dstWingSlotCenter - slotThicknessMm / 2;
@@ -203,6 +203,14 @@ function transformFuselageCommands(
   const botDstKnots = [dstNose, dstSaddleStart, dstSaddleEnd, dstTailSaddleStart, dstTailEnd];
 
   return mapCommandPoints(cmds, (x, y) => {
+    // Saliente delantera para enganche de elástico: +2.0 mm más prominente hacia arriba y con muesca profunda de 2.65 mm
+    if (Math.abs(x - 80.25) < 0.25 && Math.abs(y - 1.25) < 0.25) {
+      return [dstSaddleStart + 0.35, 1.25 - 2.0];
+    }
+    if (Math.abs(x - X_CANOPY_STEP) < 0.25 && Math.abs(y - Y_SPINE_TOP) < 0.25) {
+      return [dstCanopyStep, Y_SPINE_TOP];
+    }
+
     const nx = y <= 14.5 ? interpolateKnots(x, topSrcKnots, topDstKnots) : interpolateKnots(x, botSrcKnots, botDstKnots);
     let ny = y;
 
@@ -497,7 +505,7 @@ export function computeAerodynamics(
   const tailArmMm = Math.max(65, (fuselageLengthMm - wingWidthMm - 22) * 0.72);
   const tailVolumeCoefficient = +((stabilizerAreaMm2 * tailArmMm) / (wingAreaMm2 * wingWidthMm)).toFixed(2);
 
-  // Posición recomendada del Centro de Gravedad (CG) desde la nariz
+  // Posición recomendada del Centro de Gravedad (CG) desde la nariz (30% de la cuerda alar)
   const noseLengthMm = (fuselageLengthMm - wingWidthMm - 22) * (56.28 / 209.41);
   const recommendedCgFromNoseMm = +(noseLengthMm + 0.30 * wingWidthMm).toFixed(1);
 
@@ -506,8 +514,28 @@ export function computeAerodynamics(
   const stabAreaCm2 = 21.2;
   const bracesAreaCm2 = 4.2;
   const totalBalsaAreaCm2 = wingAreaCm2 + fuselageAreaCm2 + stabAreaCm2 + bracesAreaCm2;
-  const totalVolumeCm3 = totalBalsaAreaCm2 * (slotThicknessMm / 10);
+  const tCm = slotThicknessMm / 10;
+  const totalVolumeCm3 = totalBalsaAreaCm2 * tCm;
   const estimatedWeightGrams = +(totalVolumeCm3 * 0.14).toFixed(2);
+
+  // Cálculo del Centro de Gravedad natural de la madera de balsa sin contrapeso y masa PLA requerida en la nariz
+  const wingMassG = (wingAreaCm2 + bracesAreaCm2 * 0.5) * tCm * 0.14;
+  const fusMassG = fuselageAreaCm2 * tCm * 0.14;
+  const tailMassG = (stabAreaCm2 + bracesAreaCm2 * 0.5) * tCm * 0.14;
+  const xWingCgMm = noseLengthMm + 0.50 * wingWidthMm;
+  const xFusCgMm = 0.53 * fuselageLengthMm;
+  const xTailCgMm = fuselageLengthMm - 12.0;
+
+  const unbalancedCgFromNoseMm = +(
+    (wingMassG * xWingCgMm + fusMassG * xFusCgMm + tailMassG * xTailCgMm) /
+    Math.max(0.5, estimatedWeightGrams)
+  ).toFixed(1);
+
+  const recommendedNoseWeightGrams = +Math.max(
+    1.2,
+    (estimatedWeightGrams * Math.max(0, unbalancedCgFromNoseMm - recommendedCgFromNoseMm)) /
+      Math.max(15, recommendedCgFromNoseMm - 4.0)
+  ).toFixed(1);
 
   // Carga alar en g/dm² (1 dm² = 100 cm²)
   const wingAreaDm2 = wingAreaCm2 / 100;
@@ -562,6 +590,8 @@ export function computeAerodynamics(
     finenessRatio,
     tailVolumeCoefficient,
     recommendedCgFromNoseMm,
+    unbalancedCgFromNoseMm,
+    recommendedNoseWeightGrams,
     estimatedWeightGrams,
     wingLoadingGPerDm2,
     estimatedGlideSpeedMs,
@@ -707,7 +737,7 @@ export async function processGliderSvg(params: GliderParams): Promise<ProcessedG
 
   if (fitsInSingleSheet) {
     // 1 Sola Lámina de 300 x 100 mm (Cajas disjuntas garantizadas)
-    fusCmds = placeCommandsAt(fusCmds, 6.0, 4.0);
+    fusCmds = placeCommandsAt(fusCmds, 6.0, 3.0);
     dihedralCmds = placeCommandsAt(dihedralCmds, 194.0, 35.0);
     tailBraceCmds = placeCommandsAt(tailBraceCmds, 238.0, 37.0);
     leftWingCmds = placeCommandsAt(leftWingCmds, 8.0, 53.0);
@@ -715,7 +745,7 @@ export async function processGliderSvg(params: GliderParams): Promise<ProcessedG
   } else {
     // 2 Láminas de 300 x 100 mm:
     // Lámina 1 (Y: 0..100): Fuselaje arriba + Estabilizador y Soportes abajo
-    fusCmds = placeCommandsAt(fusCmds, 10.0, 6.5);
+    fusCmds = placeCommandsAt(fusCmds, 10.0, 5.5);
     dihedralCmds = placeCommandsAt(dihedralCmds, 138.0, 68.0);
     tailBraceCmds = placeCommandsAt(tailBraceCmds, 188.0, 70.0);
 
@@ -931,7 +961,7 @@ export async function processGliderSvg(params: GliderParams): Promise<ProcessedG
 
   const metrics: GliderMetrics = {
     fuselageLengthMm: +fuselageLengthMm.toFixed(2),
-    fuselageHeightMm: 44.94,
+    fuselageHeightMm: 46.94,
     wingSaddleLengthMm: +wingWidthMm.toFixed(2),
     wingspanTotalMm: +wingspanMm.toFixed(2),
     singleWingLengthMm: +singleWingSpanMm.toFixed(2),
