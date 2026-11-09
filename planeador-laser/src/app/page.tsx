@@ -124,7 +124,7 @@ export default function HomePage() {
                   Taller 2
                 </span>
                 <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
-                  Impresión 3D PLA (.3MF / .STL)
+                  Impresión 3D (PLA) + Corte Láser (Balsa 3mm)
                 </span>
               </div>
 
@@ -137,27 +137,27 @@ export default function HomePage() {
                     Ingeniería de Vuelo
                   </h2>
                   <p className="text-xs sm:text-sm font-bold text-sky-700">
-                    Planeadores 3D en PLA · X1C Ala Recta & Boeing 747 Jet
+                    Doble tecnología: Impresión 3D en PLA (.3MF / .STL) o Corte Láser en Balsa (.SVG)
                   </p>
                 </div>
               </div>
 
               <p className="text-sm text-slate-600 leading-relaxed">
-                Parametriza en 3D los modelos funcionales en <strong>PLA (.3MF y .STL)</strong>: modifica la <strong>envergadura</strong>, el <strong>largo del fuselaje</strong> y el <strong>ancho del ala y fuselaje</strong> manteniendo el espesor laminar (<code className="text-sky-700">0.2–0.3 mm</code>) y el equilibrio del Centro de Gravedad.
+                Diseña y optimiza planeadores con dos tecnologías de fabricación digital: <strong>modelos 3D de una pieza en PLA</strong> parametrizados desde archivos .3MF (X1C / B747) o <strong>modelos encajables en madera de balsa de 3 mm</strong> para corte láser en Falcon Design Space / LightBurn.
               </p>
 
               <ul className="space-y-2 text-xs font-semibold text-slate-700 bg-sky-50/60 border border-sky-200/80 rounded-2xl p-4">
                 <li className="flex items-center gap-2">
                   <Plane className="w-4 h-4 text-sky-600 shrink-0" />
-                  <span>2 modelos base: Planeador Ligero X1C (4.9 g) y Jet Boeing 747 (4.6 g)</span>
+                  <span>Opción 1: Modelos 3D funcionales en PLA (X1C 4.9 g y Boeing 747 4.6 g)</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Compass className="w-4 h-4 text-sky-600 shrink-0" />
-                  <span>Cálculo 3D real de Volumen, Masa PLA, Centro de Gravedad (CG) y L/D</span>
+                  <span>Opción 2: Corte láser en balsa (300×100×3 mm, 0 cruces, encajes ranurados)</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Layers className="w-4 h-4 text-sky-600 shrink-0" />
-                  <span>Descarga directa en .3MF (con perfil de laminado PLA) y .STL universal</span>
+                  <span>Descargas directas en .3MF (Bambu/Prusa), .STL universal y .SVG listo para corte</span>
                 </li>
               </ul>
             </div>

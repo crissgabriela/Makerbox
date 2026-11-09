@@ -2,6 +2,7 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import {
+  ArrowRight,
   Box,
   CheckCircle2,
   Compass,
@@ -16,6 +17,7 @@ import {
   Printer,
   RotateCcw,
   Scale,
+  Scissors,
   Sliders,
   Sparkles,
   TriangleAlert,
@@ -32,10 +34,16 @@ import {
   PlaGliderModelId,
   PlaGliderParams,
 } from '@/types/glider';
+import { GliderBalsaLaserView } from '@/components/GliderBalsaLaserView';
 
 type ViewMode = '3d' | 'top' | 'side';
+type FabricationMode = '3d_pla' | 'laser_balsa';
 
 export function GliderSection() {
+  const [activeMode, setActiveMode] = useState<FabricationMode>('3d_pla');
+  const [cachedBalsaCleanSvg, setCachedBalsaCleanSvg] = useState<string>('');
+  const [downloadingBalsaSvg, setDownloadingBalsaSvg] = useState<boolean>(false);
+
   const [modelId, setModelId] = useState<PlaGliderModelId>('x1c');
   const [wingspanMm, setWingspanMm] = useState<number>(PLA_GLIDER_MODELS.x1c.wingspan.default);
   const [fuselageLengthMm, setFuselageLengthMm] = useState<number>(
@@ -156,6 +164,48 @@ export function GliderSection() {
       handleDownloadStl();
     } finally {
       setDownloading3mf(false);
+    }
+  };
+
+  // Descarga directa del modelo en corte láser (madera de balsa 300x100x3 mm)
+  const handleDirectDownloadBalsaSvg = async () => {
+    try {
+      setDownloadingBalsaSvg(true);
+      let svgContent = cachedBalsaCleanSvg;
+      if (!svgContent) {
+        const res = await fetch('/api/planeador', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fuselageLengthMm: 230,
+            wingspanMm: 240,
+            wingWidthMm: 36,
+            slotThicknessMm: 2.95,
+            includeAnnotations: false,
+            cutStrokeColor: '#FF0000',
+          }),
+        });
+        const data = await res.json();
+        svgContent = data.svg || '';
+        if (svgContent) {
+          setCachedBalsaCleanSvg(svgContent);
+        }
+      }
+      if (svgContent) {
+        const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `planeador-balsa-corte-laser-3mm-F230-E240-A36.svg`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      console.error('Error descargando SVG de balsa:', err);
+    } finally {
+      setDownloadingBalsaSvg(false);
     }
   };
 
@@ -375,46 +425,121 @@ export function GliderSection() {
 
   return (
     <div className="space-y-6">
-      {/* Encabezado Principal del Taller 2 — Impresión 3D en PLA */}
-      <div className="bg-gradient-to-r from-sky-950 via-blue-900 to-indigo-950 rounded-2xl p-6 text-white shadow-xl border border-sky-700/40">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/20 border border-sky-300/30 text-sky-200 text-xs font-semibold tracking-wide uppercase">
-              <Printer className="w-3.5 h-3.5" />
-              Taller 2 · Ingeniería de Vuelo & Manufactura Aditiva en PLA (.3MF / .STL)
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Laboratorio Paramétrico de Planeadores 3D en PLA
-            </h2>
-            <p className="text-sky-100/90 text-sm max-w-3xl leading-relaxed">
-              Personaliza la geometría 3D de planeadores funcionales de una sola pieza impresos en{' '}
-              <strong>PLA</strong>. Modifica la <strong>envergadura</strong>, el{' '}
-              <strong>largo del fuselaje</strong> y el <strong>ancho del ala y fuselaje</strong>{' '}
-              conservando el espesor laminar de las alas (<code className="text-sky-200">0.2–0.3 mm</code>)
-              y el contrapeso frontal integrado para un planeo estable.
-            </p>
+      {/* Selector Principal de Tecnología: 1. Impresión 3D (PLA) vs 2. Corte Láser (Balsa 3mm) */}
+      <div className="bg-white rounded-2xl border-2 border-slate-200 p-3 sm:p-3.5 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 px-1">
+          <div className="w-8 h-8 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center font-bold text-xs shrink-0">
+            <Sparkles className="w-4 h-4" />
           </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={handleDownload3mf}
-              disabled={downloading3mf}
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-950/50 transition cursor-pointer disabled:opacity-50"
-            >
-              <Download className="w-4 h-4" />
-              {downloading3mf ? 'Empaquetando .3MF...' : 'Descargar Proyecto .3MF (PLA)'}
-            </button>
-
-            <button
-              onClick={handleDownloadStl}
-              className="inline-flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-sm bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-lg shadow-amber-950/40 transition cursor-pointer"
-            >
-              <Box className="w-4 h-4" />
-              Descargar Malla (.STL)
-            </button>
+          <div>
+            <span className="text-xs font-black text-slate-900 block leading-tight">
+              Tecnología de Fabricación del Planeador:
+            </span>
+            <span className="text-[11px] text-slate-500">
+              Elige entre manufactura aditiva (impresión 3D PLA) o sustractiva (corte láser en madera de balsa)
+            </span>
           </div>
         </div>
+
+        <div className="grid grid-cols-2 gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setActiveMode('3d_pla')}
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition cursor-pointer flex items-center justify-center gap-2 ${
+              activeMode === '3d_pla'
+                ? 'bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow-md'
+                : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <Printer className="w-4 h-4" />
+            <span>1. Impresión 3D (PLA)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMode('laser_balsa')}
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition cursor-pointer flex items-center justify-center gap-2 ${
+              activeMode === 'laser_balsa'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
+                : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <Scissors className="w-4 h-4" />
+            <span>2. Corte Láser (Balsa 3mm)</span>
+          </button>
+        </div>
       </div>
+
+      {activeMode === 'laser_balsa' ? (
+        <GliderBalsaLaserView
+          onSwitchTo3D={() => setActiveMode('3d_pla')}
+          onCleanSvgLoaded={(svg) => setCachedBalsaCleanSvg(svg)}
+        />
+      ) : (
+        <>
+          {/* Encabezado Principal del Taller 2 — Impresión 3D en PLA */}
+          <div className="bg-gradient-to-r from-sky-950 via-blue-900 to-indigo-950 rounded-2xl p-6 text-white shadow-xl border border-sky-700/40">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/20 border border-sky-300/30 text-sky-200 text-xs font-semibold tracking-wide uppercase">
+                  <Printer className="w-3.5 h-3.5" />
+                  Taller 2 · Opción 1: Impresión 3D en PLA (.3MF / .STL)
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+                  Laboratorio Paramétrico de Planeadores 3D en PLA
+                </h2>
+                <p className="text-sky-100/90 text-sm max-w-3xl leading-relaxed">
+                  Personaliza la geometría 3D de planeadores funcionales de una sola pieza impresos en{' '}
+                  <strong>PLA</strong>. Modifica la <strong>envergadura</strong>, el{' '}
+                  <strong>largo del fuselaje</strong> y el <strong>ancho del ala y fuselaje</strong>{' '}
+                  conservando el espesor laminar de las alas (<code className="text-sky-200">0.2–0.3 mm</code>)
+                  y el contrapeso frontal integrado para un planeo estable.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleDownload3mf}
+                  disabled={downloading3mf}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-950/50 transition cursor-pointer disabled:opacity-50"
+                >
+                  <Download className="w-4 h-4" />
+                  {downloading3mf ? 'Empaquetando...' : 'Descargar .3MF (PLA)'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadStl}
+                  className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-lg shadow-amber-950/40 transition cursor-pointer"
+                >
+                  <Box className="w-4 h-4" />
+                  <span>Descargar Malla (.STL)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDirectDownloadBalsaSvg}
+                  disabled={downloadingBalsaSvg}
+                  className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-rose-500 hover:bg-rose-400 text-white shadow-lg shadow-rose-950/50 transition cursor-pointer disabled:opacity-50"
+                  title="Descargar plantilla de corte láser en madera de balsa de 300x100x3 mm (.SVG para Falcon / LightBurn)"
+                >
+                  <Scissors className="w-4 h-4" />
+                  <span>
+                    {downloadingBalsaSvg ? 'Generando .SVG...' : 'Descargar Láser Balsa (.SVG)'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveMode('laser_balsa')}
+                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl font-bold text-xs bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/40 text-purple-200 transition cursor-pointer"
+                >
+                  <span>Configurar Balsa</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
 
       {/* Selector de Modelo Base (.3MF) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -682,6 +807,15 @@ export function GliderSection() {
             >
               <Box className="w-3.5 h-3.5" />
               Descargar Malla Universal (.STL)
+            </button>
+            <button
+              type="button"
+              onClick={handleDirectDownloadBalsaSvg}
+              disabled={downloadingBalsaSvg}
+              className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-rose-600 hover:bg-rose-500 text-white shadow-sm flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50"
+            >
+              <Scissors className="w-3.5 h-3.5" />
+              {downloadingBalsaSvg ? 'Generando .SVG...' : 'Descargar Láser Balsa (.SVG)'}
             </button>
           </div>
         </div>
@@ -1114,6 +1248,8 @@ export function GliderSection() {
           </div>
         </div>
       </div>
-    </div>
+    </>
+  )}
+</div>
   );
 }

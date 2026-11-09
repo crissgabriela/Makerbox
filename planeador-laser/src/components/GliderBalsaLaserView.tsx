@@ -1,0 +1,886 @@
+'use client';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Download,
+  RotateCcw,
+  Lock,
+  Unlock,
+  Ruler,
+  CheckCircle2,
+  Eye,
+  Layers,
+  Sparkles,
+  Sliders,
+  Gauge,
+  Compass,
+  Scale,
+  Wind,
+  Target,
+  AlertTriangle,
+  Box,
+  Plane,
+  Scissors,
+  ArrowRight,
+} from 'lucide-react';
+import { GliderMetrics, BASE_GLIDER_PARAMS, BALSA_DESIGN_LIMITS } from '@/types/glider';
+import {
+  generateGliderNoseWeightsStl,
+  getGliderNoseWeightsSpec,
+} from '@/lib/glider-stl-generator';
+
+interface GliderBalsaLaserViewProps {
+  onSwitchTo3D?: () => void;
+  onCleanSvgLoaded?: (svg: string) => void;
+}
+
+export function GliderBalsaLaserView({
+  onSwitchTo3D,
+  onCleanSvgLoaded,
+}: GliderBalsaLaserViewProps) {
+  // Parámetros de entrada para modelo a escala en madera de balsa de 300 x 100 x 3 mm
+  const [fuselageLengthMm, setFuselageLengthMm] = useState<number>(
+    BALSA_DESIGN_LIMITS.fuselage.default
+  );
+  const [wingspanMm, setWingspanMm] = useState<number>(
+    BALSA_DESIGN_LIMITS.wingspan.default
+  );
+  const [wingWidthMm, setWingWidthMm] = useState<number>(
+    BALSA_DESIGN_LIMITS.wingWidth.default
+  );
+  const [slotThicknessMm, setSlotThicknessMm] = useState<number>(
+    BALSA_DESIGN_LIMITS.slotThickness.default
+  );
+  const [isSlotLocked, setIsSlotLocked] = useState<boolean>(true);
+
+  // Opciones de visualización
+  const [showAnnotations, setShowAnnotations] = useState<boolean>(true);
+  const [viewMode, setViewMode] = useState<'sheet2d' | 'assembly'>('sheet2d');
+
+  // Resultados devueltos por el backend vectorial (/api/planeador)
+  const [previewSvg, setPreviewSvg] = useState<string>('');
+  const [cleanLaserSvg, setCleanLaserSvg] = useState<string>('');
+  const [sheet1Svg, setSheet1Svg] = useState<string>('');
+  const [sheet2Svg, setSheet2Svg] = useState<string | null>(null);
+  const [metrics, setMetrics] = useState<GliderMetrics>(BASE_GLIDER_PARAMS);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const fetchProcessedSvg = useCallback(async () => {
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      const [previewRes, cleanRes] = await Promise.all([
+        fetch('/api/planeador', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fuselageLengthMm,
+            wingspanMm,
+            wingWidthMm,
+            slotThicknessMm,
+            includeAnnotations: showAnnotations,
+            cutStrokeColor: '#FF0000',
+          }),
+        }),
+        fetch('/api/planeador', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fuselageLengthMm,
+            wingspanMm,
+            wingWidthMm,
+            slotThicknessMm,
+            includeAnnotations: false,
+            cutStrokeColor: '#FF0000',
+          }),
+        }),
+      ]);
+
+      if (!previewRes.ok || !cleanRes.ok) {
+        throw new Error('Error al procesar el archivo SVG en el backend.');
+      }
+
+      const previewData = await previewRes.json();
+      const cleanData = await cleanRes.json();
+
+      setPreviewSvg(previewData.svg);
+      setCleanLaserSvg(cleanData.svg);
+      setSheet1Svg(cleanData.sheet1Svg);
+      setSheet2Svg(cleanData.sheet2Svg);
+      setMetrics(previewData.metrics);
+      if (onCleanSvgLoaded && cleanData.svg) {
+        onCleanSvgLoaded(cleanData.svg);
+      }
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('No se pudo actualizar la vista previa vectorial.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [
+    fuselageLengthMm,
+    wingspanMm,
+    wingWidthMm,
+    slotThicknessMm,
+    showAnnotations,
+    onCleanSvgLoaded,
+  ]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchProcessedSvg();
+    }, 70);
+    return () => clearTimeout(timer);
+  }, [fetchProcessedSvg]);
+
+  const handleResetDefault = () => {
+    setFuselageLengthMm(BALSA_DESIGN_LIMITS.fuselage.default);
+    setWingspanMm(BALSA_DESIGN_LIMITS.wingspan.default);
+    setWingWidthMm(BALSA_DESIGN_LIMITS.wingWidth.default);
+    setSlotThicknessMm(BALSA_DESIGN_LIMITS.slotThickness.default);
+    setIsSlotLocked(true);
+  };
+
+  const downloadSvgFile = (svgContent: string, suffix: string) => {
+    if (!svgContent) return;
+    const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `planeador-balsa-${suffix}-F${Math.round(fuselageLengthMm)}-E${Math.round(
+      wingspanMm
+    )}-A${Math.round(wingWidthMm)}-R${slotThicknessMm}mm.svg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const aero = metrics.aerodynamics;
+  const noseWeightsSpec = getGliderNoseWeightsSpec(
+    slotThicknessMm,
+    aero.recommendedNoseWeightGrams || 4.2
+  );
+
+  const downloadNoseWeightsStl = (mode: 'kit3' | 'custom') => {
+    const stlContent = generateGliderNoseWeightsStl(
+      slotThicknessMm,
+      aero.recommendedNoseWeightGrams || 4.2,
+      mode
+    );
+    const blob = new Blob([stlContent], { type: 'model/stl;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download =
+      mode === 'kit3'
+        ? `pesos-nariz-planeador-kit3-ranura-${slotThicknessMm}mm.stl`
+        : `peso-nariz-planeador-${noseWeightsSpec.customDisc.massGrams}g-ranura-${slotThicknessMm}mm.stl`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="flex flex-col gap-6 w-full animate-in fade-in duration-300">
+      {/* Banner superior explicativo con foco en Madera de Balsa 300x100x3 mm */}
+      <div className="rounded-3xl bg-gradient-to-r from-purple-950 via-indigo-950 to-sky-950 text-white p-6 sm:p-7 shadow-xl border border-purple-700/40 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+        <div className="flex flex-col gap-2 max-w-3xl">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="px-3 py-1 rounded-full bg-amber-400/20 border border-amber-300/40 text-amber-200 text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+              🪵 Opción 2: Corte Láser en Madera de Balsa (300 × 100 × 3 mm)
+            </span>
+            <span className="px-3 py-1 rounded-full bg-emerald-400/20 border border-emerald-300/40 text-emerald-200 text-xs font-bold flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+              {metrics.zeroCrossingsVerified
+                ? '0 Cruces de Líneas Verificados'
+                : 'Verificando geometría'}{' '}
+              · {metrics.sheetsRequired}{' '}
+              {metrics.sheetsRequired === 1 ? 'Lámina' : 'Láminas'} (300×100 mm)
+            </span>
+          </div>
+          <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
+            Laboratorio de Planeador Paramétrico para Corte Láser (.SVG)
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
+            Diseña y corta tu planeador en planchas de <strong>madera de balsa de 300 × 100 × 3 mm</strong>{' '}
+            con corte exterior en <strong className="text-red-400">#FF0000 (0.1 mm)</strong> para{' '}
+            <strong>Falcon Design Space / LightBurn</strong>. El motor vectorial garantiza{' '}
+            <strong>0 cruces de líneas</strong>, empaqueta las piezas en{' '}
+            <strong>{metrics.sheetsRequired} {metrics.sheetsRequired === 1 ? 'lámina' : 'láminas'}</strong>{' '}
+            y calcula el contrapeso PLA recomendado para la nariz.
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row lg:flex-col gap-2 w-full lg:w-auto shrink-0">
+          <button
+            type="button"
+            onClick={() => downloadSvgFile(cleanLaserSvg || previewSvg, 'completo')}
+            disabled={!cleanLaserSvg}
+            className="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs sm:text-sm shadow-md hover:shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" />
+            <span>
+              Descargar SVG Completo ({metrics.sheetsRequired}{' '}
+              {metrics.sheetsRequired === 1 ? 'Lámina' : 'Láminas'})
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => downloadNoseWeightsStl('kit3')}
+            className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+            title="Descargar Kit de 3 Discos de Contrapeso en PLA con ranura para la punta del avión (.STL)"
+          >
+            <Box className="w-4 h-4" />
+            <span>Descargar Pesos Nariz PLA (.STL)</span>
+          </button>
+
+          {metrics.sheetsRequired === 2 && (
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={() => downloadSvgFile(sheet1Svg, 'lamina1-300x100')}
+                className="px-3 py-2 rounded-xl bg-sky-500/30 hover:bg-sky-500/50 text-sky-100 font-bold text-[11px] border border-sky-300/30 transition flex items-center justify-center gap-1 cursor-pointer"
+                title="Descargar solo Lámina 1 (300x100 mm): Fuselaje, Estabilizador y Soportes"
+              >
+                <Download className="w-3 h-3" />
+                <span>Lámina 1 (300×100)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => sheet2Svg && downloadSvgFile(sheet2Svg, 'lamina2-300x100')}
+                className="px-3 py-2 rounded-xl bg-sky-500/30 hover:bg-sky-500/50 text-sky-100 font-bold text-[11px] border border-sky-300/30 transition flex items-center justify-center gap-1 cursor-pointer"
+                title="Descargar solo Lámina 2 (300x100 mm): Alas Izquierda y Derecha"
+              >
+                <Download className="w-3 h-3" />
+                <span>Lámina 2 (300×100)</span>
+              </button>
+            </div>
+          )}
+
+          {onSwitchTo3D && (
+            <button
+              type="button"
+              onClick={onSwitchTo3D}
+              className="px-4 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 font-bold text-xs border border-sky-300/30 transition flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Plane className="w-3.5 h-3.5" />
+              <span>Ver Modelo 3D en PLA (.3MF/.STL)</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* PANEL SUPERIOR DE TELEMETRÍA AERODINÁMICA */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* 1. Área Alar */}
+        <div className="bg-white rounded-2xl p-4 border-2 border-sky-200 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-sky-700">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider">
+              Área Alar (Sw)
+            </span>
+            <Layers className="w-4 h-4" />
+          </div>
+          <div className="my-1">
+            <span className="text-xl sm:text-2xl font-black text-slate-900">
+              {aero.wingAreaCm2}
+            </span>
+            <span className="text-xs font-bold text-slate-500 ml-1">cm²</span>
+          </div>
+          <span className="text-[10px] text-slate-500 font-medium">
+            {aero.wingAreaMm2.toFixed(0)} mm² · Sustentación
+          </span>
+        </div>
+
+        {/* 2. Alargamiento (Aspect Ratio) */}
+        <div className="bg-white rounded-2xl p-4 border-2 border-purple-200 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-purple-700">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider">
+              Alargamiento (AR)
+            </span>
+            <Compass className="w-4 h-4" />
+          </div>
+          <div className="my-1">
+            <span className="text-xl sm:text-2xl font-black text-slate-900">
+              {aero.aspectRatio}
+            </span>
+            <span className="text-xs font-bold text-purple-700 ml-1.5">
+              {aero.aspectRatio >= 6.0 && aero.aspectRatio <= 8.2 ? 'Óptimo' : 'Estándar'}
+            </span>
+          </div>
+          <span className="text-[10px] text-slate-500 font-medium">
+            Ideal velero: 6.0 a 8.0
+          </span>
+        </div>
+
+        {/* 3. Razón de Planeo Estimada (L/D) */}
+        <div className="bg-white rounded-2xl p-4 border-2 border-emerald-200 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-emerald-700">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider">
+              Planeo (L/D)
+            </span>
+            <Wind className="w-4 h-4" />
+          </div>
+          <div className="my-1">
+            <span className="text-xl sm:text-2xl font-black text-slate-900">
+              {aero.estimatedGlideRatioLD}
+            </span>
+            <span className="text-xs font-bold text-slate-500 ml-1">: 1</span>
+          </div>
+          <span className="text-[10px] text-slate-500 font-medium">
+            Velocidad: ~{aero.estimatedGlideSpeedMs} m/s
+          </span>
+        </div>
+
+        {/* 4. Peso y Carga Alar en Balsa 3mm */}
+        <div className="bg-white rounded-2xl p-4 border-2 border-amber-200 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-amber-700">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider">
+              Masa Balsa 3mm
+            </span>
+            <Scale className="w-4 h-4" />
+          </div>
+          <div className="my-1">
+            <span className="text-xl sm:text-2xl font-black text-slate-900">
+              {aero.estimatedWeightGrams}
+            </span>
+            <span className="text-xs font-bold text-slate-500 ml-1">g</span>
+          </div>
+          <span className="text-[10px] text-slate-500 font-medium">
+            Carga alar: {aero.wingLoadingGPerDm2} g/dm²
+          </span>
+        </div>
+
+        {/* 5. Centro de Gravedad (CG) Recomendado y Lastre PLA */}
+        <div className="bg-white rounded-2xl p-4 border-2 border-indigo-200 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between text-indigo-700">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider">
+              Centro Gravedad
+            </span>
+            <Target className="w-4 h-4" />
+          </div>
+          <div className="my-1">
+            <span className="text-xl sm:text-2xl font-black text-slate-900">
+              {aero.recommendedCgFromNoseMm}
+            </span>
+            <span className="text-xs font-bold text-slate-500 ml-1">mm</span>
+          </div>
+          <span className="text-[10px] text-indigo-700 font-bold">
+            Lastre nariz: ~{aero.recommendedNoseWeightGrams || 4.2} g
+          </span>
+        </div>
+
+        {/* 6. Índice de Equilibrio General */}
+        <div
+          className={`rounded-2xl p-4 border-2 shadow-2xs flex flex-col justify-between ${
+            aero.balanceStatus === 'optimo'
+              ? 'bg-emerald-50/70 border-emerald-300'
+              : aero.balanceStatus === 'estable'
+                ? 'bg-sky-50/70 border-sky-300'
+                : 'bg-amber-50/80 border-amber-300'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700">
+              Equilibrio Vuelo
+            </span>
+            <Gauge className="w-4 h-4 text-emerald-700" />
+          </div>
+          <div className="my-1 flex items-baseline gap-1.5">
+            <span className="text-xl sm:text-2xl font-black text-slate-900">
+              {aero.balanceScore}
+            </span>
+            <span className="text-xs font-extrabold text-emerald-800">/ 100</span>
+          </div>
+          <span className="text-[10px] font-bold text-slate-600">
+            Rel. b/Lfus: {aero.spanToFuselageRatio} · VH: {aero.tailVolumeCoefficient}
+          </span>
+        </div>
+      </div>
+
+      {/* Grilla Principal: Controles Numéricos (Izquierda) + Previsualización de Láminas 2D (Derecha) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* COLUMNA IZQUIERDA: Entradas del Usuario (5 columnas) */}
+        <div className="lg:col-span-5 flex flex-col gap-4 bg-white rounded-3xl p-5 sm:p-6 border-2 border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
+                <Sliders className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-slate-900">
+                  Parámetros Láser Balsa (mm)
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Láminas de 300 × 100 × 3 mm
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleResetDefault}
+              className="text-xs font-bold text-sky-700 hover:text-sky-900 bg-sky-50 hover:bg-sky-100 px-3 py-1.5 rounded-xl border border-sky-200 transition cursor-pointer flex items-center gap-1"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Por Defecto
+            </button>
+          </div>
+
+          {/* 1. Largo del Fuselaje */}
+          <div className="flex flex-col gap-2 p-4 rounded-2xl bg-slate-50 border border-slate-200/80">
+            <div className="flex items-center justify-between gap-2">
+              <label
+                htmlFor="balsa-input-fuselage"
+                className="text-xs sm:text-sm font-extrabold text-slate-800 flex items-center gap-1.5"
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-purple-600 inline-block" />
+                1. Largo del Fuselaje (mm)
+              </label>
+              <span className="text-[11px] font-bold text-purple-800 bg-purple-100 px-2 py-0.5 rounded-md">
+                Rango: 170 – 260 mm
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3 mt-1">
+              <input
+                id="balsa-input-fuselage"
+                type="number"
+                min={BALSA_DESIGN_LIMITS.fuselage.min}
+                max={BALSA_DESIGN_LIMITS.fuselage.max}
+                step={1}
+                value={fuselageLengthMm}
+                onChange={(e) =>
+                  setFuselageLengthMm(
+                    Math.max(
+                      BALSA_DESIGN_LIMITS.fuselage.min,
+                      Math.min(
+                        BALSA_DESIGN_LIMITS.fuselage.max,
+                        Number(e.target.value) || BALSA_DESIGN_LIMITS.fuselage.min
+                      )
+                    )
+                  )
+                }
+                className="w-24 px-3 py-2 rounded-xl border-2 border-purple-300 bg-white text-slate-900 font-black text-base text-center focus:outline-none focus:border-purple-600"
+              />
+              <input
+                type="range"
+                min={BALSA_DESIGN_LIMITS.fuselage.min}
+                max={BALSA_DESIGN_LIMITS.fuselage.max}
+                step={1}
+                value={fuselageLengthMm}
+                onChange={(e) => setFuselageLengthMm(Number(e.target.value))}
+                className="flex-1 accent-purple-600 cursor-pointer"
+              />
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium pt-0.5">
+              <span>
+                Cama ala: <strong>{wingWidthMm.toFixed(1)} mm</strong>
+              </span>
+              <span>
+                Brazo cola: <strong>{(fuselageLengthMm - wingWidthMm - 22).toFixed(1)} mm</strong>
+              </span>
+            </div>
+          </div>
+
+          {/* 2. Envergadura Total */}
+          <div className="flex flex-col gap-2 p-4 rounded-2xl bg-slate-50 border border-slate-200/80">
+            <div className="flex items-center justify-between gap-2">
+              <label
+                htmlFor="balsa-input-wingspan"
+                className="text-xs sm:text-sm font-extrabold text-slate-800 flex items-center gap-1.5"
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-sky-600 inline-block" />
+                2. Envergadura Total del Ala (mm)
+              </label>
+              <span className="text-[11px] font-bold text-sky-800 bg-sky-100 px-2 py-0.5 rounded-md">
+                Rango: 170 – 260 mm
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3 mt-1">
+              <input
+                id="balsa-input-wingspan"
+                type="number"
+                min={BALSA_DESIGN_LIMITS.wingspan.min}
+                max={BALSA_DESIGN_LIMITS.wingspan.max}
+                step={2}
+                value={wingspanMm}
+                onChange={(e) =>
+                  setWingspanMm(
+                    Math.max(
+                      BALSA_DESIGN_LIMITS.wingspan.min,
+                      Math.min(
+                        BALSA_DESIGN_LIMITS.wingspan.max,
+                        Number(e.target.value) || BALSA_DESIGN_LIMITS.wingspan.min
+                      )
+                    )
+                  )
+                }
+                className="w-24 px-3 py-2 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-black text-base text-center focus:outline-none focus:border-sky-600"
+              />
+              <input
+                type="range"
+                min={BALSA_DESIGN_LIMITS.wingspan.min}
+                max={BALSA_DESIGN_LIMITS.wingspan.max}
+                step={2}
+                value={wingspanMm}
+                onChange={(e) => setWingspanMm(Number(e.target.value))}
+                className="flex-1 accent-sky-600 cursor-pointer"
+              />
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium pt-0.5">
+              <span>
+                Cada semiala: <strong>{(wingspanMm / 2).toFixed(1)} mm</strong>
+              </span>
+              <span>
+                Ranura raíz: <strong>12.50 × {slotThicknessMm} mm</strong>
+              </span>
+            </div>
+          </div>
+
+          {/* 3. Ancho del Ala */}
+          <div className="flex flex-col gap-2 p-4 rounded-2xl bg-slate-50 border border-slate-200/80">
+            <div className="flex items-center justify-between gap-2">
+              <label
+                htmlFor="balsa-input-wingwidth"
+                className="text-xs sm:text-sm font-extrabold text-slate-800 flex items-center gap-1.5"
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block" />
+                3. Ancho del ala / Cuerda (mm)
+              </label>
+              <span className="text-[11px] font-bold text-teal-800 bg-teal-100 px-2 py-0.5 rounded-md">
+                Rango: 28 – 45 mm
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3 mt-1">
+              <input
+                id="balsa-input-wingwidth"
+                type="number"
+                min={BALSA_DESIGN_LIMITS.wingWidth.min}
+                max={BALSA_DESIGN_LIMITS.wingWidth.max}
+                step={0.5}
+                value={wingWidthMm}
+                onChange={(e) =>
+                  setWingWidthMm(
+                    Math.max(
+                      BALSA_DESIGN_LIMITS.wingWidth.min,
+                      Math.min(
+                        BALSA_DESIGN_LIMITS.wingWidth.max,
+                        Number(e.target.value) || BALSA_DESIGN_LIMITS.wingWidth.min
+                      )
+                    )
+                  )
+                }
+                className="w-24 px-3 py-2 rounded-xl border-2 border-teal-300 bg-white text-slate-900 font-black text-base text-center focus:outline-none focus:border-teal-600"
+              />
+              <input
+                type="range"
+                min={BALSA_DESIGN_LIMITS.wingWidth.min}
+                max={BALSA_DESIGN_LIMITS.wingWidth.max}
+                step={0.5}
+                value={wingWidthMm}
+                onChange={(e) => setWingWidthMm(Number(e.target.value))}
+                className="flex-1 accent-teal-600 cursor-pointer"
+              />
+            </div>
+            <p className="text-[11px] text-slate-500 leading-snug">
+              Sincroniza automáticamente el ancho de ambas alas y la cama superior del fuselaje ({wingWidthMm.toFixed(1)} mm).
+            </p>
+          </div>
+
+          {/* 4. Espesor de Ranuras Balsa 3 mm */}
+          <div className="flex flex-col gap-2 p-4 rounded-2xl bg-amber-50/70 border-2 border-amber-200">
+            <div className="flex items-center justify-between gap-2">
+              <label
+                htmlFor="balsa-input-slot"
+                className="text-xs sm:text-sm font-extrabold text-slate-900 flex items-center gap-1.5"
+              >
+                {isSlotLocked ? (
+                  <Lock className="w-4 h-4 text-amber-700" />
+                ) : (
+                  <Unlock className="w-4 h-4 text-amber-700" />
+                )}
+                4. Espesor ranuras Balsa 3 mm
+              </label>
+              <button
+                type="button"
+                onClick={() => setIsSlotLocked(!isSlotLocked)}
+                className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-amber-200/80 hover:bg-amber-300 text-amber-950 transition cursor-pointer"
+              >
+                {isSlotLocked ? '🔒 Fijo (Ajustar Kerf)' : '🔓 Bloquear'}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2.5 mt-1">
+              <input
+                id="balsa-input-slot"
+                type="number"
+                min={2.8}
+                max={3.2}
+                step={0.05}
+                value={slotThicknessMm}
+                disabled={isSlotLocked}
+                onChange={(e) => setSlotThicknessMm(Number(e.target.value))}
+                className={`w-24 px-3 py-2 rounded-xl border-2 font-black text-base text-center ${
+                  isSlotLocked
+                    ? 'border-amber-300 bg-amber-100/60 text-amber-950 cursor-not-allowed'
+                    : 'border-amber-500 bg-white text-slate-900'
+                }`}
+              />
+              <div className="grid grid-cols-3 gap-1 flex-1">
+                {[
+                  { label: 'Firme (2.90)', val: 2.9 },
+                  { label: 'Ideal (2.95)', val: 2.95 },
+                  { label: 'Exacto (3.00)', val: 3.0 },
+                ].map((opt) => (
+                  <button
+                    key={opt.val}
+                    type="button"
+                    onClick={() => setSlotThicknessMm(opt.val)}
+                    className={`py-1.5 px-1.5 rounded-lg text-[10px] font-extrabold border transition cursor-pointer ${
+                      Math.abs(slotThicknessMm - opt.val) < 0.01
+                        ? 'bg-amber-600 text-white border-amber-700 shadow-2xs'
+                        : 'bg-white text-amber-900 border-amber-300 hover:bg-amber-100'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-[10px] text-amber-900 leading-snug">
+              Tolerancia de corte láser (<em>kerf</em> ~0.05 mm) en madera de balsa de <strong>3.0 mm</strong>: <strong>2.95 mm</strong> logra un calce a presión firme.
+            </p>
+          </div>
+
+          {/* Diagnóstico pedagógico */}
+          <div
+            className={`p-3.5 rounded-2xl border flex items-start gap-2.5 text-xs ${
+              aero.balanceStatus === 'optimo'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
+                : aero.balanceStatus === 'estable'
+                  ? 'bg-sky-50 border-sky-200 text-sky-950'
+                  : 'bg-amber-50 border-amber-300 text-amber-950'
+            }`}
+          >
+            {aero.balanceStatus === 'advertencia' ? (
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            ) : (
+              <Sparkles className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+            )}
+            <div className="flex flex-col gap-0.5">
+              <span className="font-black">
+                Análisis de Vuelo ({aero.balanceScore}/100 pts):
+              </span>
+              <span className="text-[11px] leading-snug opacity-90">
+                {aero.flightBehaviorSummary}
+              </span>
+            </div>
+          </div>
+
+          {/* Perfiles de Prueba Rápida */}
+          <div className="flex flex-col gap-2 pt-1">
+            <span className="text-xs font-extrabold text-slate-600 uppercase tracking-wider">
+              Perfiles Rápidos para Prototipado:
+            </span>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setFuselageLengthMm(178);
+                  setWingspanMm(210);
+                  setWingWidthMm(34);
+                }}
+                className="p-2.5 rounded-xl border border-slate-200 hover:border-purple-400 bg-slate-50 hover:bg-purple-50 text-left transition cursor-pointer"
+              >
+                <div className="text-xs font-black text-slate-800">1 Sola Lámina</div>
+                <div className="text-[10px] text-slate-500">178 × 210 × 34 mm</div>
+              </button>
+              <button
+                type="button"
+                onClick={handleResetDefault}
+                className="p-2.5 rounded-xl border border-slate-200 hover:border-sky-400 bg-slate-50 hover:bg-sky-50 text-left transition cursor-pointer"
+              >
+                <div className="text-xs font-black text-slate-800">Equilibrado (2 Lám)</div>
+                <div className="text-[10px] text-slate-500">230 × 240 × 36 mm</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFuselageLengthMm(255);
+                  setWingspanMm(260);
+                  setWingWidthMm(33);
+                }}
+                className="p-2.5 rounded-xl border border-slate-200 hover:border-emerald-400 bg-slate-50 hover:bg-emerald-50 text-left transition cursor-pointer"
+              >
+                <div className="text-xs font-black text-slate-800">Máximo Alcance</div>
+                <div className="text-[10px] text-slate-500">255 × 260 × 33 mm</div>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* COLUMNA DERECHA: Previsualización en Tiempo Real y Guía de Decisión (7 columnas) */}
+        <div className="lg:col-span-7 flex flex-col gap-5">
+          {/* Tarjeta del Visor Vectorial en Tiempo Real */}
+          <div className="bg-white rounded-3xl p-5 sm:p-6 border-2 border-slate-200 shadow-sm flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center">
+                  <Eye className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base sm:text-lg font-black text-slate-900">
+                      Distribución en Planchas de Balsa (300 × 100 mm)
+                    </h3>
+                    {isLoading && (
+                      <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-bold animate-pulse">
+                        Actualizando...
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    {metrics.sheetsRequired === 1
+                      ? 'Optimizado en 1 lámina de balsa de 300 × 100 × 3 mm (0 cruces)'
+                      : 'Distribuido automáticamente en 2 láminas de balsa de 300 × 100 × 3 mm (0 cruces)'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setShowAnnotations(!showAnnotations)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                    showAnnotations
+                      ? 'bg-purple-100 text-purple-900 border-purple-300'
+                      : 'bg-slate-100 text-slate-600 border-slate-200'
+                  }`}
+                >
+                  <Ruler className="w-3.5 h-3.5 inline mr-1" />
+                  Guías y Cotas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode(viewMode === 'sheet2d' ? 'assembly' : 'sheet2d')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                    viewMode === 'assembly'
+                      ? 'bg-sky-600 text-white border-sky-700'
+                      : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5 inline mr-1" />
+                  {viewMode === 'sheet2d' ? 'Guía de Ensamble' : 'Ver Planchas 2D'}
+                </button>
+              </div>
+            </div>
+
+            {errorMsg && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold">
+                {errorMsg}
+              </div>
+            )}
+
+            {viewMode === 'sheet2d' ? (
+              <div className="relative w-full rounded-2xl bg-slate-900 border-2 border-slate-800 p-4 sm:p-5 overflow-x-auto flex flex-col items-center justify-center min-h-[320px]">
+                <div
+                  className="w-full rounded-xl bg-amber-50/95 p-3 sm:p-4 shadow-inner border border-amber-200 transition-all"
+                  style={{
+                    backgroundImage:
+                      'linear-gradient(to right, rgba(180, 83, 9, 0.10) 1px, transparent 1px), linear-gradient(to bottom, rgba(180, 83, 9, 0.10) 1px, transparent 1px)',
+                    backgroundSize: '18px 18px',
+                  }}
+                >
+                  {previewSvg ? (
+                    <div
+                      className="w-full [&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[460px] [&>svg]:block"
+                      dangerouslySetInnerHTML={{
+                        __html: previewSvg.replace(/stroke-width="0\.25"/g, 'stroke-width="0.9"'),
+                      }}
+                    />
+                  ) : (
+                    <div className="h-64 flex items-center justify-center text-slate-400 text-sm font-bold">
+                      Generando geometría vectorial sin cruces...
+                    </div>
+                  )}
+                </div>
+
+                <div className="w-full mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300 px-1">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-0.5 bg-red-500 inline-block" />
+                      Corte Láser (<code className="text-red-400">#FF0000</code>)
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-0.5 border-b border-dashed border-sky-400 inline-block" />
+                      Borde Plancha Balsa (<code className="text-sky-300">300 × 100 mm</code>)
+                    </span>
+                  </div>
+                  <span className="text-emerald-300 font-bold">
+                    ✓ Geometría Monótona: 0 Cruces
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="w-full rounded-2xl bg-slate-50 border-2 border-slate-200 p-5 flex flex-col gap-4">
+                <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                  <Plane className="w-4 h-4 text-purple-600" />
+                  Guía de Ensamble en Balsa de 3 mm y Ajustes para la Prueba de Vuelo
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="p-3.5 rounded-xl bg-white border border-slate-200 flex flex-col gap-1">
+                    <span className="font-black text-purple-800">
+                      1. Cama del Ala y Fuselaje
+                    </span>
+                    <p className="text-slate-600 leading-snug">
+                      La cama superior del fuselaje mide exactamente{' '}
+                      <strong>{metrics.wingSaddleLengthMm} mm</strong> (igual al ancho del ala) y
+                      su ranura vertical mide{' '}
+                      <strong>{metrics.slotThicknessMm} × 6.25 mm</strong> para encajar sin juego
+                      en balsa de 3 mm.
+                    </p>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-white border border-slate-200 flex flex-col gap-1">
+                    <span className="font-black text-sky-800">
+                      2. Unión Diedro (7.5°) + Alas
+                    </span>
+                    <p className="text-slate-600 leading-snug">
+                      El soporte diedro tiene paredes reforzadas y ranura central de{' '}
+                      <strong>{metrics.slotThicknessMm} × 3.0 mm</strong>. Sus brazos de{' '}
+                      <strong>12.50 mm</strong> entran en las ranuras de raíz de cada semiala (
+                      <strong>12.50 × {metrics.slotThicknessMm} mm</strong>).
+                    </p>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-white border border-slate-200 flex flex-col gap-1">
+                    <span className="font-black text-emerald-800">
+                      3. Estabilizador de Cola
+                    </span>
+                    <p className="text-slate-600 leading-snug">
+                      El estabilizador ovalado de <strong>100 × 25 mm</strong> encaja en la cama
+                      trasera superior del fuselaje, reforzado por el travesaño de cola de{' '}
+                      <strong>23.3 mm</strong>.
+                    </p>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-white border border-slate-200 flex flex-col gap-1">
+                    <span className="font-black text-amber-800">
+                      4. Contrapeso Frontal
+                    </span>
+                    <p className="text-slate-600 leading-snug">
+                      Coloca el disco de PLA de ~{aero.recommendedNoseWeightGrams || 4.2} g en la
+                      muesca frontal para alinear el Centro de Gravedad al 30% de la cuerda.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
