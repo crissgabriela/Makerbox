@@ -38,6 +38,7 @@ import {
   FRAME_GEOMETRIES,
   FrameGeometryId,
   generateBadgesConnectorStl,
+  generateBadgesFramesLaserSvg,
   generateBadgesLaserSvg,
   getBadgeHoneycombApothem,
   getInternalKeychainHoleSpec,
@@ -114,6 +115,7 @@ export function BadgesSection() {
 
   // Previsualización en Pantalla
   const [previewTab, setPreviewTab] = useState<'grupal' | 'individual' | 'laser'>('grupal');
+  const [laserPreviewMode, setLaserPreviewMode] = useState<'centros' | 'marcos'>('centros');
   const [assembledOnTable, setAssembledOnTable] = useState<boolean>(true);
 
   const activeMembers = useMemo(
@@ -251,7 +253,23 @@ export function BadgesSection() {
     const safeTeam = (teamName || 'equipo')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-');
-    a.download = `chapitas-falcon-${safeTeam}-${memberCount}chapas-${woodCenterDiameterMm}mm.svg`;
+    a.download = `chapitas-centros-falcon-${safeTeam}-${memberCount}chapas-${woodCenterDiameterMm}mm.svg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadFramesLaserSvg = () => {
+    const svgContent = generateBadgesFramesLaserSvg(currentParams);
+    const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeTeam = (teamName || 'equipo')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-');
+    a.download = `chapitas-marcos-laser-${geometry}-${safeTeam}-${memberCount}marcos-3mm.svg`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -552,22 +570,30 @@ export function BadgesSection() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <button
               type="button"
               onClick={handleDownloadLaserSvg}
-              className="inline-flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-sm bg-rose-500 hover:bg-rose-400 text-white shadow-lg shadow-rose-950/50 transition cursor-pointer"
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-rose-500 hover:bg-rose-400 text-white shadow-lg shadow-rose-950/50 transition cursor-pointer"
             >
               <Scissors className="w-4 h-4" />
-              Descargar {memberCount} Chapas (.SVG)
+              Centros Láser (.SVG)
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadFramesLaserSvg}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-950/40 transition cursor-pointer"
+            >
+              <Scissors className="w-4 h-4" />
+              Marcos Láser (.SVG)
             </button>
             <button
               type="button"
               onClick={handleDownloadConnectorStl}
-              className="inline-flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-sm bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-lg shadow-amber-950/40 transition cursor-pointer"
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-lg shadow-amber-950/40 transition cursor-pointer"
             >
               <Box className="w-4 h-4" />
-              Descargar 1 Marco 3D Base (.STL)
+              1 Marco 3D (.STL)
             </button>
           </div>
         </div>
@@ -1098,71 +1124,136 @@ export function BadgesSection() {
               )}
 
               {previewTab === 'laser' && (
-                <div className="bg-white rounded-xl p-4 flex flex-col items-center justify-center min-h-[340px]">
+                <div className="bg-white rounded-xl p-4 flex flex-col items-center justify-between min-h-[340px] gap-3">
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setLaserPreviewMode('centros')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer ${
+                        laserPreviewMode === 'centros'
+                          ? 'bg-rose-600 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      1. Centros de Madera ({memberCount}x · Corte + Grabado)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLaserPreviewMode('marcos')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer ${
+                        laserPreviewMode === 'marcos'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      2. Marcos Conectores Láser ({memberCount}x · Solo Corte 3 mm)
+                    </button>
+                  </div>
+
                   <div
-                    className="w-full max-w-md flex justify-center overflow-auto"
+                    className="w-full max-w-lg flex justify-center overflow-auto"
                     dangerouslySetInnerHTML={{
-                      __html: generateBadgesLaserSvg(currentParams),
+                      __html:
+                        laserPreviewMode === 'centros'
+                          ? generateBadgesLaserSvg(currentParams)
+                          : generateBadgesFramesLaserSvg(currentParams),
                     }}
                   />
-                  <p className="text-xs text-slate-600 mt-3 font-medium text-center">
-                    Archivo <strong>.SVG para Falcon Design Space</strong> con las{' '}
-                    <strong>{memberCount} chapas</strong>: Corte exterior en{' '}
-                    <strong className="text-red-600">#FF0000 (0.1 mm)</strong> y grabado (Equipo +
-                    Ícono + Estudiante + Logo MakerBox) en{' '}
-                    <strong className="text-blue-600">#0000FF</strong>.
+                  <p className="text-xs text-slate-600 font-medium text-center">
+                    {laserPreviewMode === 'centros' ? (
+                      <>
+                        Archivo <strong>.SVG de Centros para Falcon Design Space</strong> (
+                        <strong>{memberCount} chapas</strong>): Corte exterior en{' '}
+                        <strong className="text-red-600">#FF0000 (0.1 mm)</strong> y grabado
+                        (Equipo + Ícono + Estudiante + Logo MakerBox) en{' '}
+                        <strong className="text-blue-600">#0000FF</strong>.
+                      </>
+                    ) : (
+                      <>
+                        Archivo <strong>.SVG de Marcos Conectores para Corte Láser</strong> (
+                        <strong>{memberCount} marcos en madera de 3 mm</strong>): Alternativa
+                        ultrarrápida (~{telemetry.laserFramesCutTotalTimeFormatted}) en{' '}
+                        <strong className="text-red-600">#FF0000 (0.1 mm)</strong> cuando no hay
+                        tiempo para imprimir todos los bordes en 3D.
+                      </>
+                    )}
                   </p>
                 </div>
               )}
 
               {/* Barra de Tiempos Estimados de Impresión 3D y Corte/Grabado Láser bajo la Vista Previa */}
               <div className="mt-3 pt-3 border-t border-slate-800 space-y-2.5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {/* Tarjeta Tiempo Corte y Grabado Láser (Falcon Design Space) */}
-                  <div className="rounded-xl bg-rose-950/50 border border-rose-500/30 px-3.5 py-2.5 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-rose-500/20 border border-rose-400/30 flex items-center justify-center text-rose-300 shrink-0">
-                        <Flame className="w-4 h-4" />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {/* Tarjeta Tiempo Corte y Grabado Láser Centros */}
+                  <div className="rounded-xl bg-rose-950/50 border border-rose-500/30 px-3 py-2.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-rose-500/20 border border-rose-400/30 flex items-center justify-center text-rose-300 shrink-0">
+                        <Flame className="w-3.5 h-3.5" />
                       </div>
                       <div>
                         <span className="text-[10px] font-bold uppercase tracking-wider text-rose-300 block">
-                          Tiempo Corte + Grabado Láser
+                          Láser Centros (.SVG)
                         </span>
-                        <span className="text-xs font-extrabold text-white">
-                          Falcon Design Space ({memberCount} chapas)
+                        <span className="text-[11px] font-extrabold text-white">
+                          {memberCount} chapas (Grabado+Corte)
                         </span>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <span className="text-sm font-black text-rose-300 block">
+                    <div className="text-right shrink-0">
+                      <span className="text-xs sm:text-sm font-black text-rose-300 block">
                         ~{telemetry.laserTotalTimeFormatted}
                       </span>
-                      <span className="text-[10px] text-rose-200/80 font-mono">
+                      <span className="text-[9px] text-rose-200/80 font-mono">
                         ({telemetry.laserTimePerBadgeSec} s c/u)
                       </span>
                     </div>
                   </div>
 
-                  {/* Tarjeta Tiempo Impresión 3D (PLA) */}
-                  <div className="rounded-xl bg-indigo-950/60 border border-indigo-400/30 px-3.5 py-2.5 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 shrink-0">
-                        <Clock className="w-4 h-4" />
+                  {/* Tarjeta Tiempo Corte Láser Marcos (Alternativa Rápida) */}
+                  <div className="rounded-xl bg-emerald-950/50 border border-emerald-500/30 px-3 py-2.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-300 shrink-0">
+                        <Scissors className="w-3.5 h-3.5" />
                       </div>
                       <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300 block">
-                          Tiempo Impresión 3D PLA
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 block">
+                          Láser Marcos (.SVG)
                         </span>
-                        <span className="text-xs font-extrabold text-white">
-                          {memberCount} Marcos ({telemetry.plaTotalWeightGrams} g PLA)
+                        <span className="text-[11px] font-extrabold text-white">
+                          {memberCount} marcos en madera
                         </span>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <span className="text-sm font-black text-amber-300 block">
+                    <div className="text-right shrink-0">
+                      <span className="text-xs sm:text-sm font-black text-emerald-300 block">
+                        ~{telemetry.laserFramesCutTotalTimeFormatted}
+                      </span>
+                      <span className="text-[9px] text-emerald-200/80 font-mono">
+                        ({telemetry.laserFramesCutPerFrameSec} s c/u)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Tarjeta Tiempo Impresión 3D (PLA) */}
+                  <div className="rounded-xl bg-indigo-950/60 border border-indigo-400/30 px-3 py-2.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 shrink-0">
+                        <Clock className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300 block">
+                          Impresión 3D (.STL)
+                        </span>
+                        <span className="text-[11px] font-extrabold text-white">
+                          {memberCount} marcos ({telemetry.plaTotalWeightGrams} g)
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-xs sm:text-sm font-black text-amber-300 block">
                         ~{telemetry.printTotalTimeFormatted}
                       </span>
-                      <span className="text-[10px] text-indigo-200/80 font-mono">
+                      <span className="text-[9px] text-indigo-200/80 font-mono">
                         ({telemetry.printTimePerFrameMin} min · {telemetry.plaWeightPerFrameGrams} g c/u)
                       </span>
                     </div>
@@ -1184,7 +1275,7 @@ export function BadgesSection() {
             </div>
           </div>
 
-          {/* 5. Panel de Descarga de Archivos de Fabricación (.SVG equipo y .STL 1 marco base) */}
+          {/* 5. Panel de Descarga de Archivos de Fabricación (.SVG Centros, .SVG Marcos Láser y .STL 1 Marco 3D) */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
@@ -1193,35 +1284,44 @@ export function BadgesSection() {
                   5. Descarga de Archivos de Fabricación (Láser + 3D Plano 3 mm)
                 </h3>
                 <p className="text-xs text-slate-600">
-                  El archivo <strong>.SVG</strong> incluye las <strong>{memberCount} chapas</strong>{' '}
-                  para <strong>Falcon Design Space</strong>, y el archivo <strong>.STL</strong>{' '}
-                  entrega <strong>1 marco conector plano de 3 mm</strong> listo para replicar (×
-                  {memberCount}) en el laminador.
+                  Puedes fabricar los bordes conectores imprimiendo <strong>1 marco .STL</strong> (y
+                  replicándolo ×{memberCount} en el laminador) o cortando los{' '}
+                  <strong>{memberCount} marcos en madera de 3 mm (.SVG)</strong> en{' '}
+                  <strong>Falcon Design Space</strong> si cuentas con poco tiempo.
                 </p>
               </div>
 
               <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 shrink-0">
-                ✓ {memberCount} chapas (.SVG) + 1 marco base (.STL)
+                ✓ Doble opción de borde: 3D (.STL) o Láser (.SVG)
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
                 type="button"
                 onClick={handleDownloadLaserSvg}
-                className="py-3.5 px-4 rounded-xl font-bold text-sm bg-rose-600 hover:bg-rose-500 text-white shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
+                className="py-3 px-3.5 rounded-xl font-bold text-xs sm:text-sm bg-rose-600 hover:bg-rose-500 text-white shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
               >
-                <Download className="w-4 h-4" />
-                Descargar {memberCount} Centros para Falcon Design Space (.SVG)
+                <Download className="w-4 h-4 shrink-0" />
+                <span>1. Centros Madera Láser ({memberCount}x .SVG)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadFramesLaserSvg}
+                className="py-3 px-3.5 rounded-xl font-bold text-xs sm:text-sm bg-emerald-600 hover:bg-emerald-500 text-white shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
+              >
+                <Scissors className="w-4 h-4 shrink-0" />
+                <span>2. Marcos Corte Láser ({memberCount}x .SVG)</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleDownloadConnectorStl}
-                className="py-3.5 px-4 rounded-xl font-bold text-sm bg-indigo-600 hover:bg-indigo-500 text-white shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
+                className="py-3 px-3.5 rounded-xl font-bold text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-500 text-white shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
               >
-                <Box className="w-4 h-4" />
-                Descargar 1 Marco Conector 3D Plano (.STL)
+                <Box className="w-4 h-4 shrink-0" />
+                <span>3. Marco 3D Base (1x .STL 3mm)</span>
               </button>
             </div>
           </div>

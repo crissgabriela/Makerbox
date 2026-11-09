@@ -468,6 +468,8 @@ export function computeOuterFrameContourPoints(
 export interface BadgesManufacturingTelemetry {
   laserTimePerBadgeSec: number;
   laserTotalTimeFormatted: string;
+  laserFramesCutPerFrameSec: number;
+  laserFramesCutTotalTimeFormatted: string;
   printTimePerFrameMin: number;
   printTotalTimeFormatted: string;
   plaWeightPerFrameGrams: number;
@@ -522,9 +524,25 @@ export function estimateBadgesManufacturingTimes(
   const laserTotalTimeFormatted =
     laserMin > 0 ? `${laserMin} min ${laserRemSec} s` : `${totalLaserSec} s`;
 
+  // Tiempo de corte láser opcional de los marcos exteriores (solo corte #FF0000 sin grabado)
+  const outerPolygonPerimeterMm =
+    2 * sides * apothem * Math.tan(Math.PI / sides) + sides * 4 * params.dovetailSizeMm;
+  const holePerimeterMm = 2 * Math.PI * (params.holeDiameterMm / 2);
+  const frameCutPerimeterMm = outerPolygonPerimeterMm + cutPerimeterMm + holePerimeterMm;
+  const laserFramesCutPerFrameSec = Math.max(15, Math.round(frameCutPerimeterMm / 8.0));
+  const totalFramesLaserSec = laserFramesCutPerFrameSec * count;
+  const framesLaserMin = Math.floor(totalFramesLaserSec / 60);
+  const framesLaserRemSec = totalFramesLaserSec % 60;
+  const laserFramesCutTotalTimeFormatted =
+    framesLaserMin > 0
+      ? `${framesLaserMin} min ${framesLaserRemSec} s`
+      : `${totalFramesLaserSec} s`;
+
   return {
     laserTimePerBadgeSec,
     laserTotalTimeFormatted,
+    laserFramesCutPerFrameSec,
+    laserFramesCutTotalTimeFormatted,
     printTimePerFrameMin,
     printTotalTimeFormatted,
     plaWeightPerFrameGrams,
@@ -653,6 +671,93 @@ export function generateBadgesLaserSvg(params: BadgesTeamParams): string {
       `    <circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${radius.toFixed(3)}" />`
     );
   });
+  lines.push(`  </g>`);
+
+  lines.push(`</svg>`);
+  return lines.join('\n');
+}
+
+/**
+ * Genera el archivo .SVG de los Marcos Conectores para Corte Láser en madera de 3 mm
+ * (alternativa rápida cuando por tiempo no se alcanzan a imprimir todos los bordes en 3D).
+ * Incluye los `memberCount` marcos del equipo con cortes interiores (orificio de llavero y cavidad central)
+ * y corte exterior poligonal con Cola de Milano en rojo (#FF0000, 0.1 mm) listo para Falcon Design Space.
+ */
+export function generateBadgesFramesLaserSvg(params: BadgesTeamParams): string {
+  const { woodCenterDiameterMm, memberCount, geometry, holeDiameterMm, dovetailSizeMm, teamName } =
+    params;
+  const rWood = woodCenterDiameterMm / 2;
+  // Para corte láser en madera de 3 mm, el kerf del láser (~0.10 mm) compensa de forma natural la holgura
+  const outerPts = computeOuterFrameContourPoints(geometry, rWood, 0.0, dovetailSizeMm);
+  const holeSpec = getInternalKeychainHoleSpec(geometry, rWood, holeDiameterMm);
+  const rInnerPressFit = Number((rWood - 0.05).toFixed(3));
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const p of outerPts) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+
+  const pieceW = maxX - minX;
+  const pieceH = maxY - minY;
+  const gap = 6;
+  const cols = Math.min(3, memberCount);
+  const rows = Math.ceil(memberCount / cols);
+  const margin = 10;
+  const topHeader = 8;
+
+  const totalWidth = Number((margin * 2 + cols * pieceW + (cols - 1) * gap).toFixed(2));
+  const totalHeight = Number(
+    (margin * 2 + topHeader + rows * pieceH + (rows - 1) * gap).toFixed(2)
+  );
+
+  const lines: string[] = [];
+  lines.push(`<?xml version="1.0" encoding="UTF-8"?>`);
+  lines.push(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}mm" height="${totalHeight}mm" viewBox="0 0 ${totalWidth} ${totalHeight}">`
+  );
+  lines.push(
+    `  <!-- MakerBox Taller 4 (Falcon Design Space): ${memberCount} Marcos Conectores (${FRAME_GEOMETRIES[geometry].shortName}) para Corte Láser 3 mm - Equipo: ${escapeXml(teamName)} -->`
+  );
+
+  lines.push(`  <g id="CAPA_GRABADO_AZUL" stroke="#0000FF" fill="none">`);
+  lines.push(
+    `    <text x="${(totalWidth / 2).toFixed(2)}" y="6.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="3.1" font-weight="bold" fill="#0000FF" stroke="none">MAKERBOX · FALCON DESIGN SPACE · ${memberCount} MARCOS CONECTORES LÁSER 3MM (${FRAME_GEOMETRIES[
+      geometry
+    ].shortName.toUpperCase()}) · EQUIPO: ${escapeXml(teamName.toUpperCase())}</text>`
+  );
+  lines.push(`  </g>`);
+
+  lines.push(`  <g id="CAPA_CORTE_ROJO" stroke="#FF0000" stroke-width="0.1" fill="none">`);
+  for (let idx = 0; idx < memberCount; idx++) {
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+    const cx = margin - minX + col * (pieceW + gap);
+    const cy = margin + topHeader - minY + row * (pieceH + gap);
+
+    // 1. Corte interior: Orificio para argolla de llavero
+    lines.push(
+      `    <circle cx="${cx.toFixed(2)}" cy="${(cy - holeSpec.offsetFromCenterMm).toFixed(
+        2
+      )}" r="${holeSpec.holeRadiusMm.toFixed(3)}" />`
+    );
+
+    // 2. Corte interior: Cavidad circular press-fit donde entra el centro de madera
+    lines.push(
+      `    <circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${rInnerPressFit.toFixed(3)}" />`
+    );
+
+    // 3. Corte exterior: Polígono conector con Cola de Milano de 1.8 mm
+    const polyPoints = outerPts
+      .map((p) => `${(cx + p.x).toFixed(3)},${(cy + p.y).toFixed(3)}`)
+      .join(' ');
+    lines.push(`    <polygon points="${polyPoints}" />`);
+  }
   lines.push(`  </g>`);
 
   lines.push(`</svg>`);
