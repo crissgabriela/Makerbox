@@ -267,28 +267,28 @@ export default function HomePage() {
               </div>
 
               <p className="text-sm text-slate-600 leading-relaxed">
-                Diseña en grupo (2 a 5 integrantes, 5° a 8° básico) un set de chapitas o llaveros con <strong>centro de madera de 36 mm</strong> grabado con láser que encaja a presión dentro de un <strong>marco conector impreso en 3D (PLA)</strong>.
+                Diseña en grupo (2 a 5 integrantes, 5° a 8° básico) un set de chapitas o llaveros con <strong>centro de madera (36 a 44 mm)</strong> grabado con láser (con logo MakerBox) que encaja a presión dentro de un <strong>marco conector impreso en 3D (PLA)</strong> con encaje cola de milano.
               </p>
 
               <ul className="space-y-2 text-xs font-semibold text-slate-700 bg-purple-50/60 border border-purple-200/80 rounded-2xl p-4">
                 <li className="flex items-center gap-2">
                   <Hexagon className="w-4 h-4 text-purple-600 shrink-0" />
-                  <span>3 geometrías conectoras: Hexágono Panal, Engranaje y Circular con Muesca</span>
+                  <span>Experimento de eficiencia: Hexágono Panal vs. Pentágono y Triángulo</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-purple-600 shrink-0" />
-                  <span>Personalización por integrante (textos + 8 emblemas) y sugerencias con IA</span>
+                  <span>Asistente IA Gemini + Grabado de Equipo, Emblema, Nombre y Logo MakerBox</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Box className="w-4 h-4 text-purple-600 shrink-0" />
-                  <span>Exporta centros láser (.SVG #FF0000/#0000FF) y marcos press-fit (.STL)</span>
+                  <span>Exporta todas las chapas (.SVG Falcon Design Space) y marcos (.STL)</span>
                 </li>
               </ul>
             </div>
 
             <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500">
-                Corte/Grabado Láser (.SVG) + Marcos 3D (.STL)
+                Falcon Design Space (.SVG) + Marcos 3D (.STL)
               </span>
               <span className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white font-extrabold text-xs sm:text-sm shadow-sm group-hover:shadow-md group-hover:translate-x-0.5 transition-all">
                 <span>Abrir Taller 4</span>

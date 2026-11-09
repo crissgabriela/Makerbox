@@ -3,16 +3,21 @@
 import React, { useMemo, useState } from 'react';
 import {
   Award,
+  Bot,
   Box,
+  Clock,
   Download,
   Eye,
+  Flame,
   GraduationCap,
   Grid,
   Hexagon,
+  Info,
   Layers,
+  Loader2,
   RotateCcw,
   Scissors,
-  Settings2,
+  Sliders,
   Sparkles,
   Users,
   Wand2,
@@ -23,7 +28,11 @@ import {
   BadgeIconId,
   BadgeMemberConfig,
   BadgesTeamParams,
+  buildMakerboxLogoVectorPath,
   computeOuterFrameContourPoints,
+  estimateBadgesManufacturingTimes,
+  FIXED_PRESS_FIT_CLEARANCE_MM,
+  FIXED_WOOD_THICKNESS_MM,
   FRAME_GEOMETRIES,
   FrameGeometryId,
   generateBadgesConnectorStl,
@@ -81,22 +90,29 @@ export function BadgesSection() {
   const [memberCount, setMemberCount] = useState<number>(5);
   const [geometry, setGeometry] = useState<FrameGeometryId>('hexagono');
 
-  // Parámetros Técnicos de Calce (editables)
-  const [woodCenterDiameterMm, setWoodCenterDiameterMm] = useState<number>(36);
-  const [woodThicknessMm, setWoodThicknessMm] = useState<number>(3.0);
-  const [clearanceMm, setClearanceMm] = useState<number>(0.15);
+  // 3 Parámetros Técnicos con Barras Deslizantes (Sliders) y Vista Previa en Vivo
+  const [woodCenterDiameterMm, setWoodCenterDiameterMm] = useState<number>(36); // 36 a 44 mm
+  const [holeDiameterMm, setHoleDiameterMm] = useState<number>(4.0); // 3.8 a 4.4 mm
+  const [dovetailSizeMm, setDovetailSizeMm] = useState<number>(2.4); // 1.8 a 3.4 mm
 
   // Tarjetas de Integrantes
   const [members, setMembers] = useState<BadgeMemberConfig[]>(INITIAL_MEMBERS);
 
-  // Sugerencias IA
+  // Asistente IA Creativo (Google Gemini 2.5 Flash + Banco Instantáneo)
   const [showAiPanel, setShowAiPanel] = useState<boolean>(false);
   const [selectedTheme, setSelectedTheme] = useState<IdeaThemeId>('animales');
+  const [customAiTopic, setCustomAiTopic] = useState<string>('');
+  const [aiIdeas, setAiIdeas] = useState<TeamIdeaSuggestion[]>(
+    AI_TEAM_IDEAS_BY_THEME.animales
+  );
+  const [aiLoading, setAiLoading] = useState<boolean>(false);
+  const [aiAgentLabel, setAiAgentLabel] = useState<string>(
+    'Agente Google Gemini 2.5 Flash · Listo para asistir'
+  );
 
   // Previsualización en Pantalla
   const [previewTab, setPreviewTab] = useState<'grupal' | 'individual' | 'laser'>('grupal');
   const [assembledOnTable, setAssembledOnTable] = useState<boolean>(true);
-  const [stlExportAll, setStlExportAll] = useState<boolean>(true);
 
   const activeMembers = useMemo(
     () => members.slice(0, memberCount),
@@ -110,8 +126,10 @@ export function BadgesSection() {
       memberCount,
       geometry,
       woodCenterDiameterMm,
-      woodThicknessMm,
-      clearanceMm,
+      holeDiameterMm,
+      dovetailSizeMm,
+      woodThicknessMm: FIXED_WOOD_THICKNESS_MM,
+      clearanceMm: FIXED_PRESS_FIT_CLEARANCE_MM,
       members: activeMembers,
     }),
     [
@@ -120,14 +138,37 @@ export function BadgesSection() {
       memberCount,
       geometry,
       woodCenterDiameterMm,
-      woodThicknessMm,
-      clearanceMm,
+      holeDiameterMm,
+      dovetailSizeMm,
       activeMembers,
     ]
   );
 
-  const cavityDiameterMm = Number((woodCenterDiameterMm + 2 * clearanceMm).toFixed(2));
-  const cavityDepthMm = Number((woodThicknessMm + 0.1).toFixed(2));
+  const cavityDiameterMm = Number(
+    (woodCenterDiameterMm + 2 * FIXED_PRESS_FIT_CLEARANCE_MM).toFixed(2)
+  );
+  const cavityDepthMm = Number((FIXED_WOOD_THICKNESS_MM + 0.1).toFixed(2));
+
+  // Telemetría de tiempos de Corte/Grabado en Falcon Design Space e Impresión 3D en PLA
+  const telemetry = useMemo(
+    () => estimateBadgesManufacturingTimes(currentParams),
+    [currentParams]
+  );
+
+  // Comparativa de eficiencia de las 3 geometrías para la cápsula educativa
+  const geometryComparison = useMemo(() => {
+    return (['hexagono', 'pentagono', 'triangulo'] as FrameGeometryId[]).map((gId) => {
+      const m = estimateBadgesManufacturingTimes({
+        ...currentParams,
+        geometry: gId,
+      });
+      return {
+        id: gId,
+        info: FRAME_GEOMETRIES[gId],
+        telemetry: m,
+      };
+    });
+  }, [currentParams]);
 
   const handleUpdateMember = (
     index: number,
@@ -150,13 +191,44 @@ export function BadgesSection() {
     );
   };
 
+  const handleSelectAiTheme = (theme: IdeaThemeId) => {
+    setSelectedTheme(theme);
+    setAiIdeas(AI_TEAM_IDEAS_BY_THEME[theme]);
+  };
+
+  const handleGenerateAiIdeasWithGemini = async () => {
+    setAiLoading(true);
+    try {
+      const res = await fetch('/api/chapitas/ideas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          theme: selectedTheme,
+          customTopic: customAiTopic,
+          memberCount,
+        }),
+      });
+      const data = await res.json();
+      if (Array.isArray(data?.ideas) && data.ideas.length > 0) {
+        setAiIdeas(data.ideas);
+      }
+      if (data?.agentUsed) {
+        setAiAgentLabel(data.agentUsed);
+      }
+    } catch {
+      setAiIdeas(AI_TEAM_IDEAS_BY_THEME[selectedTheme]);
+      setAiAgentLabel('Banco Creativo MakerBox IA (Modo Instantáneo)');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   const handleApplyAiIdea = (idea: TeamIdeaSuggestion) => {
     setTeamName(idea.teamName);
-    setGeometry(idea.recommendedGeometry);
     setMembers((prev) =>
       prev.map((m, idx) => ({
         ...m,
-        primaryText: m.primaryText || idea.sampleMemberNames[idx] || `Integrante ${idx + 1}`,
+        primaryText: idea.sampleMemberNames[idx] || m.primaryText || `Integrante ${idx + 1}`,
         secondaryText: idea.teamName,
         icon: idea.icons[idx % idea.icons.length],
       }))
@@ -165,8 +237,8 @@ export function BadgesSection() {
 
   const handleResetTechnicalParams = () => {
     setWoodCenterDiameterMm(36);
-    setWoodThicknessMm(3.0);
-    setClearanceMm(0.15);
+    setHoleDiameterMm(4.0);
+    setDovetailSizeMm(2.4);
   };
 
   const handleDownloadLaserSvg = () => {
@@ -178,7 +250,7 @@ export function BadgesSection() {
     const safeTeam = (teamName || 'equipo')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-');
-    a.download = `chapitas-centros-madera-${safeTeam}-${memberCount}x-${woodCenterDiameterMm}mm.svg`;
+    a.download = `chapitas-falcon-${safeTeam}-${memberCount}chapas-${woodCenterDiameterMm}mm.svg`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -186,7 +258,7 @@ export function BadgesSection() {
   };
 
   const handleDownloadConnectorStl = () => {
-    const stlContent = generateBadgesConnectorStl(currentParams, stlExportAll);
+    const stlContent = generateBadgesConnectorStl(currentParams);
     const blob = new Blob([stlContent], { type: 'model/stl;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -194,8 +266,7 @@ export function BadgesSection() {
     const safeTeam = (teamName || 'equipo')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-');
-    const qtyLabel = stlExportAll ? `${memberCount}marcos` : '1marco';
-    a.download = `chapitas-marcos-3d-${geometry}-${safeTeam}-${qtyLabel}.stl`;
+    a.download = `chapitas-marcos-3d-${geometry}-${safeTeam}-${memberCount}marcos.stl`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -205,61 +276,85 @@ export function BadgesSection() {
   // Pre-compute outer contour SVG polygon points & internal keychain hole spec
   const singleFrameGeometryData = useMemo(() => {
     const rCav = cavityDiameterMm / 2;
-    const pts = computeOuterFrameContourPoints(geometry, rCav, clearanceMm);
-    // Usamos (p.x, p.y) directamente para que las caras k=0,1,2 (+Macho) y k=3,4,5 (-Hembra)
-    // coincidan exactamente con las direcciones de traslación de la red tipo panal.
+    const pts = computeOuterFrameContourPoints(
+      geometry,
+      rCav,
+      FIXED_PRESS_FIT_CLEARANCE_MM,
+      dovetailSizeMm
+    );
     const polyStr = pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
-    const holeSpec = getInternalKeychainHoleSpec(geometry, rCav);
-    return { polyStr, rCav, holeSpec };
-  }, [geometry, cavityDiameterMm, clearanceMm]);
+    const holeSpec = getInternalKeychainHoleSpec(geometry, rCav, holeDiameterMm);
+    const apothem = getBadgeHoneycombApothem(rCav, dovetailSizeMm, geometry);
+    return { polyStr, rCav, holeSpec, apothem };
+  }, [geometry, cavityDiameterMm, dovetailSizeMm, holeDiameterMm]);
 
-  // Posiciones exactas de acople en la red tipo Panal (sin superposición, calzando Cola de Milano Macho en Hembra)
+  // Posiciones exactas de acople en la mesa según la geometría elegida (Hexágono, Pentágono o Triángulo)
   const groupAssemblyPositions = useMemo(() => {
-    const rCav = cavityDiameterMm / 2;
-    const apothem = getBadgeHoneycombApothem(rCav);
-    // Cuando están conectadas en panal, la distancia entre centros a través de cualquier cara plana
-    // es exactamente 2 * apothem (+ una línea fina de 0.35 mm para distinguir visualmente la junta cola de milano).
-    const gap = assembledOnTable ? 0.35 : 15.0;
+    const { apothem } = singleFrameGeometryData;
+    const gap = assembledOnTable ? 0.35 : 16.0;
     const dist = 2 * apothem + gap;
 
-    if (geometry === 'engranaje') {
-      // Para engranajes de 12 dientes (paso 30°):
-      // El engranaje central (rot=0°) engrana diente-con-valle con vecinos (rot=15°) ubicados
-      // en ángulos múltiplos de 30° (-120°, -30°, +150°, +60°) separados 90° entre sí para no chocar.
+    if (geometry === 'triangulo') {
+      // En el Triángulo Equilátero (caras en -30° Macho, +90° Macho, -150° Hembra):
+      // Para conectar caras planas es obligatorio alternar triángulos rotados (+60° / -60° / +120°),
+      // demostrando visualmente la alternancia ▲▼▲ y el mayor tamaño de las puntas.
+      const deg = (d: number) => (d * Math.PI) / 180;
+      const p1x = dist * Math.cos(deg(-150));
+      const p1y = dist * Math.sin(deg(-150));
       const coords = [
         { x: 0, y: 0, rot: 0 },
+        { x: p1x, y: p1y, rot: 60 }, // Acopla su cara +30° Macho en la cara -150° Hembra de #0
         {
-          x: dist * Math.cos((-120 * Math.PI) / 180),
-          y: dist * Math.sin((-120 * Math.PI) / 180),
-          rot: 15,
+          x: dist * Math.cos(deg(-30)),
+          y: dist * Math.sin(deg(-30)),
+          rot: -60, // Acopla su cara +150° Hembra en la cara -30° Macho de #0
         },
         {
-          x: dist * Math.cos((-30 * Math.PI) / 180),
-          y: dist * Math.sin((-30 * Math.PI) / 180),
-          rot: 15,
+          x: 0,
+          y: dist,
+          rot: 60, // Acopla su cara -90° Hembra en la cara +90° Macho de #0
         },
         {
-          x: dist * Math.cos((150 * Math.PI) / 180),
-          y: dist * Math.sin((150 * Math.PI) / 180),
-          rot: 15,
-        },
-        {
-          x: dist * Math.cos((60 * Math.PI) / 180),
-          y: dist * Math.sin((60 * Math.PI) / 180),
-          rot: 15,
+          x: p1x + dist * Math.cos(deg(150)),
+          y: p1y + dist * Math.sin(deg(150)),
+          rot: 120, // Acopla su cara -30° Hembra en la cara +150° Macho de #1
         },
       ];
       return coords.slice(0, memberCount);
     }
 
-    // Para Hexágono Tipo Panal y Circular con Cola de Milano:
-    // Las caras normales están exactamente en 0°, +60°, +120° (Macho) y 180°, -120°, -60° (Hembra).
-    // Ubicamos:
-    // 0: Centro (0, 0)
-    // 1: Arriba-Izquierda (-120°: su cara +60° Macho entra en la cara -120° Hembra del Centro)
-    // 2: Arriba-Derecha (-60°: su cara +120° Macho entra en la cara -60° Hembra del Centro, y su cara 180° Hembra recibe la cara 0° Macho de #1)
-    // 3: Izquierda (180°: su cara 0° Macho entra en la cara 180° Hembra del Centro, y su cara -60° Hembra recibe la cara +120° Macho de #1)
-    // 4: Derecha (0°: su cara 180° Hembra recibe la cara 0° Macho del Centro, y su cara -120° Hembra recibe la cara +60° Macho de #2)
+    if (geometry === 'pentagono') {
+      // En el Pentágono Regular (caras en -54° M, +18° M, +90° M, +162° H, -126° H):
+      // Los vecinos se conectan a las caras del pentágono central (#0), pero como el ángulo interior es 108°
+      // (3 x 108° = 324° != 360°), aparece la brecha geométrica de 36° entre vecinos.
+      const deg = (d: number) => (d * Math.PI) / 180;
+      const coords = [
+        { x: 0, y: 0, rot: 0 },
+        {
+          x: dist * Math.cos(deg(-126)),
+          y: dist * Math.sin(deg(-126)),
+          rot: 36, // Su cara +18°+36°=+54° (Macho) entra en -126° (Hembra) de #0
+        },
+        {
+          x: dist * Math.cos(deg(-54)),
+          y: dist * Math.sin(deg(-54)),
+          rot: -36, // Su cara +162°-36°=+126° (Hembra) recibe -54° (Macho) de #0
+        },
+        {
+          x: dist * Math.cos(deg(162)),
+          y: dist * Math.sin(deg(162)),
+          rot: -36, // Su cara +18°-36°=-18° (Macho) entra en +162° (Hembra) de #0
+        },
+        {
+          x: dist * Math.cos(deg(18)),
+          y: dist * Math.sin(deg(18)),
+          rot: 36, // Su cara +162°+36°=-162° (Hembra) recibe +18° (Macho) de #0
+        },
+      ];
+      return coords.slice(0, memberCount);
+    }
+
+    // Hexágono Tipo Panal (Óptimo en la naturaleza: teselación 100% continua a 120° sin rotar piezas)
     const sin60 = Math.sqrt(3) / 2;
     const coords = [
       { x: 0, y: 0, rot: 0 },
@@ -269,11 +364,28 @@ export function BadgesSection() {
       { x: dist, y: 0, rot: 0 },
     ];
     return coords.slice(0, memberCount);
-  }, [geometry, cavityDiameterMm, memberCount, assembledOnTable]);
+  }, [geometry, singleFrameGeometryData, memberCount, assembledOnTable]);
+
+  // ViewBox adaptativo según el tamaño y geometría
+  const groupViewBox = useMemo(() => {
+    if (geometry === 'triangulo') {
+      return '-145 -98 275 215';
+    }
+    if (woodCenterDiameterMm >= 41) {
+      return '-122 -102 244 178';
+    }
+    return '-110 -94 220 162';
+  }, [geometry, woodCenterDiameterMm]);
 
   const currentLevel = PEDAGOGICAL_LEVELS[levelId];
 
-  // Renderizado vectorial de una chapita híbrida (Marco conector PLA + Orificio interno + Centro de madera)
+  // Renderizado vectorial de una chapita híbrida:
+  // - Marco conector PLA con Cola de Milano + Orificio interno parametrizado
+  // - Centro de madera de 3 mm con:
+  //   1. Arriba: Nombre del Equipo (secondaryText)
+  //   2. Centro: Ícono Emblema
+  //   3. Debajo del ícono: Nombre del Estudiante (primaryText)
+  //   4. Abajo: Logo oficial de MakerBox
   const renderBadgeSvgGroup = (
     member: BadgeMemberConfig,
     key: string | number,
@@ -284,11 +396,18 @@ export function BadgesSection() {
     const woodRadius = woodCenterDiameterMm / 2;
     const { polyStr, rCav, holeSpec } = singleFrameGeometryData;
     const iconInfo = BADGE_ICONS[member.icon] ?? BADGE_ICONS.paw;
-    const iconScale = (woodCenterDiameterMm / 36) * 0.68;
+    const iconScale = (woodCenterDiameterMm / 36) * 0.56;
+
+    const secondaryLabel = (member.secondaryText || teamName).trim();
+    const primaryLabel = (member.primaryText || 'NOMBRE').trim();
+
+    const logoWidthMm = woodRadius * 0.88;
+    const logoTopY = woodRadius * 0.45;
+    const logoPathD = buildMakerboxLogoVectorPath(0, logoTopY, logoWidthMm);
 
     return (
       <g key={key} transform={`translate(${tx.toFixed(2)}, ${ty.toFixed(2)})`}>
-        {/* Cuerpo exterior conector PLA con encajes Cola de Milano / Engranaje */}
+        {/* Marco exterior conector PLA + Orificio interno (giran juntos si el polígono se invierte) */}
         <g transform={rotDeg !== 0 ? `rotate(${rotDeg})` : undefined}>
           <polygon
             points={polyStr}
@@ -297,23 +416,23 @@ export function BadgesSection() {
             strokeWidth="0.45"
             strokeLinejoin="round"
           />
-        </g>
 
-        {/* Orificio para argolla de llavero POR DENTRO del borde superior (sin sobresalir del panal) */}
-        <circle
-          cx="0"
-          cy={-holeSpec.offsetFromCenterMm}
-          r={holeSpec.holeRadiusMm + 0.6}
-          fill="rgba(15, 23, 42, 0.25)"
-        />
-        <circle
-          cx="0"
-          cy={-holeSpec.offsetFromCenterMm}
-          r={holeSpec.holeRadiusMm}
-          fill="#0f172a"
-          stroke="rgba(255,255,255,0.55)"
-          strokeWidth="0.35"
-        />
+          {/* Orificio interno para argolla de llavero (Ø 3.8 a 4.4 mm) */}
+          <circle
+            cx="0"
+            cy={-holeSpec.offsetFromCenterMm}
+            r={holeSpec.holeRadiusMm + 0.55}
+            fill="rgba(15, 23, 42, 0.25)"
+          />
+          <circle
+            cx="0"
+            cy={-holeSpec.offsetFromCenterMm}
+            r={holeSpec.holeRadiusMm}
+            fill="#0f172a"
+            stroke="rgba(255,255,255,0.65)"
+            strokeWidth="0.35"
+          />
+        </g>
 
         {/* Bisel de retención superior Press-Fit */}
         <circle
@@ -346,9 +465,27 @@ export function BadgesSection() {
           opacity="0.65"
         />
 
-        {/* Ícono Central Grabado */}
+        {/* 1. ARRIBA (Sobre el ícono): Nombre del Equipo / Texto Secundario */}
+        {secondaryLabel && (
+          <text
+            x="0"
+            y={-woodRadius * 0.52}
+            textAnchor="middle"
+            fill="#78350f"
+            fontSize={Math.min(
+              2.5,
+              Math.max(1.8, (woodCenterDiameterMm * 0.45) / Math.max(7, secondaryLabel.length))
+            )}
+            fontWeight="bold"
+            fontFamily="Arial, sans-serif"
+          >
+            {secondaryLabel.toUpperCase()}
+          </text>
+        )}
+
+        {/* 2. CENTRO: Ícono Central Grabado */}
         <g
-          transform={`translate(0, ${(-woodRadius * 0.18).toFixed(
+          transform={`translate(0, ${(-woodRadius * 0.13).toFixed(
             2
           )}) scale(${iconScale.toFixed(3)})`}
           stroke="#451a03"
@@ -362,42 +499,29 @@ export function BadgesSection() {
           ))}
         </g>
 
-        {/* Texto Principal */}
+        {/* 3. DEBAJO DEL ÍCONO: Nombre del Estudiante o Mascota */}
         <text
           x="0"
-          y={woodRadius * 0.43}
+          y={woodRadius * 0.34}
           textAnchor="middle"
           fill="#451a03"
           fontSize={Math.min(
-            4.1,
-            Math.max(2.5, (woodCenterDiameterMm * 0.6) / Math.max(5, member.primaryText.length))
+            3.65,
+            Math.max(2.3, (woodCenterDiameterMm * 0.54) / Math.max(5, primaryLabel.length))
           )}
           fontWeight="bold"
           fontFamily="Arial, sans-serif"
         >
-          {(member.primaryText || 'NOMBRE').toUpperCase()}
+          {primaryLabel.toUpperCase()}
         </text>
 
-        {/* Texto Secundario */}
-        {member.secondaryText && (
-          <text
-            x="0"
-            y={woodRadius * 0.65}
-            textAnchor="middle"
-            fill="#78350f"
-            fontSize={Math.min(
-              2.6,
-              Math.max(
-                1.9,
-                (woodCenterDiameterMm * 0.5) / Math.max(7, member.secondaryText.length)
-              )
-            )}
-            fontWeight="600"
-            fontFamily="Arial, sans-serif"
-          >
-            {member.secondaryText}
-          </text>
-        )}
+        {/* 4. ABAJO (Bajo el nombre del estudiante): Logo Oficial de MakerBox */}
+        <path
+          d={logoPathD}
+          fill="#451a03"
+          fillRule="evenodd"
+          opacity="0.92"
+        />
       </g>
     );
   };
@@ -410,17 +534,20 @@ export function BadgesSection() {
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-fuchsia-500/20 border border-fuchsia-300/30 text-fuchsia-200 text-xs font-semibold tracking-wide uppercase">
               <Award className="w-3.5 h-3.5" />
-              Taller 4 · Co-creación de Chapitas Híbridas (Corte Láser + Impresión 3D PLA)
+              Taller 4 · Co-creación de Chapitas Híbridas (Falcon Design Space + 3D PLA)
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Estación de Diseño de Chapitas & Llaveros Conectables
+              Estación de Diseño de Chapitas & Panales Conectables
             </h2>
             <p className="text-purple-100/90 text-sm max-w-3xl leading-relaxed">
-              Diseña en equipo un set de chapitas o llaveros híbridos: un{' '}
-              <strong>centro de madera de {woodThicknessMm} mm</strong> grabado y cortado con láser
-              que encaja a presión (<em>press-fit</em>) dentro de un{' '}
-              <strong>marco conector impreso en 3D (PLA)</strong> con uniones{' '}
-              <strong>cola de milano</strong> y perforación interna para llavero.
+              Diseña en equipo un set de chapitas híbridas: un{' '}
+              <strong>
+                centro de madera de {FIXED_WOOD_THICKNESS_MM.toFixed(1)} mm (Ø{' '}
+                {woodCenterDiameterMm} mm)
+              </strong>{' '}
+              con el nombre del equipo, emblema, tu nombre y el <strong>logo MakerBox</strong> que
+              encaja a presión (<em>press-fit</em>) dentro de un{' '}
+              <strong>marco conector 3D (PLA)</strong> con encaje <strong>cola de milano</strong>.
             </p>
           </div>
 
@@ -431,7 +558,7 @@ export function BadgesSection() {
               className="inline-flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-sm bg-rose-500 hover:bg-rose-400 text-white shadow-lg shadow-rose-950/50 transition cursor-pointer"
             >
               <Scissors className="w-4 h-4" />
-              Descargar Centros Láser (.SVG)
+              Descargar {memberCount} Chapas (.SVG)
             </button>
             <button
               type="button"
@@ -439,7 +566,7 @@ export function BadgesSection() {
               className="inline-flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-sm bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-lg shadow-amber-950/40 transition cursor-pointer"
             >
               <Box className="w-4 h-4" />
-              Descargar Marcos 3D (.STL)
+              Descargar {memberCount} Marcos 3D (.STL)
             </button>
           </div>
         </div>
@@ -496,110 +623,160 @@ export function BadgesSection() {
         </div>
       </div>
 
-      {/* Layout Principal: Configuración del Equipo y Calce (Izquierda) + Previsualización Interactiva (Derecha) */}
+      {/* Layout Principal: Configuración del Equipo y Sliders (Izquierda) + Previsualización Interactiva y Tiempos (Derecha) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Columna Izquierda: Configuración del Equipo, IA y Parámetros de Calce */}
+        {/* Columna Izquierda: Configuración del Equipo, Botón IA Llamativo, Geometría y Sliders */}
         <div className="lg:col-span-5 space-y-5">
           {/* Tarjeta de Configuración del Equipo y Geometría Conectora */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-purple-600" />
-                <h3 className="font-bold text-slate-900 text-base">
-                  Datos del Equipo y Marco Conector
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAiPanel((v) => !v)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white text-xs font-extrabold shadow-xs transition cursor-pointer"
-              >
-                <Wand2 className="w-3.5 h-3.5" />
-                Sugerir Ideas con IA
-              </button>
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              <Users className="w-5 h-5 text-purple-600" />
+              <h3 className="font-bold text-slate-900 text-base">
+                Datos del Equipo y Asistente Creativo IA
+              </h3>
             </div>
 
-            {/* Panel desplegable de Sugerencias con IA */}
-            {showAiPanel && (
-              <div className="rounded-xl bg-amber-50/90 border border-amber-200 p-3.5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold text-amber-900 flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-amber-600" />
-                    Elige qué les gusta al grupo para generar 3 ideas:
-                  </span>
+            {/* Súper Botón Llamativo de Sugerir Ideas con IA (Google Gemini) */}
+            <div className="rounded-2xl bg-gradient-to-r from-amber-500 via-orange-500 to-fuchsia-600 p-0.5 shadow-lg">
+              <div className="bg-gradient-to-br from-amber-50 via-orange-50/90 to-fuchsia-50 rounded-[14px] p-3.5 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500 via-orange-500 to-fuchsia-600 text-white flex items-center justify-center shadow-md shrink-0 animate-pulse">
+                      <Wand2 className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-fuchsia-600 text-white">
+                          ✨ IA Creativa Gemini
+                        </span>
+                        <span className="text-[10px] font-bold text-amber-900">
+                          ¡Inspira a tu equipo!
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-black text-slate-900 leading-tight mt-0.5">
+                        ¿Sin ideas de nombre o emblemas?
+                      </h4>
+                    </div>
+                  </div>
+
                   <button
                     type="button"
-                    onClick={() => setShowAiPanel(false)}
-                    className="text-[11px] font-bold text-amber-800 hover:underline cursor-pointer"
+                    onClick={() => setShowAiPanel((v) => !v)}
+                    className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-fuchsia-600 hover:from-amber-400 hover:to-fuchsia-500 text-white text-xs font-black shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
                   >
-                    Cerrar
+                    <Sparkles className="w-4 h-4" />
+                    {showAiPanel ? 'Ocultar IA' : '¡Sugerir Ideas con IA!'}
                   </button>
                 </div>
 
-                <div className="grid grid-cols-4 gap-1.5">
-                  {(
-                    [
-                      { id: 'animales', label: '🐾 Animales' },
-                      { id: 'espacio', label: '🚀 Espacio' },
-                      { id: 'deportes', label: '⚡ Deportes' },
-                      { id: 'ciencia', label: '⚛️ Ciencia' },
-                    ] as { id: IdeaThemeId; label: string }[]
-                  ).map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setSelectedTheme(t.id)}
-                      className={`py-1.5 px-2 rounded-lg text-xs font-bold transition cursor-pointer ${
-                        selectedTheme === t.id
-                          ? 'bg-amber-600 text-white shadow-2xs'
-                          : 'bg-white text-slate-700 border border-amber-200 hover:bg-amber-100/60'
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
+                {/* Panel desplegable de Sugerencias con IA */}
+                {showAiPanel && (
+                  <div className="pt-2 border-t border-amber-200/80 space-y-3">
+                    <div className="flex items-center justify-between text-[11px] text-amber-950 bg-white/80 px-2.5 py-1.5 rounded-lg border border-amber-200">
+                      <span className="font-bold flex items-center gap-1.5">
+                        <Bot className="w-3.5 h-3.5 text-fuchsia-600" />
+                        {aiAgentLabel}
+                      </span>
+                      <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        Activo
+                      </span>
+                    </div>
 
-                <div className="space-y-2">
-                  {AI_TEAM_IDEAS_BY_THEME[selectedTheme].map((idea, idx) => (
-                    <div
-                      key={idx}
-                      className="bg-white rounded-xl p-2.5 border border-amber-200/80 flex items-center justify-between gap-2"
-                    >
-                      <div className="space-y-0.5">
-                        <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                          <span>{idea.teamName}</span>
-                          <span className="text-[11px] font-normal text-slate-500">
-                            ({idea.icons.slice(0, memberCount).map((ic) => BADGE_ICONS[ic].emoji).join(' ')})
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-600">{idea.motto}</p>
-                      </div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {(
+                        [
+                          { id: 'animales', label: '🐾 Animales' },
+                          { id: 'espacio', label: '🚀 Espacio' },
+                          { id: 'deportes', label: '⚡ Deportes' },
+                          { id: 'ciencia', label: '⚛️ Ciencia' },
+                        ] as { id: IdeaThemeId; label: string }[]
+                      ).map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => handleSelectAiTheme(t.id)}
+                          className={`py-1.5 px-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                            selectedTheme === t.id
+                              ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-2xs'
+                              : 'bg-white text-slate-700 border border-amber-200 hover:bg-amber-100/60'
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Campo opcional para pedirle a Gemini un tema libre */}
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={customAiTopic}
+                        onChange={(e) => setCustomAiTopic(e.target.value)}
+                        placeholder="O escribe qué les gusta (ej. dinosaurios, fútbol, anime)..."
+                        className="flex-1 px-2.5 py-1.5 rounded-xl border border-amber-300 bg-white text-xs font-semibold text-slate-800 focus:outline-none focus:border-fuchsia-500"
+                      />
                       <button
                         type="button"
-                        onClick={() => handleApplyAiIdea(idea)}
-                        className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-bold shrink-0 transition cursor-pointer"
+                        disabled={aiLoading}
+                        onClick={handleGenerateAiIdeasWithGemini}
+                        className="px-3 py-1.5 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 disabled:opacity-60 text-white text-xs font-extrabold transition cursor-pointer flex items-center gap-1 shrink-0"
                       >
-                        Aplicar
+                        {aiLoading ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-3.5 h-3.5" />
+                        )}
+                        Generar con Gemini
                       </button>
                     </div>
-                  ))}
-                </div>
+
+                    <div className="space-y-2">
+                      {aiIdeas.map((idea, idx) => (
+                        <div
+                          key={idx}
+                          className="bg-white rounded-xl p-2.5 border border-amber-200/80 flex items-center justify-between gap-2 shadow-2xs"
+                        >
+                          <div className="space-y-0.5">
+                            <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                              <span>{idea.teamName}</span>
+                              <span className="text-[11px] font-normal text-slate-500">
+                                (
+                                {idea.icons
+                                  .slice(0, memberCount)
+                                  .map((ic) => BADGE_ICONS[ic]?.emoji || '⭐')
+                                  .join(' ')}
+                                )
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-600">{idea.motto}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleApplyAiIdea(idea)}
+                            className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-[11px] font-extrabold shrink-0 transition cursor-pointer"
+                          >
+                            Usar Idea
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
 
             {/* Nombre del Equipo y Cantidad de Integrantes */}
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
               <div className="sm:col-span-7 space-y-1">
                 <label className="block text-xs font-bold text-slate-700">
-                  Nombre del Equipo
+                  Nombre del Equipo (se graba sobre el ícono)
                 </label>
                 <input
                   type="text"
                   value={teamName}
                   onChange={(e) => handleTeamNameChange(e.target.value)}
                   placeholder="Ej. Equipo Alfa"
-                  maxLength={24}
+                  maxLength={22}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm font-semibold text-slate-900 focus:outline-none focus:border-purple-500"
                 />
               </div>
@@ -627,13 +804,13 @@ export function BadgesSection() {
               </div>
             </div>
 
-            {/* Geometría del Marco Conector */}
-            <div className="space-y-2 pt-1">
+            {/* Geometría del Marco Conector: Hexágono (Panal), Pentágono y Triángulo */}
+            <div className="space-y-2.5 pt-1">
               <label className="block text-xs font-bold text-slate-700">
-                Geometría del Marco Conector 3D (Elección del Grupo)
+                Geometría del Marco Conector 3D (Experimento de Eficiencia Natural)
               </label>
               <div className="grid grid-cols-1 gap-2">
-                {(['hexagono', 'engranaje', 'circular'] as FrameGeometryId[]).map((geoId) => {
+                {(['hexagono', 'pentagono', 'triangulo'] as FrameGeometryId[]).map((geoId) => {
                   const g = FRAME_GEOMETRIES[geoId];
                   const active = geometry === geoId;
                   return (
@@ -643,20 +820,31 @@ export function BadgesSection() {
                       onClick={() => setGeometry(geoId)}
                       className={`text-left p-3 rounded-xl border-2 transition cursor-pointer flex items-start justify-between gap-3 ${
                         active
-                          ? 'bg-purple-50/80 border-purple-600 shadow-2xs'
+                          ? 'bg-purple-50/90 border-purple-600 shadow-2xs'
                           : 'bg-slate-50/60 border-slate-200 hover:border-purple-300'
                       }`}
                     >
-                      <div className="space-y-0.5">
-                        <div className="font-extrabold text-xs sm:text-sm text-slate-900 flex items-center gap-2">
-                          <span>
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-extrabold text-xs sm:text-sm text-slate-900">
                             {geoId === 'hexagono'
                               ? '⬢'
-                              : geoId === 'engranaje'
-                                ? '⚙️'
-                                : '⭕'}
+                              : geoId === 'pentagono'
+                                ? '⬠'
+                                : '▲'}{' '}
+                            {g.name}
                           </span>
-                          <span>{g.name}</span>
+                          <span
+                            className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                              geoId === 'hexagono'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : geoId === 'pentagono'
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                  : 'bg-sky-100 text-sky-800 border border-sky-300'
+                            }`}
+                          >
+                            {g.natureBadge}
+                          </span>
                         </div>
                         <p className="text-[11px] text-slate-600 leading-relaxed">
                           {g.description}
@@ -673,16 +861,51 @@ export function BadgesSection() {
                   );
                 })}
               </div>
+
+              {/* Cápsula Explicativa: ¿Por qué el Hexágono es la forma más eficiente en la naturaleza? */}
+              <div className="rounded-xl bg-emerald-50/90 border border-emerald-200 p-3.5 space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-950">
+                  <Info className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    ¿Por qué el Hexágono es la forma más eficiente en la naturaleza?
+                  </span>
+                </div>
+                <p className="text-[11px] text-emerald-900 leading-relaxed">
+                  {FRAME_GEOMETRIES[geometry].whyEfficiencyNote}
+                </p>
+                <div className="grid grid-cols-3 gap-1.5 pt-1">
+                  {geometryComparison.map(({ id, info, telemetry: m }) => (
+                    <div
+                      key={id}
+                      className={`rounded-lg p-2 text-center border ${
+                        geometry === id
+                          ? 'bg-white border-emerald-500 shadow-2xs'
+                          : 'bg-emerald-100/50 border-emerald-200/80 opacity-80'
+                      }`}
+                    >
+                      <div className="text-[10px] font-extrabold text-slate-900">
+                        {info.shortName} ({info.interiorAngleDeg}°)
+                      </div>
+                      <div className="text-[11px] font-black text-emerald-700">
+                        {m.plaWeightPerFrameGrams} g PLA / marco
+                      </div>
+                      <div className="text-[9px] text-slate-600 font-semibold">
+                        {info.tessellatesPlane ? 'Sin huecos (360°)' : 'Hueco de 36°'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* 2. Parámetros Técnicos de Calce (Editables) */}
+          {/* 2. Parámetros Técnicos con Barras Deslizantes (Sliders) */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <Settings2 className="w-5 h-5 text-sky-600" />
+                <Sliders className="w-5 h-5 text-sky-600" />
                 <h3 className="font-bold text-slate-900 text-base">
-                  2. Parámetros Técnicos de Calce (Press-Fit)
+                  2. Parámetros Técnicos (Barras Deslizantes)
                 </h3>
               </div>
               <button
@@ -695,93 +918,105 @@ export function BadgesSection() {
               </button>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1">
-                <label className="block text-[11px] font-bold text-slate-600">
-                  Centro Madera (Ø)
-                </label>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    min={26}
-                    max={48}
-                    step={1}
-                    value={woodCenterDiameterMm}
-                    onChange={(e) =>
-                      setWoodCenterDiameterMm(
-                        Math.max(26, Math.min(48, Number(e.target.value) || 36))
-                      )
-                    }
-                    className="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-sm font-extrabold text-slate-900 bg-white"
-                  />
-                  <span className="text-xs font-bold text-slate-500">mm</span>
+            <div className="space-y-4">
+              {/* Slider 1: Diámetro del centro de madera (36 a 44 mm) */}
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-extrabold text-slate-800">
+                    1. Diámetro Centro de Madera (Ø)
+                  </label>
+                  <span className="text-xs font-black text-purple-700 bg-purple-100 px-2.5 py-0.5 rounded-full">
+                    {woodCenterDiameterMm} mm
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={36}
+                  max={44}
+                  step={1}
+                  value={woodCenterDiameterMm}
+                  onChange={(e) => setWoodCenterDiameterMm(Number(e.target.value))}
+                  className="w-full accent-purple-600 cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] font-semibold text-slate-500">
+                  <span>36 mm (Estándar)</span>
+                  <span>40 mm</span>
+                  <span>44 mm (Grande)</span>
                 </div>
               </div>
 
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1">
-                <label className="block text-[11px] font-bold text-slate-600">
-                  Espesor Madera
-                </label>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    min={2.0}
-                    max={4.5}
-                    step={0.1}
-                    value={woodThicknessMm}
-                    onChange={(e) =>
-                      setWoodThicknessMm(
-                        Math.max(2.0, Math.min(4.5, Number(e.target.value) || 3.0))
-                      )
-                    }
-                    className="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-sm font-extrabold text-slate-900 bg-white"
-                  />
-                  <span className="text-xs font-bold text-slate-500">mm</span>
+              {/* Slider 2: Diámetro del orificio interno para llavero (3.8 a 4.4 mm) */}
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-extrabold text-slate-800">
+                    2. Diámetro del Orificio Interno (Llavero)
+                  </label>
+                  <span className="text-xs font-black text-sky-700 bg-sky-100 px-2.5 py-0.5 rounded-full">
+                    Ø {holeDiameterMm.toFixed(1)} mm
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={3.8}
+                  max={4.4}
+                  step={0.1}
+                  value={holeDiameterMm}
+                  onChange={(e) => setHoleDiameterMm(Number(e.target.value))}
+                  className="w-full accent-sky-600 cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] font-semibold text-slate-500">
+                  <span>3.8 mm</span>
+                  <span>4.1 mm</span>
+                  <span>4.4 mm</span>
                 </div>
               </div>
 
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1">
-                <label className="block text-[11px] font-bold text-slate-600">
-                  Tolerancia (Clearance)
-                </label>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    min={0.05}
-                    max={0.4}
-                    step={0.05}
-                    value={clearanceMm}
-                    onChange={(e) =>
-                      setClearanceMm(
-                        Math.max(0.05, Math.min(0.4, Number(e.target.value) || 0.15))
-                      )
-                    }
-                    className="w-full px-2 py-1.5 rounded-lg border border-slate-300 text-sm font-extrabold text-slate-900 bg-white"
-                  />
-                  <span className="text-xs font-bold text-slate-500">mm</span>
+              {/* Slider 3: Tamaño del encaje Cola de Milano (1.8 a 3.4 mm) */}
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-extrabold text-slate-800">
+                    3. Tamaño Encaje Cola de Milano
+                  </label>
+                  <span className="text-xs font-black text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full">
+                    {dovetailSizeMm.toFixed(1)} mm
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={1.8}
+                  max={3.4}
+                  step={0.2}
+                  value={dovetailSizeMm}
+                  onChange={(e) => setDovetailSizeMm(Number(e.target.value))}
+                  className="w-full accent-amber-600 cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] font-semibold text-slate-500">
+                  <span>1.8 mm (Compacta)</span>
+                  <span>2.4 mm (Óptima)</span>
+                  <span>3.4 mm (Profunda)</span>
                 </div>
               </div>
             </div>
 
-            {/* Resumen de ingeniería de la cavidad 3D */}
+            {/* Parámetros Fijos por Material y Ajuste Press-Fit */}
             <div className="rounded-xl bg-sky-50/80 border border-sky-200 p-3 text-[11px] text-sky-950 space-y-1">
-              <div className="font-extrabold flex items-center justify-between">
-                <span>Cálculo Automático de Cavidad 3D (PLA):</span>
+              <div className="font-extrabold flex flex-wrap items-center justify-between gap-1">
+                <span>Parámetros Fijos de Calce Press-Fit:</span>
                 <span className="text-sky-700 font-mono">
-                  Ø {cavityDiameterMm} mm × {cavityDepthMm} mm
+                  Madera {FIXED_WOOD_THICKNESS_MM.toFixed(1)} mm · Tolerancia{' '}
+                  {FIXED_PRESS_FIT_CLEARANCE_MM} mm
                 </span>
               </div>
               <p className="text-sky-900/80 leading-relaxed">
-                Altura marco PLA: <strong>5.0 mm</strong> · Tope inferior: <strong>1.0 mm</strong> ·
-                Cavidad madera: <strong>{cavityDepthMm} mm</strong> · Bisel superior{' '}
-                <em>press-fit</em>: <strong>0.9 mm</strong> · Orificio llavero interno:{' '}
-                <strong>Ø {singleFrameGeometryData.holeSpec.holeDiameterMm} mm</strong>.
+                Cavidad PLA generada automáticamente: <strong>Ø {cavityDiameterMm} mm</strong> ×{' '}
+                <strong>{cavityDepthMm} mm</strong> (con tope inferior de 1.0 mm y bisel superior de
+                retención para encaje a presión sin pegamento).
               </p>
             </div>
           </div>
         </div>
 
-        {/* Columna Derecha: Previsualización en Pantalla (Grupal Panal / Individual / Láser) */}
+        {/* Columna Derecha: Previsualización en Pantalla + Tiempos de Fabricación + Descargas */}
         <div className="lg:col-span-7 space-y-5">
           <div className="bg-slate-900 rounded-2xl border border-slate-800 shadow-xl overflow-hidden">
             {/* Barra de pestañas de previsualización */}
@@ -797,7 +1032,7 @@ export function BadgesSection() {
                   }`}
                 >
                   <Hexagon className="w-3.5 h-3.5" />
-                  Vista Grupal (Panal en Mesa)
+                  Vista Grupal ({FRAME_GEOMETRIES[geometry].shortName})
                 </button>
                 <button
                   type="button"
@@ -821,7 +1056,7 @@ export function BadgesSection() {
                   }`}
                 >
                   <Eye className="w-3.5 h-3.5" />
-                  Plano Corte Láser (.SVG)
+                  Plano Falcon Design Space (.SVG)
                 </button>
               </div>
 
@@ -831,7 +1066,7 @@ export function BadgesSection() {
                   onClick={() => setAssembledOnTable((v) => !v)}
                   className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-200 text-xs font-bold transition cursor-pointer"
                 >
-                  {assembledOnTable ? '🔓 Separar Chapitas' : '🧲 Conectar en Panal'}
+                  {assembledOnTable ? '🔓 Separar Chapitas' : '🧲 Conectar Cola de Milano'}
                 </button>
               )}
             </div>
@@ -839,7 +1074,7 @@ export function BadgesSection() {
             {/* Contenido del Lienzo de Previsualización */}
             <div className="p-4 bg-gradient-to-b from-slate-900 to-slate-950 min-h-[395px] flex flex-col justify-between">
               {previewTab === 'grupal' && (
-                <svg viewBox="-100 -88 200 150" className="w-full h-[355px] select-none">
+                <svg viewBox={groupViewBox} className="w-full h-[355px] select-none">
                   <defs>
                     <pattern
                       id="badgeTableGrid"
@@ -855,7 +1090,7 @@ export function BadgesSection() {
                       />
                     </pattern>
                   </defs>
-                  <rect x="-100" y="-88" width="200" height="150" fill="url(#badgeTableGrid)" />
+                  <rect x="-180" y="-140" width="360" height="280" fill="url(#badgeTableGrid)" />
 
                   {activeMembers.map((member, idx) => {
                     const pos = groupAssemblyPositions[idx] ?? { x: 0, y: 0, rot: 0 };
@@ -874,11 +1109,11 @@ export function BadgesSection() {
                       <span className="text-[11px] font-bold text-slate-300 mb-1">
                         Chapita #{idx + 1}: {member.primaryText || `Integrante ${idx + 1}`}
                       </span>
-                      <svg viewBox="-34 -34 68 68" className="w-36 h-36">
+                      <svg viewBox="-46 -46 92 92" className="w-36 h-36">
                         {renderBadgeSvgGroup(member, member.id, 0, 0, 0)}
                       </svg>
                       <span className="text-[10px] text-slate-400 font-mono">
-                        Cola de Milano + Madera Ø{woodCenterDiameterMm}mm
+                        {FRAME_GEOMETRIES[geometry].shortName} · Ø{woodCenterDiameterMm}mm
                       </span>
                     </div>
                   ))}
@@ -894,51 +1129,102 @@ export function BadgesSection() {
                     }}
                   />
                   <p className="text-xs text-slate-600 mt-3 font-medium text-center">
-                    Vista previa del archivo <strong>.SVG</strong>: Círculos exteriores de corte en{' '}
-                    <strong className="text-red-600">#FF0000 (0.1 mm)</strong> e íconos/textos de
-                    grabado en <strong className="text-blue-600">#0000FF</strong>.
+                    Archivo <strong>.SVG para Falcon Design Space</strong> con las{' '}
+                    <strong>{memberCount} chapas</strong>: Corte exterior en{' '}
+                    <strong className="text-red-600">#FF0000 (0.1 mm)</strong> y grabado (Equipo +
+                    Ícono + Estudiante + Logo MakerBox) en{' '}
+                    <strong className="text-blue-600">#0000FF</strong>.
                   </p>
                 </div>
               )}
 
-              {/* Pie informativo del visor */}
-              <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
-                <span>
-                  <strong>Unión:</strong> {FRAME_GEOMETRIES[geometry].name} ·{' '}
-                  <strong>Orificio Llavero:</strong> Interno (Ø
-                  {singleFrameGeometryData.holeSpec.holeDiameterMm} mm)
-                </span>
-                <span className="text-amber-300 font-semibold">
-                  Encaje Press-Fit: Madera Ø{woodCenterDiameterMm} mm → Cavidad PLA Ø
-                  {cavityDiameterMm} mm
-                </span>
+              {/* Barra de Tiempos Estimados de Impresión 3D y Corte/Grabado Láser bajo la Vista Previa */}
+              <div className="mt-3 pt-3 border-t border-slate-800 space-y-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Tarjeta Tiempo Corte y Grabado Láser (Falcon Design Space) */}
+                  <div className="rounded-xl bg-rose-950/50 border border-rose-500/30 px-3.5 py-2.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-rose-500/20 border border-rose-400/30 flex items-center justify-center text-rose-300 shrink-0">
+                        <Flame className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-rose-300 block">
+                          Tiempo Corte + Grabado Láser
+                        </span>
+                        <span className="text-xs font-extrabold text-white">
+                          Falcon Design Space ({memberCount} chapas)
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-sm font-black text-rose-300 block">
+                        ~{telemetry.laserTotalTimeFormatted}
+                      </span>
+                      <span className="text-[10px] text-rose-200/80 font-mono">
+                        ({telemetry.laserTimePerBadgeSec} s c/u)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Tarjeta Tiempo Impresión 3D (PLA) */}
+                  <div className="rounded-xl bg-indigo-950/60 border border-indigo-400/30 px-3.5 py-2.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 shrink-0">
+                        <Clock className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300 block">
+                          Tiempo Impresión 3D PLA
+                        </span>
+                        <span className="text-xs font-extrabold text-white">
+                          {memberCount} Marcos ({telemetry.plaTotalWeightGrams} g PLA)
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-sm font-black text-amber-300 block">
+                        ~{telemetry.printTotalTimeFormatted}
+                      </span>
+                      <span className="text-[10px] text-indigo-200/80 font-mono">
+                        ({telemetry.printTimePerFrameMin} min · {telemetry.plaWeightPerFrameGrams} g c/u)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
+                  <span>
+                    <strong>Geometría:</strong> {FRAME_GEOMETRIES[geometry].shortName} ·{' '}
+                    <strong>Cola Milano:</strong> {dovetailSizeMm.toFixed(1)} mm ·{' '}
+                    <strong>Orificio:</strong> Ø{holeDiameterMm.toFixed(1)} mm
+                  </span>
+                  <span className="text-emerald-300 font-semibold">
+                    Aprovechamiento Geométrico: {telemetry.efficiencyScorePct}% (Madera Ø
+                    {woodCenterDiameterMm} mm → Cavidad Ø{cavityDiameterMm} mm)
+                  </span>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* 5. Panel de Descarga de Archivos de Fabricación (.SVG y .STL) */}
+          {/* 5. Panel de Descarga de Archivos de Fabricación (.SVG y .STL siempre con todas las piezas) */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
                   <Layers className="w-5 h-5 text-emerald-600" />
-                  5. Descarga de Archivos de Fabricación (Láser + 3D)
+                  5. Descarga de Archivos de Fabricación (Equipo Completo: {memberCount} Piezas)
                 </h3>
                 <p className="text-xs text-slate-600">
-                  Archivos parametrizados en milímetros listos para LightBurn (corte/grabado láser) y
-                  laminador 3D (Bambu Studio / Cura / PrusaSlicer).
+                  Archivos parametrizados en milímetros listos para{' '}
+                  <strong>Falcon Design Space</strong> (corte y grabado láser de las {memberCount}{' '}
+                  chapas) y laminador 3D (con los {memberCount} marcos conectores en PLA).
                 </p>
               </div>
 
-              <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={stlExportAll}
-                  onChange={(e) => setStlExportAll(e.target.checked)}
-                  className="rounded accent-purple-600"
-                />
-                Incluir los {memberCount} marcos en el .STL
-              </label>
+              <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 shrink-0">
+                ✓ Incluye las {memberCount} chapas y {memberCount} marcos
+              </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -948,7 +1234,7 @@ export function BadgesSection() {
                 className="py-3.5 px-4 rounded-xl font-bold text-sm bg-rose-600 hover:bg-rose-500 text-white shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
               >
                 <Download className="w-4 h-4" />
-                Descargar Centros para Corte Láser (.SVG)
+                Descargar {memberCount} Centros para Falcon Design Space (.SVG)
               </button>
 
               <button
@@ -957,7 +1243,7 @@ export function BadgesSection() {
                 className="py-3.5 px-4 rounded-xl font-bold text-sm bg-indigo-600 hover:bg-indigo-500 text-white shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
               >
                 <Box className="w-4 h-4" />
-                Descargar Marcos Conectores 3D (.STL)
+                Descargar {memberCount} Marcos Conectores 3D (.STL)
               </button>
             </div>
           </div>
@@ -970,11 +1256,12 @@ export function BadgesSection() {
           <div>
             <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-amber-500" />
-              3. Personalización de cada Chapita (Centro de Madera de {woodCenterDiameterMm} mm)
+              3. Personalización de cada Chapita (Centro de Madera de Ø {woodCenterDiameterMm} mm)
             </h3>
             <p className="text-xs text-slate-600">
-              Completa los 3 campos de cada integrante: texto principal (nombre o mascota), texto
-              secundario (equipo o teléfono) y el emblema vectorial para grabar con láser.
+              Cada chapa graba automáticamente: <strong>Nombre del Equipo arriba</strong>,{' '}
+              <strong>Emblema al centro</strong>, <strong>Nombre del Estudiante abajo</strong> y el{' '}
+              <strong>Logo Oficial de MakerBox en la base</strong>.
             </p>
           </div>
           <span className="text-xs font-bold text-purple-700 bg-purple-50 border border-purple-200 px-3 py-1 rounded-full">
@@ -1016,10 +1303,10 @@ export function BadgesSection() {
                 </div>
               </div>
 
-              {/* Campo 1: Texto Principal */}
+              {/* Campo 1: Texto Principal (Bajo el ícono y sobre el logo MakerBox) */}
               <div className="space-y-1">
                 <label className="block text-[11px] font-bold text-slate-700">
-                  1. Texto Principal (Nombre estudiante o mascota)
+                  1. Nombre Estudiante o Mascota (Bajo el ícono)
                 </label>
                 <input
                   type="text"
@@ -1031,10 +1318,10 @@ export function BadgesSection() {
                 />
               </div>
 
-              {/* Campo 2: Texto Secundario (Opcional) */}
+              {/* Campo 2: Texto Secundario (Sobre el ícono) */}
               <div className="space-y-1">
                 <label className="block text-[11px] font-bold text-slate-700">
-                  2. Texto Secundario (Equipo o teléfono mascota)
+                  2. Nombre del Equipo o Contacto (Sobre el ícono)
                 </label>
                 <input
                   type="text"
