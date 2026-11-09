@@ -4,7 +4,6 @@ import React, { useMemo, useState } from 'react';
 import {
   Award,
   Box,
-  CheckCircle2,
   Download,
   Eye,
   GraduationCap,
@@ -29,6 +28,8 @@ import {
   FrameGeometryId,
   generateBadgesConnectorStl,
   generateBadgesLaserSvg,
+  getBadgeHoneycombApothem,
+  getInternalKeychainHoleSpec,
   IdeaThemeId,
   PEDAGOGICAL_LEVELS,
   PedagogicalLevelId,
@@ -46,38 +47,38 @@ const INITIAL_MEMBERS: BadgeMemberConfig[] = [
   },
   {
     id: 2,
-    primaryText: 'Mateo',
-    secondaryText: 'Equipo Alfa',
-    icon: 'rocket',
-    plaColorHex: '#f97316',
-  },
-  {
-    id: 3,
     primaryText: 'Valentina',
     secondaryText: 'Equipo Alfa',
     icon: 'star',
     plaColorHex: '#10b981',
   },
   {
-    id: 4,
-    primaryText: 'Lucas',
+    id: 3,
+    primaryText: 'Mateo',
     secondaryText: 'Equipo Alfa',
-    icon: 'robot',
-    plaColorHex: '#7c3aed',
+    icon: 'rocket',
+    plaColorHex: '#f97316',
   },
   {
-    id: 5,
+    id: 4,
     primaryText: 'Martina',
     secondaryText: 'Equipo Alfa',
     icon: 'atom',
     plaColorHex: '#e11d48',
+  },
+  {
+    id: 5,
+    primaryText: 'Lucas',
+    secondaryText: 'Equipo Alfa',
+    icon: 'robot',
+    plaColorHex: '#7c3aed',
   },
 ];
 
 export function BadgesSection() {
   const [levelId, setLevelId] = useState<PedagogicalLevelId>('nivel1');
   const [teamName, setTeamName] = useState<string>('Equipo Alfa');
-  const [memberCount, setMemberCount] = useState<number>(3);
+  const [memberCount, setMemberCount] = useState<number>(5);
   const [geometry, setGeometry] = useState<FrameGeometryId>('hexagono');
 
   // Parámetros Técnicos de Calce (editables)
@@ -201,60 +202,78 @@ export function BadgesSection() {
     URL.revokeObjectURL(url);
   };
 
-  // Pre-compute outer contour SVG polygon points for a single badge in local mm
-  const singleFramePolygonPoints = useMemo(() => {
+  // Pre-compute outer contour SVG polygon points & internal keychain hole spec
+  const singleFrameGeometryData = useMemo(() => {
     const rCav = cavityDiameterMm / 2;
-    const pts = computeOuterFrameContourPoints(geometry, rCav, clearanceMm, 180);
-    const polyStr = pts.map((p) => `${p.x.toFixed(2)},${(-p.y).toFixed(2)}`).join(' ');
-    const minY = Math.min(...pts.map((p) => -p.y));
-    return { polyStr, minY, rCav };
+    const pts = computeOuterFrameContourPoints(geometry, rCav, clearanceMm);
+    // Usamos (p.x, p.y) directamente para que las caras k=0,1,2 (+Macho) y k=3,4,5 (-Hembra)
+    // coincidan exactamente con las direcciones de traslación de la red tipo panal.
+    const polyStr = pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
+    const holeSpec = getInternalKeychainHoleSpec(geometry, rCav);
+    return { polyStr, rCav, holeSpec };
   }, [geometry, cavityDiameterMm, clearanceMm]);
 
-  // Calculate positions for the Group Honeycomb / Gear / Medallion assembly view
+  // Posiciones exactas de acople en la red tipo Panal (sin superposición, calzando Cola de Milano Macho en Hembra)
   const groupAssemblyPositions = useMemo(() => {
     const rCav = cavityDiameterMm / 2;
-    const baseOuterR = rCav + 5.2;
-    const gap = assembledOnTable ? 0.4 : 18.0;
+    const apothem = getBadgeHoneycombApothem(rCav);
+    // Cuando están conectadas en panal, la distancia entre centros a través de cualquier cara plana
+    // es exactamente 2 * apothem (+ una línea fina de 0.35 mm para distinguir visualmente la junta cola de milano).
+    const gap = assembledOnTable ? 0.35 : 15.0;
+    const dist = 2 * apothem + gap;
 
-    if (geometry === 'hexagono') {
-      // Honeycomb cluster offsets (flat face-to-face distance = 2 * apothem)
-      const dist = 2 * baseOuterR + gap;
+    if (geometry === 'engranaje') {
+      // Para engranajes de 12 dientes (paso 30°):
+      // El engranaje central (rot=0°) engrana diente-con-valle con vecinos (rot=15°) ubicados
+      // en ángulos múltiplos de 30° (-120°, -30°, +150°, +60°) separados 90° entre sí para no chocar.
       const coords = [
         { x: 0, y: 0, rot: 0 },
-        { x: dist * Math.cos(Math.PI / 6), y: -dist * Math.sin(Math.PI / 6), rot: 0 },
-        { x: -dist * Math.cos(Math.PI / 6), y: -dist * Math.sin(Math.PI / 6), rot: 0 },
-        { x: dist * Math.cos(Math.PI / 6), y: dist * Math.sin(Math.PI / 6), rot: 0 },
-        { x: -dist * Math.cos(Math.PI / 6), y: dist * Math.sin(Math.PI / 6), rot: 0 },
-      ];
-      return coords.slice(0, memberCount);
-    } else if (geometry === 'engranaje') {
-      // Meshing gears (12 teeth -> 15 deg phase offset on neighbor so tooth fits into valley!)
-      const pitchDist = 2 * (baseOuterR + 0.9) + gap;
-      const coords = [
-        { x: 0, y: 0, rot: 0 },
-        { x: pitchDist, y: 0, rot: 15 },
-        { x: -pitchDist, y: 0, rot: 15 },
-        { x: pitchDist * 0.5, y: pitchDist * 0.866, rot: 15 },
-        { x: -pitchDist * 0.5, y: pitchDist * 0.866, rot: 15 },
-      ];
-      return coords.slice(0, memberCount);
-    } else {
-      // Circular medallion cluster interlocking tabs/notches
-      const pitchDist = 2 * (baseOuterR + 0.5) + gap;
-      const coords = [
-        { x: 0, y: 0, rot: 0 },
-        { x: pitchDist, y: 0, rot: 0 },
-        { x: -pitchDist, y: 0, rot: 0 },
-        { x: pitchDist * 0.5, y: pitchDist * 0.866, rot: 0 },
-        { x: -pitchDist * 0.5, y: pitchDist * 0.866, rot: 0 },
+        {
+          x: dist * Math.cos((-120 * Math.PI) / 180),
+          y: dist * Math.sin((-120 * Math.PI) / 180),
+          rot: 15,
+        },
+        {
+          x: dist * Math.cos((-30 * Math.PI) / 180),
+          y: dist * Math.sin((-30 * Math.PI) / 180),
+          rot: 15,
+        },
+        {
+          x: dist * Math.cos((150 * Math.PI) / 180),
+          y: dist * Math.sin((150 * Math.PI) / 180),
+          rot: 15,
+        },
+        {
+          x: dist * Math.cos((60 * Math.PI) / 180),
+          y: dist * Math.sin((60 * Math.PI) / 180),
+          rot: 15,
+        },
       ];
       return coords.slice(0, memberCount);
     }
+
+    // Para Hexágono Tipo Panal y Circular con Cola de Milano:
+    // Las caras normales están exactamente en 0°, +60°, +120° (Macho) y 180°, -120°, -60° (Hembra).
+    // Ubicamos:
+    // 0: Centro (0, 0)
+    // 1: Arriba-Izquierda (-120°: su cara +60° Macho entra en la cara -120° Hembra del Centro)
+    // 2: Arriba-Derecha (-60°: su cara +120° Macho entra en la cara -60° Hembra del Centro, y su cara 180° Hembra recibe la cara 0° Macho de #1)
+    // 3: Izquierda (180°: su cara 0° Macho entra en la cara 180° Hembra del Centro, y su cara -60° Hembra recibe la cara +120° Macho de #1)
+    // 4: Derecha (0°: su cara 180° Hembra recibe la cara 0° Macho del Centro, y su cara -120° Hembra recibe la cara +60° Macho de #2)
+    const sin60 = Math.sqrt(3) / 2;
+    const coords = [
+      { x: 0, y: 0, rot: 0 },
+      { x: -0.5 * dist, y: -sin60 * dist, rot: 0 },
+      { x: 0.5 * dist, y: -sin60 * dist, rot: 0 },
+      { x: -dist, y: 0, rot: 0 },
+      { x: dist, y: 0, rot: 0 },
+    ];
+    return coords.slice(0, memberCount);
   }, [geometry, cavityDiameterMm, memberCount, assembledOnTable]);
 
   const currentLevel = PEDAGOGICAL_LEVELS[levelId];
 
-  // Helper to render a single hybrid badge (PLA frame + keychain lug + wood center + icon + texts)
+  // Renderizado vectorial de una chapita híbrida (Marco conector PLA + Orificio interno + Centro de madera)
   const renderBadgeSvgGroup = (
     member: BadgeMemberConfig,
     key: string | number,
@@ -263,44 +282,47 @@ export function BadgesSection() {
     rotDeg = 0
   ) => {
     const woodRadius = woodCenterDiameterMm / 2;
-    const lugY = singleFramePolygonPoints.minY - 2.2;
+    const { polyStr, rCav, holeSpec } = singleFrameGeometryData;
     const iconInfo = BADGE_ICONS[member.icon] ?? BADGE_ICONS.paw;
     const iconScale = (woodCenterDiameterMm / 36) * 0.68;
 
     return (
       <g key={key} transform={`translate(${tx.toFixed(2)}, ${ty.toFixed(2)})`}>
-        {/* Ojal superior de 4 mm para argolla de llavero */}
-        <g>
-          <circle
-            cx="0"
-            cy={lugY}
-            r="4.6"
-            fill={member.plaColorHex}
-            stroke="#0f172a"
-            strokeWidth="0.4"
-          />
-          <circle cx="0" cy={lugY} r="2.0" fill="#0f172a" />
-        </g>
-
-        {/* Cuerpo exterior conector PLA (rotado si es engranaje acoplado) */}
+        {/* Cuerpo exterior conector PLA con encajes Cola de Milano / Engranaje */}
         <g transform={rotDeg !== 0 ? `rotate(${rotDeg})` : undefined}>
           <polygon
-            points={singleFramePolygonPoints.polyStr}
+            points={polyStr}
             fill={member.plaColorHex}
             stroke="#0f172a"
-            strokeWidth="0.5"
+            strokeWidth="0.45"
             strokeLinejoin="round"
           />
         </g>
+
+        {/* Orificio para argolla de llavero POR DENTRO del borde superior (sin sobresalir del panal) */}
+        <circle
+          cx="0"
+          cy={-holeSpec.offsetFromCenterMm}
+          r={holeSpec.holeRadiusMm + 0.6}
+          fill="rgba(15, 23, 42, 0.25)"
+        />
+        <circle
+          cx="0"
+          cy={-holeSpec.offsetFromCenterMm}
+          r={holeSpec.holeRadiusMm}
+          fill="#0f172a"
+          stroke="rgba(255,255,255,0.55)"
+          strokeWidth="0.35"
+        />
 
         {/* Bisel de retención superior Press-Fit */}
         <circle
           cx="0"
           cy="0"
-          r={singleFramePolygonPoints.rCav}
+          r={rCav}
           fill="none"
           stroke="rgba(255,255,255,0.45)"
-          strokeWidth="0.8"
+          strokeWidth="0.75"
           strokeDasharray="2 1.2"
         />
 
@@ -397,8 +419,8 @@ export function BadgesSection() {
               Diseña en equipo un set de chapitas o llaveros híbridos: un{' '}
               <strong>centro de madera de {woodThicknessMm} mm</strong> grabado y cortado con láser
               que encaja a presión (<em>press-fit</em>) dentro de un{' '}
-              <strong>marco conector impreso en 3D (PLA)</strong> capaz de acoplarse con los marcos
-              de tus compañeros sobre la mesa.
+              <strong>marco conector impreso en 3D (PLA)</strong> con uniones{' '}
+              <strong>cola de milano</strong> y perforación interna para llavero.
             </p>
           </div>
 
@@ -752,7 +774,8 @@ export function BadgesSection() {
               <p className="text-sky-900/80 leading-relaxed">
                 Altura marco PLA: <strong>5.0 mm</strong> · Tope inferior: <strong>1.0 mm</strong> ·
                 Cavidad madera: <strong>{cavityDepthMm} mm</strong> · Bisel superior{' '}
-                <em>press-fit</em>: <strong>0.9 mm</strong> · Ojal llavero: <strong>Ø 4.0 mm</strong>.
+                <em>press-fit</em>: <strong>0.9 mm</strong> · Orificio llavero interno:{' '}
+                <strong>Ø {singleFrameGeometryData.holeSpec.holeDiameterMm} mm</strong>.
               </p>
             </div>
           </div>
@@ -814,9 +837,9 @@ export function BadgesSection() {
             </div>
 
             {/* Contenido del Lienzo de Previsualización */}
-            <div className="p-4 bg-gradient-to-b from-slate-900 to-slate-950 min-h-[390px] flex flex-col justify-between">
+            <div className="p-4 bg-gradient-to-b from-slate-900 to-slate-950 min-h-[395px] flex flex-col justify-between">
               {previewTab === 'grupal' && (
-                <svg viewBox="-115 -85 230 175" className="w-full h-[350px] select-none">
+                <svg viewBox="-100 -88 200 150" className="w-full h-[355px] select-none">
                   <defs>
                     <pattern
                       id="badgeTableGrid"
@@ -832,7 +855,7 @@ export function BadgesSection() {
                       />
                     </pattern>
                   </defs>
-                  <rect x="-115" y="-85" width="230" height="175" fill="url(#badgeTableGrid)" />
+                  <rect x="-100" y="-88" width="200" height="150" fill="url(#badgeTableGrid)" />
 
                   {activeMembers.map((member, idx) => {
                     const pos = groupAssemblyPositions[idx] ?? { x: 0, y: 0, rot: 0 };
@@ -851,11 +874,11 @@ export function BadgesSection() {
                       <span className="text-[11px] font-bold text-slate-300 mb-1">
                         Chapita #{idx + 1}: {member.primaryText || `Integrante ${idx + 1}`}
                       </span>
-                      <svg viewBox="-34 -36 68 68" className="w-36 h-36">
-                        {renderBadgeSvgGroup(member, member.id, 0, 2, 0)}
+                      <svg viewBox="-34 -34 68 68" className="w-36 h-36">
+                        {renderBadgeSvgGroup(member, member.id, 0, 0, 0)}
                       </svg>
                       <span className="text-[10px] text-slate-400 font-mono">
-                        Marco PLA + Madera Ø{woodCenterDiameterMm}mm
+                        Cola de Milano + Madera Ø{woodCenterDiameterMm}mm
                       </span>
                     </div>
                   ))}
@@ -881,8 +904,9 @@ export function BadgesSection() {
               {/* Pie informativo del visor */}
               <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
                 <span>
-                  <strong>Geometría:</strong> {FRAME_GEOMETRIES[geometry].name} ·{' '}
-                  <strong>Equipo:</strong> {teamName || 'Sin nombre'} ({memberCount} chapitas)
+                  <strong>Unión:</strong> {FRAME_GEOMETRIES[geometry].name} ·{' '}
+                  <strong>Orificio Llavero:</strong> Interno (Ø
+                  {singleFrameGeometryData.holeSpec.holeDiameterMm} mm)
                 </span>
                 <span className="text-amber-300 font-semibold">
                   Encaje Press-Fit: Madera Ø{woodCenterDiameterMm} mm → Cavidad PLA Ø

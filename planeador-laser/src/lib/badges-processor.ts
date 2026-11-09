@@ -55,7 +55,7 @@ export const PEDAGOGICAL_LEVELS: Record<PedagogicalLevelId, PedagogicalLevelInfo
     grades: 'Nivel 2 (7° Básico)',
     title: 'Polígonos y Protección Estructural Híbrida',
     summary:
-      'Combinamos la calidez y rapidez del grabado láser en madera de 3 mm con un exoesqueleto perimetral impreso en 3D (PLA) que absorbe impactos.',
+      'Combinamos la calidez y rapidez del grabado láser en madera de 3 mm con un exoesqueleto perimetral impreso en 3D (PLA) con uniones cola de milano.',
     learningGoal:
       'Analizar la complementariedad de materiales (Madera + Polímero PLA) y el diseño de bordes conectores.',
     badgeColor: 'sky',
@@ -65,9 +65,9 @@ export const PEDAGOGICAL_LEVELS: Record<PedagogicalLevelId, PedagogicalLevelInfo
     grades: 'Nivel 3 (8° Básico)',
     title: 'Tolerancias de Fabricación Digital y Ajuste a Presión (Press-Fit)',
     summary:
-      'Calculamos la holgura (clearance de 0.15 mm) y el bisel de retención superior para que el disco de madera de 36.0 mm encaje a presión dentro de una cavidad de 36.3 mm sin usar pegamento.',
+      'Calculamos la holgura (clearance de 0.15 mm) tanto en la cavidad central de 36.3 mm como en los encajes cola de milano para unir las chapitas sin adhesivos.',
     learningGoal:
-      'Dominar el concepto de tolerancia dimensional, interferencia elástica y ensamble mecánico sin adhesivos.',
+      'Dominar el concepto de tolerancia dimensional, interferencia elástica y ensamble mecánico tipo cola de milano.',
     badgeColor: 'purple',
   },
 };
@@ -83,27 +83,27 @@ export interface FrameGeometryInfo {
 export const FRAME_GEOMETRIES: Record<FrameGeometryId, FrameGeometryInfo> = {
   hexagono: {
     id: 'hexagono',
-    name: 'Hexágono Tipo Panal',
+    name: 'Hexágono Tipo Panal (Cola de Milano)',
     shortName: 'Panal Hexagonal',
     description:
-      'Lados planos con pestañas y muescas laterales complementarias para acoplar las chapitas del grupo como una colmena.',
-    connectionMechanism: 'Pestañas trapezoidales macho/hembra en las caras del hexágono',
+      'Lados planos hexagonales con encajes trapezoidales tipo cola de milano (3 caras macho + 3 caras hembra opuestas) y orificio de llavero interno.',
+    connectionMechanism: 'Encaje Cola de Milano macho/hembra en las 6 caras del panal',
   },
   engranaje: {
     id: 'engranaje',
     name: 'Engranaje Mecánico',
     shortName: 'Engranaje',
     description:
-      'Borde exterior dentado para que las chapitas del grupo engranen entre sí al juntarlas sobre una mesa.',
-    connectionMechanism: '12 dientes perimetrales sincronizados que engranan en cualquier ángulo',
+      'Borde exterior dentado de 12 dientes sincronizados con orificio interno para que las chapitas del grupo engranen entre sí sobre la mesa.',
+    connectionMechanism: '12 dientes trapezoidales que engranan diente con valle sin superponerse',
   },
   circular: {
     id: 'circular',
-    name: 'Circular con Muesca',
+    name: 'Circular con Cola de Milano',
     shortName: 'Medallón Circular',
     description:
-      'Medallón redondo clásico con pestañas laterales redondeadas y muescas de unión tipo puzzle.',
-    connectionMechanism: 'Lengüetas laterales macho y cavidades hembra a ±45° y ±135°',
+      'Medallón redondo con encajes tipo cola de milano (3 salientes macho y 3 cavidades hembra opuestas) y perforación interna para llavero.',
+    connectionMechanism: 'Uniones Cola de Milano perimetrales en red hexagonal y ojal interno',
   },
 };
 
@@ -121,9 +121,7 @@ export const BADGE_ICONS: Record<BadgeIconId, BadgeIconInfo> = {
     label: 'Huella Mascota',
     emoji: '🐾',
     svgPaths: [
-      // Almohadilla central
       'M -4.5 2.5 C -5.5 0 -3.5 -2.5 0 -2.5 C 3.5 -2.5 5.5 0 4.5 2.5 C 3.8 4.8 5.2 6.8 3.2 7.8 C 1.5 8.5 -1.5 8.5 -3.2 7.8 C -5.2 6.8 -3.8 4.8 -4.5 2.5 Z',
-      // 4 deditos
       'M -6.8 -1.2 A 1.8 2.4 0 1 1 -3.2 -1.2 A 1.8 2.4 0 1 1 -6.8 -1.2 Z',
       'M -3.2 -5.5 A 1.8 2.5 0 1 1 0.4 -5.5 A 1.8 2.5 0 1 1 -3.2 -5.5 Z',
       'M 0.6 -5.5 A 1.8 2.5 0 1 1 4.2 -5.5 A 1.8 2.5 0 1 1 0.6 -5.5 Z',
@@ -317,89 +315,195 @@ export const PLA_COLORS_PALETTE = [
 ];
 
 /**
- * Calcula los puntos 2D (x, y) del contorno exterior del marco conector en mm
- * para N pasos angulares alrededor del origen (0, 0).
+ * Distancia del centro (0,0) a la cara plana del panal (apotema base)
+ */
+export function getBadgeHoneycombApothem(cavityRadiusMm: number): number {
+  return cavityRadiusMm + 6.45; // Para rCav=18.15 -> Apotema = 24.60 mm (Distancia entre centros = 49.20 mm)
+}
+
+/**
+ * Posición del orificio interno para argolla de llavero (dentro del borde superior, sin sobresalir).
+ * En coordenadas 2D donde (0, -Y) es arriba en pantalla (y (0, +Y) en el STL).
+ */
+export function getInternalKeychainHoleSpec(
+  geometry: FrameGeometryId,
+  cavityRadiusMm: number
+): { offsetFromCenterMm: number; holeRadiusMm: number; holeDiameterMm: number } {
+  if (geometry === 'hexagono') {
+    // El vértice superior del hexágono está a A / cos(30°) = 24.60 / 0.866 = 28.41 mm.
+    // Ubicamos el agujero de Ø 3.8 mm en Y = rCav + 4.35 = 22.50 mm (100% interno en la esquina superior).
+    return {
+      offsetFromCenterMm: cavityRadiusMm + 4.35,
+      holeRadiusMm: 1.9,
+      holeDiameterMm: 3.8,
+    };
+  }
+  // En Circular y Engranaje el borde superior está en rCav + 6.45 mm -> ubicamos el agujero interno en rCav + 3.25 mm
+  return {
+    offsetFromCenterMm: cavityRadiusMm + 3.25,
+    holeRadiusMm: 1.75,
+    holeDiameterMm: 3.5,
+  };
+}
+
+/**
+ * Genera el contorno exterior exacto en coordenadas cartesianas (x, y) con encajes tipo Cola de Milano
+ * en las 6 direcciones del panal (0°, 60°, 120° = Macho saliente; 180°, 240°, 300° = Hembra entrante).
+ * De este modo, al trasladar las chapitas en la grilla hexagonal, cada cara macho calza exactamente
+ * dentro de la cara hembra opuesta sin superponerse jamás.
  */
 export function computeOuterFrameContourPoints(
   geometry: FrameGeometryId,
   cavityRadiusMm: number,
-  clearanceMm: number,
-  numSteps = 240
+  clearanceMm: number
 ): { x: number; y: number; theta: number }[] {
-  const baseOuterRadius = cavityRadiusMm + 5.2; // pared mínima robusta de ~5.2 mm alrededor de la cavidad
+  const apothem = getBadgeHoneycombApothem(cavityRadiusMm);
   const pts: { x: number; y: number; theta: number }[] = [];
+
+  // Parámetros del encaje Cola de Milano (trapecio isósceles):
+  // - Espiga Macho (caras k = 0, 1, 2): altura h = 2.25 mm, medio-cuello = 2.15 mm, media-cabeza = 3.25 mm
+  // - Caja Hembra (caras k = 3, 4, 5): profundidad = h + clearance, medio-cuello y media-cabeza + clearance
+  const hMale = 2.25;
+  const neckHalfMale = 2.15;
+  const headHalfMale = 3.25;
+
+  const hFemale = hMale + clearanceMm;
+  const neckHalfFemale = neckHalfMale + clearanceMm;
+  const headHalfFemale = headHalfMale + clearanceMm;
+
+  if (geometry === 'hexagono') {
+    const L_half = apothem / Math.sqrt(3);
+    const stepsEdge = 10;
+    const stepsDove = 6;
+
+    for (let k = 0; k < 6; k++) {
+      const alpha = (k * Math.PI) / 3; // 0°, 60°, 120°, 180°, 240°, 300°
+      const nx = Math.cos(alpha);
+      const ny = Math.sin(alpha);
+      const tx = -Math.sin(alpha);
+      const ty = Math.cos(alpha);
+
+      const isMale = k < 3;
+      const neckHalf = isMale ? neckHalfMale : neckHalfFemale;
+      const headHalf = isMale ? headHalfMale : headHalfFemale;
+      const depth = isMale ? hMale : -hFemale;
+
+      const pushUV = (u: number, v: number) => {
+        const x = (apothem + v) * nx + u * tx;
+        const y = (apothem + v) * ny + u * ty;
+        pts.push({ x, y, theta: Math.atan2(y, x) });
+      };
+
+      // Tramo plano 1: -L_half -> -neckHalf
+      for (let i = 0; i <= stepsEdge; i++) {
+        const u = -L_half + ((-neckHalf - -L_half) * i) / stepsEdge;
+        pushUV(u, 0);
+      }
+      // Flanco izquierdo de la Cola de Milano: (-neckHalf, 0) -> (-headHalf, depth)
+      for (let i = 1; i <= stepsDove; i++) {
+        const t = i / stepsDove;
+        pushUV(-neckHalf + (-headHalf - -neckHalf) * t, depth * t);
+      }
+      // Base/cresta plana de la Cola de Milano: (-headHalf, depth) -> (+headHalf, depth)
+      for (let i = 1; i <= stepsDove; i++) {
+        const t = i / stepsDove;
+        pushUV(-headHalf + 2 * headHalf * t, depth);
+      }
+      // Flanco derecho de la Cola de Milano: (+headHalf, depth) -> (+neckHalf, 0)
+      for (let i = 1; i <= stepsDove; i++) {
+        const t = i / stepsDove;
+        pushUV(headHalf + (neckHalf - headHalf) * t, depth * (1 - t));
+      }
+      // Tramo plano 2: +neckHalf -> +L_half
+      for (let i = 1; i < stepsEdge; i++) {
+        const u = neckHalf + ((L_half - neckHalf) * i) / stepsEdge;
+        pushUV(u, 0);
+      }
+    }
+
+    return pts;
+  }
+
+  if (geometry === 'circular') {
+    // Medallón circular de radio = apothem con encajes Cola de Milano en los 6 ejes del panal (k = 0..5)
+    const stepsArc = 14;
+    const stepsDove = 6;
+    const sectorHalfAngle = Math.PI / 6; // 30° a cada lado del eje k
+
+    for (let k = 0; k < 6; k++) {
+      const alpha = (k * Math.PI) / 3;
+      const nx = Math.cos(alpha);
+      const ny = Math.sin(alpha);
+      const tx = -Math.sin(alpha);
+      const ty = Math.cos(alpha);
+
+      const isMale = k < 3;
+      const neckHalf = isMale ? neckHalfMale : neckHalfFemale;
+      const headHalf = isMale ? headHalfMale : headHalfFemale;
+      const depth = isMale ? hMale : -hFemale;
+
+      const neckAngle = Math.asin(Math.min(0.9, neckHalf / apothem));
+      const chordRadius = apothem * Math.cos(neckAngle);
+
+      const pushXY = (x: number, y: number) => {
+        pts.push({ x, y, theta: Math.atan2(y, x) });
+      };
+
+      // Arco 1: desde alpha - 30° hasta alpha - neckAngle
+      for (let i = 0; i <= stepsArc; i++) {
+        const a = alpha - sectorHalfAngle + ((sectorHalfAngle - neckAngle) * i) / stepsArc;
+        pushXY(apothem * Math.cos(a), apothem * Math.sin(a));
+      }
+
+      // Flanco izquierdo Cola de Milano
+      for (let i = 1; i <= stepsDove; i++) {
+        const t = i / stepsDove;
+        const u = -neckHalf + (-headHalf - -neckHalf) * t;
+        const v = depth * t;
+        pushXY((chordRadius + v) * nx + u * tx, (chordRadius + v) * ny + u * ty);
+      }
+      // Cresta Cola de Milano
+      for (let i = 1; i <= stepsDove; i++) {
+        const t = i / stepsDove;
+        const u = -headHalf + 2 * headHalf * t;
+        const v = depth;
+        pushXY((chordRadius + v) * nx + u * tx, (chordRadius + v) * ny + u * ty);
+      }
+      // Flanco derecho Cola de Milano
+      for (let i = 1; i <= stepsDove; i++) {
+        const t = i / stepsDove;
+        const u = headHalf + (neckHalf - headHalf) * t;
+        const v = depth * (1 - t);
+        pushXY((chordRadius + v) * nx + u * tx, (chordRadius + v) * ny + u * ty);
+      }
+
+      // Arco 2: desde alpha + neckAngle hasta alpha + 30°
+      for (let i = 1; i < stepsArc; i++) {
+        const a = alpha + neckAngle + ((sectorHalfAngle - neckAngle) * i) / stepsArc;
+        pushXY(apothem * Math.cos(a), apothem * Math.sin(a));
+      }
+    }
+
+    return pts;
+  }
+
+  // Geometría 'engranaje': Corona de 12 dientes trapezoidales cuyo radio primitivo = apothem
+  // Al juntar dos engranajes a distancia 2 * apothem con desfase de 15° (medio diente),
+  // los dientes de uno entran exactamente en los valles del otro sin superponerse.
+  const numSteps = 240;
+  const teeth = 12;
+  const toothAmp = 1.95;
 
   for (let i = 0; i < numSteps; i++) {
     const theta = (2 * Math.PI * i) / numSteps;
-
-    if (geometry === 'hexagono') {
-      // Hexágono regular con lados planos y pestañas/muescas alternadas en las 6 caras
-      // Punto sobre hexágono de apotema A = baseOuterRadius
-      const apothem = baseOuterRadius;
-      const sector = Math.floor(((theta + Math.PI / 6) % (2 * Math.PI)) / (Math.PI / 3));
-      const sectorCenterAngle = sector * (Math.PI / 3);
-      const localAngle = Math.atan2(
-        Math.sin(theta - sectorCenterAngle),
-        Math.cos(theta - sectorCenterAngle)
-      );
-
-      let rHex = apothem / Math.max(0.5, Math.cos(localAngle));
-
-      // En el centro de cada cara lateral (|localAngle| < 0.20 rad), agregamos pestaña macho o muesca hembra
-      // Alternamos caras pares (+pestaña) e impares (-muesca con clearance)
-      // Excepto la cara superior (sector === 1 o 2 cerca de pi/2) si lleva ojal, aunque el ojal va en el vértice superior (theta = pi/2)
-      const isTabZone = Math.abs(localAngle) < 0.21;
-      if (isTabZone) {
-        const smooth = Math.cos((localAngle / 0.21) * (Math.PI / 2));
-        const isMaleFace = sector % 2 === 0;
-        const tabDepth = isMaleFace ? 2.1 : -(2.1 + clearanceMm);
-        rHex += tabDepth * Math.pow(smooth, 0.6);
-      }
-
-      pts.push({
-        x: rHex * Math.cos(theta),
-        y: rHex * Math.sin(theta),
-        theta,
-      });
-    } else if (geometry === 'engranaje') {
-      // Corona de engranaje de 12 dientes trapezoidales suaves
-      const teeth = 12;
-      const wave = Math.cos(teeth * theta);
-      const shaped = Math.max(-0.75, Math.min(0.75, wave * 1.35)) / 0.75;
-      const toothAmplitude = 2.05;
-      const rGear = baseOuterRadius + 0.8 + toothAmplitude * shaped - clearanceMm * 0.5;
-      pts.push({
-        x: rGear * Math.cos(theta),
-        y: rGear * Math.sin(theta),
-        theta,
-      });
-    } else {
-      // Circular con Muesca: Medallón redondo con 2 pestañas macho (0° y 180°) y 2 muescas hembra (-60° y -120° / laterales)
-      // Ubicamos 4 conectores a ±35° y ±145° para dejar despejado el ojal superior a +90°
-      const connectorAngles = [
-        { angle: 0, sign: 1 }, // Derecha: Pestaña Macho
-        { angle: Math.PI, sign: -1 }, // Izquierda: Muesca Hembra
-        { angle: -Math.PI / 3, sign: 1 }, // Abajo-Derecha: Pestaña Macho
-        { angle: (-2 * Math.PI) / 3, sign: -1 }, // Abajo-Izquierda: Muesca Hembra
-      ];
-
-      let rCirc = baseOuterRadius + 0.5;
-      for (const conn of connectorAngles) {
-        const diff = Math.atan2(Math.sin(theta - conn.angle), Math.cos(theta - conn.angle));
-        const halfWidth = 0.24;
-        if (Math.abs(diff) < halfWidth) {
-          const profile = Math.cos((diff / halfWidth) * (Math.PI / 2));
-          const amp = conn.sign > 0 ? 2.3 : -(2.3 + clearanceMm);
-          rCirc += amp * Math.pow(profile, 0.55);
-        }
-      }
-
-      pts.push({
-        x: rCirc * Math.cos(theta),
-        y: rCirc * Math.sin(theta),
-        theta,
-      });
-    }
+    const wave = Math.cos(teeth * theta);
+    const shaped = Math.max(-0.72, Math.min(0.72, wave * 1.35)) / 0.72;
+    const r = apothem - clearanceMm * 0.5 + toothAmp * shaped;
+    pts.push({
+      x: r * Math.cos(theta),
+      y: r * Math.sin(theta),
+      theta,
+    });
   }
 
   return pts;
@@ -422,7 +526,7 @@ function escapeXml(str: string): string {
 export function generateBadgesLaserSvg(params: BadgesTeamParams): string {
   const { woodCenterDiameterMm, members, teamName } = params;
   const radius = woodCenterDiameterMm / 2;
-  const spacing = woodCenterDiameterMm + 8; // 8 mm de separación entre piezas
+  const spacing = woodCenterDiameterMm + 8;
   const cols = Math.min(3, members.length);
   const rows = Math.ceil(members.length / cols);
 
@@ -439,7 +543,6 @@ export function generateBadgesLaserSvg(params: BadgesTeamParams): string {
     `  <!-- MakerBox Taller 4: Centros de Madera (${woodCenterDiameterMm} mm x ${params.woodThicknessMm} mm) - Equipo: ${escapeXml(teamName)} -->`
   );
 
-  // Encabezado grabado azul (#0000FF)
   lines.push(`  <g id="CAPA_GRABADO_AZUL" stroke="#0000FF" fill="none">`);
   lines.push(
     `    <text x="${(totalWidth / 2).toFixed(2)}" y="6.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="3.2" font-weight="bold" fill="#0000FF" stroke="none">MAKERBOX · EQUIPO: ${escapeXml(
@@ -457,14 +560,12 @@ export function generateBadgesLaserSvg(params: BadgesTeamParams): string {
     const iconScale = (woodCenterDiameterMm / 36) * 0.72;
     const iconCenterY = cy - radius * 0.16;
 
-    // Anillo interior decorativo de grabado (#0000FF)
     lines.push(
       `    <circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${(radius - 1.8).toFixed(
         2
       )}" stroke="#0000FF" stroke-width="0.25" stroke-dasharray="1.5 1.0" />`
     );
 
-    // Ícono central vectorial (#0000FF)
     lines.push(
       `    <g transform="translate(${cx.toFixed(2)}, ${iconCenterY.toFixed(
         2
@@ -475,7 +576,6 @@ export function generateBadgesLaserSvg(params: BadgesTeamParams): string {
     }
     lines.push(`    </g>`);
 
-    // Texto Principal (Nombre de estudiante o mascota)
     const primaryLabel = (member.primaryText || `Integrante ${idx + 1}`).trim();
     const secondaryLabel = (member.secondaryText || teamName).trim();
 
@@ -512,7 +612,6 @@ export function generateBadgesLaserSvg(params: BadgesTeamParams): string {
   });
   lines.push(`  </g>`);
 
-  // Capa de Corte Láser Exterior (#FF0000, 0.1 mm)
   lines.push(`  <g id="CAPA_CORTE_ROJO" stroke="#FF0000" stroke-width="0.1" fill="none">`);
   members.forEach((_, idx) => {
     const col = idx % cols;
@@ -530,14 +629,10 @@ export function generateBadgesLaserSvg(params: BadgesTeamParams): string {
 }
 
 // ============================================================================
-// Generador 3D (.STL) de los Marcos Conectores en PLA
-// - Altura total: 5.0 mm
-// - Cavidad central: D_cav = woodCenterDiameterMm + 2 * clearanceMm (ej. 36.3 mm)
-// - Tope inferior de 1.0 mm de alto (Z = 0..1.0 mm) para sostener la madera
-// - Zona de alojamiento de madera de 3.1 mm (Z = 1.0..4.1 mm)
-// - Bisel superior de retención press-fit (Z = 4.1..5.0 mm)
-// - Ojal superior de 4.0 mm de diámetro para argolla de llavero
-// - Bordes exteriores conectores según geometría elegida (Hexágono, Engranaje o Circular)
+// Generador 3D (.STL) de los Marcos Conectores en PLA con:
+// - Encajes exteriores tipo Cola de Milano / Engranaje
+// - Cavidad central press-fit (36.3 mm x 3.1 mm + tope inferior 1 mm + bisel superior)
+// - Orificio para llavero INTERNO dentro del borde superior (sin sobresalir)
 // ============================================================================
 
 interface Vec3 {
@@ -585,25 +680,78 @@ function appendSingleFrameStlFacets(
 ) {
   const cavityDiameter = params.woodCenterDiameterMm + 2 * params.clearanceMm; // 36.30 mm por defecto
   const rCavity = cavityDiameter / 2; // 18.15 mm
-  const rBottomLip = rCavity - 1.2; // Tope inferior de 1.2 mm de labio (diámetro 33.9 mm)
-  const rSnapBevel = rCavity - 0.24; // Labio superior de retención a presión (press-fit)
+  const rBottomLip = rCavity - 1.2; // Tope inferior de 1.2 mm (diámetro 33.9 mm)
+  const rSnapBevel = rCavity - 0.24; // Retención superior press-fit
   const rTopEntry = rCavity + 0.12; // Bisel de entrada superior
+  const rInnerRing = rCavity + 1.25; // Anillo intermedio antes del orificio interno
 
   const z0 = 0.0;
-  const z1 = 1.0; // Tope inferior de 1 mm
-  const z2 = Number((1.0 + params.woodThicknessMm + 0.1).toFixed(3)); // 4.1 mm (espesor cavidad 3.1 mm)
-  const z3 = Number((z2 + 0.45).toFixed(3)); // Cresta del bisel de retención (~4.55 mm)
-  const z4 = Number(Math.max(5.0, z2 + 0.9).toFixed(3)); // Altura total 5.0 mm
+  const z1 = 1.0;
+  const z2 = Number((1.0 + params.woodThicknessMm + 0.1).toFixed(3)); // 4.1 mm
+  const z3 = Number((z2 + 0.45).toFixed(3));
+  const z4 = Number(Math.max(5.0, z2 + 0.9).toFixed(3)); // 5.0 mm
 
-  const numSteps = 180;
   const outerPts = computeOuterFrameContourPoints(
     params.geometry,
     rCavity,
-    params.clearanceMm,
-    numSteps
+    params.clearanceMm
   );
+  const numSteps = outerPts.length;
 
-  // 1. Anillo Principal Conector con Cavidad Escalonada Press-Fit
+  // 1. Anillo interior escalonado Press-Fit (desde rBottomLip hasta rInnerRing, 360° continuos)
+  for (let i = 0; i < numSteps; i++) {
+    const inext = (i + 1) % numSteps;
+    const t0 = outerPts[i].theta;
+    const t1 = outerPts[inext].theta;
+    const c0 = Math.cos(t0);
+    const s0 = Math.sin(t0);
+    const c1 = Math.cos(t1);
+    const s1 = Math.sin(t1);
+
+    const pt = (r: number, c: number, s: number, z: number): Vec3 => ({
+      x: offsetX + r * c,
+      y: offsetY + r * s,
+      z,
+    });
+
+    const ringA0 = pt(rInnerRing, c0, s0, z0);
+    const ringB0 = pt(rInnerRing, c1, s1, z0);
+    const ringA4 = pt(rInnerRing, c0, s0, z4);
+    const ringB4 = pt(rInnerRing, c1, s1, z4);
+
+    const inTopA = pt(rTopEntry, c0, s0, z4);
+    const inTopB = pt(rTopEntry, c1, s1, z4);
+    pushQuad(lines, ringA4, ringB4, inTopB, inTopA);
+
+    const inSnapA = pt(rSnapBevel, c0, s0, z3);
+    const inSnapB = pt(rSnapBevel, c1, s1, z3);
+    pushQuad(lines, inTopA, inTopB, inSnapB, inSnapA);
+
+    const inCavTopA = pt(rCavity, c0, s0, z2);
+    const inCavTopB = pt(rCavity, c1, s1, z2);
+    pushQuad(lines, inSnapA, inSnapB, inCavTopB, inCavTopA);
+
+    const inCavBotA = pt(rCavity, c0, s0, z1);
+    const inCavBotB = pt(rCavity, c1, s1, z1);
+    pushQuad(lines, inCavTopA, inCavTopB, inCavBotB, inCavTopA);
+
+    const inLipTopA = pt(rBottomLip, c0, s0, z1);
+    const inLipTopB = pt(rBottomLip, c1, s1, z1);
+    pushQuad(lines, inCavBotA, inCavBotB, inLipTopB, inLipTopA);
+
+    const inLipBotA = pt(rBottomLip, c0, s0, z0);
+    const inLipBotB = pt(rBottomLip, c1, s1, z0);
+    pushQuad(lines, inLipTopA, inLipTopB, inLipBotB, inLipBotA);
+
+    pushQuad(lines, inLipBotA, inLipBotB, ringB0, ringA0);
+  }
+
+  // 2. Corona Exterior Conectora (desde rInnerRing hasta outerPts) con Orificio Interno de Llavero en el sector superior (-90° en pantalla / +90° en STL)
+  const holeSpec = getInternalKeychainHoleSpec(params.geometry, rCavity);
+  const holeCenterX = offsetX;
+  const holeCenterY = offsetY - holeSpec.offsetFromCenterMm; // Ubicado en el vértice/borde superior (theta = -pi/2)
+  const rHole = holeSpec.holeRadiusMm;
+
   for (let i = 0; i < numSteps; i++) {
     const inext = (i + 1) % numSteps;
     const p0 = outerPts[i];
@@ -619,98 +767,51 @@ function appendSingleFrameStlFacets(
     const outA4: Vec3 = { x: offsetX + p0.x, y: offsetY + p0.y, z: z4 };
     const outB4: Vec3 = { x: offsetX + p1.x, y: offsetY + p1.y, z: z4 };
 
-    const pt = (r: number, c: number, s: number, z: number): Vec3 => ({
-      x: offsetX + r * c,
-      y: offsetY + r * s,
-      z,
-    });
+    const ringA0: Vec3 = { x: offsetX + rInnerRing * c0, y: offsetY + rInnerRing * s0, z: z0 };
+    const ringB0: Vec3 = { x: offsetX + rInnerRing * c1, y: offsetY + rInnerRing * s1, z: z0 };
+    const ringA4: Vec3 = { x: offsetX + rInnerRing * c0, y: offsetY + rInnerRing * s0, z: z4 };
+    const ringB4: Vec3 = { x: offsetX + rInnerRing * c1, y: offsetY + rInnerRing * s1, z: z4 };
 
-    // Pared exterior (z0 -> z4)
+    // Pared perimetral exterior (z0 -> z4)
     pushQuad(lines, outA0, outB0, outB4, outA4);
 
-    // Cara superior (z4: outer -> rTopEntry)
-    const inTopA = pt(rTopEntry, c0, s0, z4);
-    const inTopB = pt(rTopEntry, c1, s1, z4);
-    pushQuad(lines, outA4, outB4, inTopB, inTopA);
-
-    // Chaflán de entrada superior al bisel press-fit (z4 -> z3)
-    const inSnapA = pt(rSnapBevel, c0, s0, z3);
-    const inSnapB = pt(rSnapBevel, c1, s1, z3);
-    pushQuad(lines, inTopA, inTopB, inSnapB, inSnapA);
-
-    // Rampa inferior del bisel press-fit hacia el techo de la cavidad (z3 -> z2)
-    const inCavTopA = pt(rCavity, c0, s0, z2);
-    const inCavTopB = pt(rCavity, c1, s1, z2);
-    pushQuad(lines, inSnapA, inSnapB, inCavTopB, inCavTopA);
-
-    // Pared cilíndrica de la cavidad de 36.3 mm (z2 -> z1)
-    const inCavBotA = pt(rCavity, c0, s0, z1);
-    const inCavBotB = pt(rCavity, c1, s1, z1);
-    pushQuad(lines, inCavTopA, inCavTopB, inCavBotB, inCavTopA);
-
-    // Escalón/repisa horizontal del tope inferior en z1 (rCavity -> rBottomLip)
-    const inLipTopA = pt(rBottomLip, c0, s0, z1);
-    const inLipTopB = pt(rBottomLip, c1, s1, z1);
-    pushQuad(lines, inCavBotA, inCavBotB, inLipTopB, inLipTopA);
-
-    // Pared interior del tope inferior de 1 mm (z1 -> z0)
-    const inLipBotA = pt(rBottomLip, c0, s0, z0);
-    const inLipBotB = pt(rBottomLip, c1, s1, z0);
-    pushQuad(lines, inLipTopA, inLipTopB, inLipBotB, inLipBotA);
-
-    // Cara inferior plana en la cama de impresión (z0: rBottomLip -> outer)
-    pushQuad(lines, inLipBotA, inLipBotB, outB0, outA0);
+    // Tapa superior e inferior de la corona exterior
+    pushQuad(lines, outA4, outB4, ringB4, ringA4);
+    pushQuad(lines, ringA0, ringB0, outB0, outA0);
   }
 
-  // 2. Ojal Superior para Argolla de Llavero (Agujero interior exacto = 4.0 mm de diámetro -> rHole = 2.0 mm)
-  const topPointY = Math.max(...outerPts.map((p) => p.y));
-  const lugCenterX = offsetX;
-  const lugCenterY = offsetY + topPointY + 2.2;
-  const rHole = 2.0; // Ø 4.0 mm
-  const rLugOuter = 4.6; // Ø 9.2 mm exterior del ojal
-  const lugHeight = z4;
-  const lugSteps = 48;
-
-  for (let i = 0; i < lugSteps; i++) {
-    const a0 = (2 * Math.PI * i) / lugSteps;
-    const a1 = (2 * Math.PI * (i + 1)) / lugSteps;
-    const c0 = Math.cos(a0);
-    const s0 = Math.sin(a0);
-    const c1 = Math.cos(a1);
-    const s1 = Math.sin(a1);
-
-    const loA0: Vec3 = { x: lugCenterX + rLugOuter * c0, y: lugCenterY + rLugOuter * s0, z: 0 };
-    const loB0: Vec3 = { x: lugCenterX + rLugOuter * c1, y: lugCenterY + rLugOuter * s1, z: 0 };
-    const loA1: Vec3 = {
-      x: lugCenterX + rLugOuter * c0,
-      y: lugCenterY + rLugOuter * s0,
-      z: lugHeight,
+  // 3. Pared cilíndrica interna del orificio pasante para llavero (dentro de la esquina superior)
+  const holeSteps = 36;
+  for (let j = 0; j < holeSteps; j++) {
+    const a0 = (2 * Math.PI * j) / holeSteps;
+    const a1 = (2 * Math.PI * (j + 1)) / holeSteps;
+    const hA0: Vec3 = {
+      x: holeCenterX + rHole * Math.cos(a0),
+      y: holeCenterY + rHole * Math.sin(a0),
+      z: z0,
     };
-    const loB1: Vec3 = {
-      x: lugCenterX + rLugOuter * c1,
-      y: lugCenterY + rLugOuter * s1,
-      z: lugHeight,
+    const hB0: Vec3 = {
+      x: holeCenterX + rHole * Math.cos(a1),
+      y: holeCenterY + rHole * Math.sin(a1),
+      z: z0,
     };
-
-    const liA0: Vec3 = { x: lugCenterX + rHole * c0, y: lugCenterY + rHole * s0, z: 0 };
-    const liB0: Vec3 = { x: lugCenterX + rHole * c1, y: lugCenterY + rHole * s1, z: 0 };
-    const liA1: Vec3 = { x: lugCenterX + rHole * c0, y: lugCenterY + rHole * s0, z: lugHeight };
-    const liB1: Vec3 = { x: lugCenterX + rHole * c1, y: lugCenterY + rHole * s1, z: lugHeight };
-
-    // Pared externa del ojal
-    pushQuad(lines, loA0, loB0, loB1, loA1);
-    // Pared interna del agujero de 4 mm
-    pushQuad(lines, liB0, liA0, liA1, liB1);
-    // Tapa superior del ojal
-    pushQuad(lines, loA1, loB1, liB1, liA1);
-    // Base inferior del ojal
-    pushQuad(lines, liA0, liB0, loB0, loA0);
+    const hA4: Vec3 = {
+      x: holeCenterX + rHole * Math.cos(a0),
+      y: holeCenterY + rHole * Math.sin(a0),
+      z: z4,
+    };
+    const hB4: Vec3 = {
+      x: holeCenterX + rHole * Math.cos(a1),
+      y: holeCenterY + rHole * Math.sin(a1),
+      z: z4,
+    };
+    // Normal apuntando hacia el centro del agujero
+    pushQuad(lines, hB0, hA0, hA4, hB4);
   }
 }
 
 /**
  * Genera el contenido .STL de los marcos conectores 3D en PLA.
- * Si exportAllTeamFrames = true, posiciona los N marcos del equipo en una grilla lista para imprimir.
  */
 export function generateBadgesConnectorStl(
   params: BadgesTeamParams,
