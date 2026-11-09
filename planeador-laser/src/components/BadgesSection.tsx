@@ -43,6 +43,7 @@ import {
   getBadgeHoneycombApothem,
   getInternalKeychainHoleSpec,
   IdeaThemeId,
+  LEVEL3_CLEARANCE_OPTIONS_MM,
   PEDAGOGICAL_LEVELS,
   PedagogicalLevelId,
   PLA_COLORS_PALETTE,
@@ -96,7 +97,12 @@ export function BadgesSection() {
   // Parámetros Técnicos con Barras Deslizantes (Sliders) y Cola de Milano Fija de 1.8 mm
   const [woodCenterDiameterMm, setWoodCenterDiameterMm] = useState<number>(36); // 36 a 44 mm
   const [holeDiameterMm, setHoleDiameterMm] = useState<number>(4.0); // 3.8 a 4.4 mm
+  const [level3ClearanceMm, setLevel3ClearanceMm] = useState<number>(
+    FIXED_PRESS_FIT_CLEARANCE_MM
+  ); // Nivel 3: 0.1, 0.12, 0.14 o 0.16 mm
   const dovetailSizeMm = FIXED_DOVETAIL_SIZE_MM; // Fijo: 1.8 mm ultra-eficiente
+  const effectiveClearanceMm =
+    levelId === 'nivel3' ? level3ClearanceMm : FIXED_PRESS_FIT_CLEARANCE_MM;
 
   // Tarjetas de Integrantes
   const [members, setMembers] = useState<BadgeMemberConfig[]>(INITIAL_MEMBERS);
@@ -133,7 +139,7 @@ export function BadgesSection() {
       holeDiameterMm,
       dovetailSizeMm,
       woodThicknessMm: FIXED_WOOD_THICKNESS_MM,
-      clearanceMm: FIXED_PRESS_FIT_CLEARANCE_MM,
+      clearanceMm: effectiveClearanceMm,
       members: activeMembers,
     }),
     [
@@ -144,12 +150,13 @@ export function BadgesSection() {
       woodCenterDiameterMm,
       holeDiameterMm,
       dovetailSizeMm,
+      effectiveClearanceMm,
       activeMembers,
     ]
   );
 
   const cavityDiameterMm = Number(
-    (woodCenterDiameterMm + 2 * FIXED_PRESS_FIT_CLEARANCE_MM).toFixed(2)
+    (woodCenterDiameterMm + 2 * effectiveClearanceMm).toFixed(2)
   );
   const cavityDepthMm = FIXED_FRAME_HEIGHT_MM;
 
@@ -242,6 +249,7 @@ export function BadgesSection() {
   const handleResetTechnicalParams = () => {
     setWoodCenterDiameterMm(36);
     setHoleDiameterMm(4.0);
+    setLevel3ClearanceMm(FIXED_PRESS_FIT_CLEARANCE_MM);
   };
 
   const handleDownloadLaserSvg = () => {
@@ -269,7 +277,7 @@ export function BadgesSection() {
     const safeTeam = (teamName || 'equipo')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-');
-    a.download = `chapitas-marcos-laser-${geometry}-${safeTeam}-${memberCount}marcos-3mm.svg`;
+    a.download = `chapitas-marcos-laser-${geometry}-${safeTeam}-${memberCount}marcos-ajuste-${effectiveClearanceMm}mm.svg`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -285,7 +293,7 @@ export function BadgesSection() {
     const safeTeam = (teamName || 'equipo')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-');
-    a.download = `chapita-marco-3d-${geometry}-${safeTeam}-1marco-3mm.stl`;
+    a.download = `chapita-marco-3d-${geometry}-${safeTeam}-ajuste-${effectiveClearanceMm}mm-3mm.stl`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -298,14 +306,14 @@ export function BadgesSection() {
     const pts = computeOuterFrameContourPoints(
       geometry,
       rCav,
-      FIXED_PRESS_FIT_CLEARANCE_MM,
+      effectiveClearanceMm,
       dovetailSizeMm
     );
     const polyStr = pts.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
     const holeSpec = getInternalKeychainHoleSpec(geometry, rCav, holeDiameterMm);
     const apothem = getBadgeHoneycombApothem(rCav, dovetailSizeMm, geometry);
     return { polyStr, rCav, holeSpec, apothem };
-  }, [geometry, cavityDiameterMm, dovetailSizeMm, holeDiameterMm]);
+  }, [geometry, cavityDiameterMm, effectiveClearanceMm, dovetailSizeMm, holeDiameterMm]);
 
   // Posiciones exactas de acople en la mesa según la geometría elegida (Hexágono, Pentágono o Triángulo)
   const groupAssemblyPositions = useMemo(() => {
@@ -997,6 +1005,120 @@ export function BadgesSection() {
                   <span>4.4 mm</span>
                 </div>
               </div>
+
+              {/* Slider 3 (Exclusivo Nivel 3 · 8° Básico): Configuración de Ajuste Press-Fit (0.1, 0.12, 0.14 y 0.16 mm) */}
+              {levelId === 'nivel3' ? (
+                <div className="bg-purple-50/90 p-3.5 rounded-xl border-2 border-purple-400 space-y-2.5 shadow-2xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <span className="inline-block text-[10px] font-black uppercase tracking-wider text-purple-800 bg-purple-200/80 px-2 py-0.5 rounded-md mb-0.5">
+                        🔬 Laboratorio Nivel 3 (8° Básico)
+                      </span>
+                      <label className="block text-xs font-extrabold text-slate-900">
+                        3. Ajuste de Tolerancia Press-Fit (Holgura Radial)
+                      </label>
+                    </div>
+                    <span className="text-xs font-black text-white bg-purple-700 px-2.5 py-1 rounded-full shrink-0">
+                      {level3ClearanceMm === 0.1 ? '0.1 mm' : `${level3ClearanceMm.toFixed(2)} mm`}
+                    </span>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={0.1}
+                    max={0.16}
+                    step={0.02}
+                    value={level3ClearanceMm}
+                    onChange={(e) => setLevel3ClearanceMm(Number(Number(e.target.value).toFixed(2)))}
+                    className="w-full accent-purple-700 cursor-pointer"
+                  />
+
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {LEVEL3_CLEARANCE_OPTIONS_MM.map((val) => {
+                      const active = Math.abs(level3ClearanceMm - val) < 0.005;
+                      const label =
+                        val === 0.1
+                          ? '0.1 mm'
+                          : `${val.toFixed(2)} mm`;
+                      const subLabel =
+                        val === 0.1
+                          ? 'Apretado'
+                          : val === 0.12
+                            ? 'Óptimo'
+                            : val === 0.14
+                              ? 'Suave'
+                              : 'Holgado';
+                      return (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setLevel3ClearanceMm(val)}
+                          className={`py-1.5 px-1 rounded-lg border text-center transition cursor-pointer ${
+                            active
+                              ? 'bg-purple-700 text-white border-purple-700 shadow-2xs'
+                              : 'bg-white text-slate-800 border-purple-200 hover:border-purple-400'
+                          }`}
+                        >
+                          <div className="text-xs font-black leading-tight">{label}</div>
+                          <div
+                            className={`text-[9px] font-bold ${
+                              active ? 'text-purple-200' : 'text-slate-500'
+                            }`}
+                          >
+                            {subLabel}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Cápsula Pedagógica Nivel 3: ¿Por qué no encaja con la medida exacta (0.0 mm)? */}
+                  <div className="rounded-lg bg-white/95 border border-purple-200 p-2.5 text-[11px] text-slate-800 space-y-1.5">
+                    <div className="font-extrabold text-purple-950 flex items-center gap-1.5">
+                      <Info className="w-3.5 h-3.5 text-purple-700 shrink-0" />
+                      <span>
+                        ¿Por qué NO encaja cuando tiene la medida exacta (0.0 mm)?
+                      </span>
+                    </div>
+                    <p className="text-slate-700 leading-relaxed">
+                      Si el centro de madera mide <strong>Ø {woodCenterDiameterMm}.00 mm</strong> y
+                      diseñamos el agujero del marco de exactamente{' '}
+                      <strong>Ø {woodCenterDiameterMm}.00 mm (ajuste 0.0 mm)</strong>, en la
+                      realidad <strong>no entra</strong>: el filamento PLA fundido (~200 °C) se
+                      expande levemente al aplastarse capa por capa y la rugosidad de las paredes
+                      genera interferencia física.
+                    </p>
+                    <div className="bg-purple-50 rounded-md px-2.5 py-1.5 border border-purple-200/80 text-[10px] font-semibold text-purple-950 flex flex-wrap items-center justify-between gap-1">
+                      <span>
+                        Madera: <strong>Ø {woodCenterDiameterMm}.00 mm</strong> + Ajuste (2 ×{' '}
+                        {level3ClearanceMm === 0.1 ? '0.1' : level3ClearanceMm.toFixed(2)} mm)
+                      </span>
+                      <span className="font-black text-purple-800">
+                        → Cavidad Real: Ø {cavityDiameterMm.toFixed(2)} mm
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl bg-purple-50/70 border border-purple-200 p-3 flex items-center justify-between gap-2">
+                  <div className="text-[11px] text-purple-950">
+                    <span className="font-extrabold block">
+                      Ajuste Press-Fit Fijo ({FIXED_PRESS_FIT_CLEARANCE_MM} mm en Nivel 1 y 2)
+                    </span>
+                    <span className="text-purple-800/90">
+                      Activa el <strong>Nivel 3 (8° Básico)</strong> para experimentar con{' '}
+                      <strong>0.1, 0.12, 0.14 y 0.16 mm</strong>.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLevelId('nivel3')}
+                    className="px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-extrabold shrink-0 transition cursor-pointer"
+                  >
+                    Ir a Nivel 3
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Parámetros Fijos por Material y Ajuste Press-Fit */}
@@ -1009,11 +1131,15 @@ export function BadgesSection() {
                 </span>
               </div>
               <p className="text-sky-900/80 leading-relaxed">
-                Cavidad cilíndrica pasante: <strong>Ø {cavityDiameterMm} mm</strong> ×{' '}
-                <strong>{cavityDepthMm.toFixed(1)} mm de altura</strong> (tolerancia press-fit de{' '}
-                <strong>{FIXED_PRESS_FIT_CLEARANCE_MM} mm</strong>). La madera de{' '}
-                <strong>{FIXED_WOOD_THICKNESS_MM.toFixed(1)} mm</strong> encaja al ras dejando una
-                chapa 100% plana de 3 mm.
+                Cavidad cilíndrica pasante: <strong>Ø {cavityDiameterMm.toFixed(2)} mm</strong> ×{' '}
+                <strong>{cavityDepthMm.toFixed(1)} mm de altura</strong> (ajuste press-fit de{' '}
+                <strong>
+                  {effectiveClearanceMm === 0.1
+                    ? '0.1 mm'
+                    : `${effectiveClearanceMm.toFixed(2)} mm`}
+                </strong>
+                ). La madera de <strong>{FIXED_WOOD_THICKNESS_MM.toFixed(1)} mm</strong> encaja al
+                ras dejando una chapa 100% plana de 3 mm.
               </p>
             </div>
           </div>
@@ -1263,12 +1389,16 @@ export function BadgesSection() {
                 <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-300">
                   <span>
                     <strong>Geometría:</strong> {FRAME_GEOMETRIES[geometry].shortName} ·{' '}
-                    <strong>Cola Milano:</strong> {dovetailSizeMm.toFixed(1)} mm ·{' '}
+                    <strong>Ajuste:</strong>{' '}
+                    {effectiveClearanceMm === 0.1
+                      ? '0.1 mm'
+                      : `${effectiveClearanceMm.toFixed(2)} mm`}{' '}
+                    · <strong>Cola Milano:</strong> {dovetailSizeMm.toFixed(1)} mm ·{' '}
                     <strong>Orificio:</strong> Ø{holeDiameterMm.toFixed(1)} mm
                   </span>
                   <span className="text-emerald-300 font-semibold">
                     Aprovechamiento Geométrico: {telemetry.efficiencyScorePct}% (Madera Ø
-                    {woodCenterDiameterMm} mm → Cavidad Ø{cavityDiameterMm} mm)
+                    {woodCenterDiameterMm} mm → Cavidad Ø{cavityDiameterMm.toFixed(2)} mm)
                   </span>
                 </div>
               </div>

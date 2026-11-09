@@ -16,10 +16,11 @@ export type BadgeIconId =
   | 'shield';
 export type IdeaThemeId = 'animales' | 'espacio' | 'deportes' | 'ciencia';
 
-/** Constantes fijas optimizadas para mínima impresión 3D y calce plano de 3.0 mm */
+/** Constantes fijas y opciones de ajuste para mínima impresión 3D y calce plano de 3.0 mm */
 export const FIXED_WOOD_THICKNESS_MM = 3.0;
 export const FIXED_FRAME_HEIGHT_MM = 3.0; // Misma altura plana de 3.0 mm que la madera, sin anillo inferior
-export const FIXED_PRESS_FIT_CLEARANCE_MM = 0.12; // Ajuste press-fit firme para cilindro pasante de 3 mm
+export const FIXED_PRESS_FIT_CLEARANCE_MM = 0.12; // Ajuste press-fit óptimo por defecto (Niveles 1 y 2)
+export const LEVEL3_CLEARANCE_OPTIONS_MM = [0.1, 0.12, 0.14, 0.16] as const; // Opciones de experimentación en Nivel 3
 export const FIXED_DOVETAIL_SIZE_MM = 1.8; // Encaje Cola de Milano fijo de 1.8 mm para mínimo borde y máxima rapidez
 
 export interface BadgeMemberConfig {
@@ -39,7 +40,7 @@ export interface BadgesTeamParams {
   holeDiameterMm: number; // Slider: 3.8..4.4 mm
   dovetailSizeMm: number; // Fijo: 1.8 mm
   woodThicknessMm: number; // Fijo: 3.0 mm
-  clearanceMm: number; // Fijo: 0.12 mm
+  clearanceMm: number; // Fijo 0.12 mm en Nivel 1-2; configurable (0.1, 0.12, 0.14, 0.16 mm) en Nivel 3
   members: BadgeMemberConfig[];
 }
 
@@ -78,9 +79,9 @@ export const PEDAGOGICAL_LEVELS: Record<PedagogicalLevelId, PedagogicalLevelInfo
     grades: 'Nivel 3 (8° Básico)',
     title: 'Tolerancias de Fabricación Digital y Ajuste Press-Fit',
     summary:
-      'Optimizamos el marco a 3.0 mm de espesor plano sin voladizos ni anillo inferior, usando paredes esbeltas y encaje cola de milano fijo de 1.8 mm para reducir en más de un 60% el tiempo de impresión 3D.',
+      'Experimentamos configurando el ajuste press-fit (0.1, 0.12, 0.14 y 0.16 mm) para comprender por qué una cavidad con la medida exacta del centro de madera (0.0 mm de holgura) NO encaja en el mundo físico debido a la expansión térmica del filamento PLA, la rugosidad de las capas y la fricción.',
     learningGoal:
-      'Dominar el ajuste mecánico press-fit, la eficiencia de manufactura y la replicación en laminador 3D.',
+      'Experimentar con la tolerancia de encaje (0.10 a 0.16 mm) y explicar físicamente por qué la medida exacta impide el ensamblaje.',
     badgeColor: 'purple',
   },
 };
@@ -684,13 +685,27 @@ export function generateBadgesLaserSvg(params: BadgesTeamParams): string {
  * y corte exterior poligonal con Cola de Milano en rojo (#FF0000, 0.1 mm) listo para Falcon Design Space.
  */
 export function generateBadgesFramesLaserSvg(params: BadgesTeamParams): string {
-  const { woodCenterDiameterMm, memberCount, geometry, holeDiameterMm, dovetailSizeMm, teamName } =
-    params;
+  const {
+    woodCenterDiameterMm,
+    memberCount,
+    geometry,
+    holeDiameterMm,
+    dovetailSizeMm,
+    clearanceMm,
+    teamName,
+  } = params;
   const rWood = woodCenterDiameterMm / 2;
-  // Para corte láser en madera de 3 mm, el kerf del láser (~0.10 mm) compensa de forma natural la holgura
-  const outerPts = computeOuterFrameContourPoints(geometry, rWood, 0.0, dovetailSizeMm);
+  // Para corte láser en madera de 3 mm, el kerf del láser (~0.10 mm) compensa la base, y sumamos la variación elegida en Nivel 3
+  const deltaClearance = clearanceMm - FIXED_PRESS_FIT_CLEARANCE_MM;
+  const laserDovetailClearance = Math.max(0, Number(deltaClearance.toFixed(3)));
+  const outerPts = computeOuterFrameContourPoints(
+    geometry,
+    rWood,
+    laserDovetailClearance,
+    dovetailSizeMm
+  );
   const holeSpec = getInternalKeychainHoleSpec(geometry, rWood, holeDiameterMm);
-  const rInnerPressFit = Number((rWood - 0.05).toFixed(3));
+  const rInnerPressFit = Number((rWood - 0.05 + deltaClearance).toFixed(3));
 
   let minX = Infinity;
   let maxX = -Infinity;
