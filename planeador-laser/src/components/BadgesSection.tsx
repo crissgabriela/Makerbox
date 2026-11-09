@@ -31,10 +31,9 @@ import {
   buildMakerboxLogoVectorPath,
   computeOuterFrameContourPoints,
   estimateBadgesManufacturingTimes,
+  FIXED_DOVETAIL_SIZE_MM,
+  FIXED_FRAME_HEIGHT_MM,
   FIXED_PRESS_FIT_CLEARANCE_MM,
-  FIXED_SUPPORT_RING_HEIGHT_MM,
-  FIXED_TOTAL_FRAME_HEIGHT_MM,
-  FIXED_WOOD_CYLINDER_HEIGHT_MM,
   FIXED_WOOD_THICKNESS_MM,
   FRAME_GEOMETRIES,
   FrameGeometryId,
@@ -93,10 +92,10 @@ export function BadgesSection() {
   const [memberCount, setMemberCount] = useState<number>(5);
   const [geometry, setGeometry] = useState<FrameGeometryId>('hexagono');
 
-  // 3 Parámetros Técnicos con Barras Deslizantes (Sliders) y Vista Previa en Vivo
+  // Parámetros Técnicos con Barras Deslizantes (Sliders) y Cola de Milano Fija de 1.8 mm
   const [woodCenterDiameterMm, setWoodCenterDiameterMm] = useState<number>(36); // 36 a 44 mm
   const [holeDiameterMm, setHoleDiameterMm] = useState<number>(4.0); // 3.8 a 4.4 mm
-  const [dovetailSizeMm, setDovetailSizeMm] = useState<number>(2.4); // 1.8 a 3.4 mm
+  const dovetailSizeMm = FIXED_DOVETAIL_SIZE_MM; // Fijo: 1.8 mm ultra-eficiente
 
   // Tarjetas de Integrantes
   const [members, setMembers] = useState<BadgeMemberConfig[]>(INITIAL_MEMBERS);
@@ -150,7 +149,7 @@ export function BadgesSection() {
   const cavityDiameterMm = Number(
     (woodCenterDiameterMm + 2 * FIXED_PRESS_FIT_CLEARANCE_MM).toFixed(2)
   );
-  const cavityDepthMm = FIXED_WOOD_CYLINDER_HEIGHT_MM;
+  const cavityDepthMm = FIXED_FRAME_HEIGHT_MM;
 
   // Telemetría de tiempos de Corte/Grabado en Falcon Design Space e Impresión 3D en PLA
   const telemetry = useMemo(
@@ -241,7 +240,6 @@ export function BadgesSection() {
   const handleResetTechnicalParams = () => {
     setWoodCenterDiameterMm(36);
     setHoleDiameterMm(4.0);
-    setDovetailSizeMm(2.4);
   };
 
   const handleDownloadLaserSvg = () => {
@@ -269,7 +267,7 @@ export function BadgesSection() {
     const safeTeam = (teamName || 'equipo')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-');
-    a.download = `chapitas-marcos-3d-${geometry}-${safeTeam}-${memberCount}marcos.stl`;
+    a.download = `chapita-marco-3d-${geometry}-${safeTeam}-1marco-3mm.stl`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -569,7 +567,7 @@ export function BadgesSection() {
               className="inline-flex items-center gap-2 px-4 py-3 rounded-xl font-bold text-sm bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-lg shadow-amber-950/40 transition cursor-pointer"
             >
               <Box className="w-4 h-4" />
-              Descargar {memberCount} Marcos 3D (.STL)
+              Descargar 1 Marco 3D Base (.STL)
             </button>
           </div>
         </div>
@@ -973,48 +971,23 @@ export function BadgesSection() {
                   <span>4.4 mm</span>
                 </div>
               </div>
-
-              {/* Slider 3: Tamaño del encaje Cola de Milano (1.8 a 3.4 mm) */}
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-extrabold text-slate-800">
-                    3. Tamaño Encaje Cola de Milano
-                  </label>
-                  <span className="text-xs font-black text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full">
-                    {dovetailSizeMm.toFixed(1)} mm
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={1.8}
-                  max={3.4}
-                  step={0.2}
-                  value={dovetailSizeMm}
-                  onChange={(e) => setDovetailSizeMm(Number(e.target.value))}
-                  className="w-full accent-amber-600 cursor-pointer"
-                />
-                <div className="flex justify-between text-[10px] font-semibold text-slate-500">
-                  <span>1.8 mm (Compacta)</span>
-                  <span>2.4 mm (Óptima)</span>
-                  <span>3.4 mm (Profunda)</span>
-                </div>
-              </div>
             </div>
 
             {/* Parámetros Fijos por Material y Ajuste Press-Fit */}
             <div className="rounded-xl bg-sky-50/80 border border-sky-200 p-3 text-[11px] text-sky-950 space-y-1">
               <div className="font-extrabold flex flex-wrap items-center justify-between gap-1">
-                <span>Parámetros Fijos de Calce Press-Fit (Malla 3D Cerrada):</span>
+                <span>Diseño Plano Ultra-Rápido (3.0 mm sin anillo inferior):</span>
                 <span className="text-sky-700 font-mono">
-                  Madera {FIXED_WOOD_THICKNESS_MM.toFixed(1)} mm · Tolerancia{' '}
-                  {FIXED_PRESS_FIT_CLEARANCE_MM} mm
+                  Espesor {FIXED_FRAME_HEIGHT_MM.toFixed(1)} mm · Cola Milano{' '}
+                  {FIXED_DOVETAIL_SIZE_MM.toFixed(1)} mm
                 </span>
               </div>
               <p className="text-sky-900/80 leading-relaxed">
-                Cilindro de encaje: <strong>Ø {cavityDiameterMm} mm</strong> ×{' '}
-                <strong>{cavityDepthMm.toFixed(1)} mm de altura</strong> · Anillo inferior de apoyo:{' '}
-                <strong>{FIXED_SUPPORT_RING_HEIGHT_MM.toFixed(1)} mm</strong> · Altura total del
-                sólido único: <strong>{FIXED_TOTAL_FRAME_HEIGHT_MM.toFixed(1)} mm</strong>.
+                Cavidad cilíndrica pasante: <strong>Ø {cavityDiameterMm} mm</strong> ×{' '}
+                <strong>{cavityDepthMm.toFixed(1)} mm de altura</strong> (tolerancia press-fit de{' '}
+                <strong>{FIXED_PRESS_FIT_CLEARANCE_MM} mm</strong>). La madera de{' '}
+                <strong>{FIXED_WOOD_THICKNESS_MM.toFixed(1)} mm</strong> encaja al ras dejando una
+                chapa 100% plana de 3 mm.
               </p>
             </div>
           </div>
@@ -1211,23 +1184,24 @@ export function BadgesSection() {
             </div>
           </div>
 
-          {/* 5. Panel de Descarga de Archivos de Fabricación (.SVG y .STL siempre con todas las piezas) */}
+          {/* 5. Panel de Descarga de Archivos de Fabricación (.SVG equipo y .STL 1 marco base) */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
                   <Layers className="w-5 h-5 text-emerald-600" />
-                  5. Descarga de Archivos de Fabricación (Equipo Completo: {memberCount} Piezas)
+                  5. Descarga de Archivos de Fabricación (Láser + 3D Plano 3 mm)
                 </h3>
                 <p className="text-xs text-slate-600">
-                  Archivos parametrizados en milímetros listos para{' '}
-                  <strong>Falcon Design Space</strong> (corte y grabado láser de las {memberCount}{' '}
-                  chapas) y laminador 3D (con los {memberCount} marcos conectores en PLA).
+                  El archivo <strong>.SVG</strong> incluye las <strong>{memberCount} chapas</strong>{' '}
+                  para <strong>Falcon Design Space</strong>, y el archivo <strong>.STL</strong>{' '}
+                  entrega <strong>1 marco conector plano de 3 mm</strong> listo para replicar (×
+                  {memberCount}) en el laminador.
                 </p>
               </div>
 
               <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 shrink-0">
-                ✓ Incluye las {memberCount} chapas y {memberCount} marcos
+                ✓ {memberCount} chapas (.SVG) + 1 marco base (.STL)
               </span>
             </div>
 
@@ -1247,7 +1221,7 @@ export function BadgesSection() {
                 className="py-3.5 px-4 rounded-xl font-bold text-sm bg-indigo-600 hover:bg-indigo-500 text-white shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
               >
                 <Box className="w-4 h-4" />
-                Descargar {memberCount} Marcos Conectores 3D (.STL)
+                Descargar 1 Marco Conector 3D Plano (.STL)
               </button>
             </div>
           </div>

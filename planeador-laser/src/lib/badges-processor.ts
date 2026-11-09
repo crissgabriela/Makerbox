@@ -16,13 +16,11 @@ export type BadgeIconId =
   | 'shield';
 export type IdeaThemeId = 'animales' | 'espacio' | 'deportes' | 'ciencia';
 
-/** Constantes fijas por material y fabricación digital */
+/** Constantes fijas optimizadas para mínima impresión 3D y calce plano de 3.0 mm */
 export const FIXED_WOOD_THICKNESS_MM = 3.0;
-export const FIXED_PRESS_FIT_CLEARANCE_MM = 0.15;
-export const FIXED_SUPPORT_RING_HEIGHT_MM = 0.8;
-export const FIXED_WOOD_CYLINDER_HEIGHT_MM = 3.5;
-export const FIXED_TOTAL_FRAME_HEIGHT_MM =
-  FIXED_SUPPORT_RING_HEIGHT_MM + FIXED_WOOD_CYLINDER_HEIGHT_MM; // 4.3 mm
+export const FIXED_FRAME_HEIGHT_MM = 3.0; // Misma altura plana de 3.0 mm que la madera, sin anillo inferior
+export const FIXED_PRESS_FIT_CLEARANCE_MM = 0.12; // Ajuste press-fit firme para cilindro pasante de 3 mm
+export const FIXED_DOVETAIL_SIZE_MM = 1.8; // Encaje Cola de Milano fijo de 1.8 mm para mínimo borde y máxima rapidez
 
 export interface BadgeMemberConfig {
   id: number;
@@ -39,9 +37,9 @@ export interface BadgesTeamParams {
   geometry: FrameGeometryId;
   woodCenterDiameterMm: number; // Slider: 36..44 mm
   holeDiameterMm: number; // Slider: 3.8..4.4 mm
-  dovetailSizeMm: number; // Slider: 1.8..3.4 mm
+  dovetailSizeMm: number; // Fijo: 1.8 mm
   woodThicknessMm: number; // Fijo: 3.0 mm
-  clearanceMm: number; // Fijo: 0.15 mm
+  clearanceMm: number; // Fijo: 0.12 mm
   members: BadgeMemberConfig[];
 }
 
@@ -68,11 +66,11 @@ export const PEDAGOGICAL_LEVELS: Record<PedagogicalLevelId, PedagogicalLevelInfo
   nivel2: {
     id: 'nivel2',
     grades: 'Nivel 2 (7° Básico)',
-    title: 'Polígonos Regulares, Teselación y Protección Estructural',
+    title: 'Polígonos Regulares, Teselación y Diseño Plano de 3 mm',
     summary:
-      'Analizamos los ángulos interiores del triángulo (60°), pentágono (108°) y hexágono (120°) y combinamos un centro de madera de 3 mm con un exoesqueleto impreso en 3D (PLA) con encajes cola de milano.',
+      'Analizamos los ángulos interiores del triángulo (60°), pentágono (108°) y hexágono (120°) combinando un centro de madera de 3 mm al ras dentro de un marco perimetral plano de 3 mm en PLA con uniones cola de milano de 1.8 mm.',
     learningGoal:
-      'Demostrar matemáticamente qué polígonos teselan el plano (divisores de 360°) y cómo protegen estructuralmente la madera.',
+      'Demostrar matemáticamente qué polígonos teselan el plano (divisores de 360°) minimizando el volumen de filamento.',
     badgeColor: 'sky',
   },
   nivel3: {
@@ -80,9 +78,9 @@ export const PEDAGOGICAL_LEVELS: Record<PedagogicalLevelId, PedagogicalLevelInfo
     grades: 'Nivel 3 (8° Básico)',
     title: 'Tolerancias de Fabricación Digital y Ajuste Press-Fit',
     summary:
-      'Parametrizamos el diámetro de la chapa (36–44 mm), el orificio interno (3.8–4.4 mm) y la junta cola de milano manteniendo una tolerancia fija de 0.15 mm para el encaje a presión de la madera de 3 mm.',
+      'Optimizamos el marco a 3.0 mm de espesor plano sin voladizos ni anillo inferior, usando paredes esbeltas y encaje cola de milano fijo de 1.8 mm para reducir en más de un 60% el tiempo de impresión 3D.',
     learningGoal:
-      'Dominar el ajuste mecánico press-fit, la optimización de tiempos de manufactura y el diseño paramétrico CAD/CAM.',
+      'Dominar el ajuste mecánico press-fit, la eficiencia de manufactura y la replicación en laminador 3D.',
     badgeColor: 'purple',
   },
 };
@@ -110,9 +108,9 @@ export const FRAME_GEOMETRIES: Record<FrameGeometryId, FrameGeometryInfo> = {
     tessellatesPlane: true,
     natureBadge: '🏆 Más Eficiente en la Naturaleza',
     description:
-      '6 lados planos con encajes tipo cola de milano (3 machos + 3 hembras opuestas). Sus ángulos de 120° calzan de a 3 en cada vértice (3 × 120° = 360°) sin dejar ningún espacio vacío.',
+      '6 lados planos ultra-esbeltos de 3 mm de espesor con encajes cola de milano de 1.8 mm. Sus ángulos de 120° calzan de a 3 en cada vértice (3 × 120° = 360°) sin dejar ningún espacio vacío.',
     whyEfficiencyNote:
-      'Teorema del Panal: De todos los polígonos que cubren una superficie sin huecos, el hexágono es el que tiene menor perímetro para encerrar un círculo de madera, ahorrando hasta un 42% de PLA y tiempo de impresión frente al triángulo.',
+      'Teorema del Panal: De todos los polígonos que cubren una superficie sin huecos, el hexágono es el que tiene menor perímetro para encerrar un círculo de madera, requiriendo apenas ~1.8 g de PLA y ~5 min de impresión por marco.',
     relativePlaFactor: '100% (Mínimo uso de PLA y tiempo 3D)',
   },
   pentagono: {
@@ -124,10 +122,10 @@ export const FRAME_GEOMETRIES: Record<FrameGeometryId, FrameGeometryInfo> = {
     tessellatesPlane: false,
     natureBadge: '⚠️ No tesela el plano (Deja huecos de 36°)',
     description:
-      '5 lados planos con encajes cola de milano que permiten unir las chapitas al centro, pero cuyos ángulos interiores de 108° no dividen exactamente los 360° de un giro completo.',
+      '5 lados planos de 3 mm de espesor con encajes cola de milano de 1.8 mm, cuyos ángulos interiores de 108° no dividen exactamente los 360° de un giro completo.',
     whyEfficiencyNote:
-      'Al juntar 3 pentágonos en un vértice suman 3 × 108° = 324°, dejando una ranura vacía de 36°. Por eso en la naturaleza los panales nunca son pentagonales.',
-    relativePlaFactor: '+16% más PLA que el hexágono',
+      'Al juntar 3 pentágonos en un vértice suman 3 × 108° = 324°, dejando una ranura vacía de 36°. Además consume más filamento en sus 5 esquinas que el hexágono.',
+    relativePlaFactor: '+22% más PLA que el hexágono',
   },
   triangulo: {
     id: 'triangulo',
@@ -136,12 +134,12 @@ export const FRAME_GEOMETRIES: Record<FrameGeometryId, FrameGeometryInfo> = {
     sides: 3,
     interiorAngleDeg: 60,
     tessellatesPlane: true,
-    natureBadge: '📐 Tesela a 60°, pero gasta mucho material',
+    natureBadge: '📐 Tesela a 60°, pero gasta más del doble de PLA',
     description:
-      '3 lados planos con encajes cola de milano que obligan a alternar las chapitas hacia arriba y hacia abajo (180°) para poder acoplarlas en red.',
+      '3 lados planos de 3 mm de espesor con encajes cola de milano de 1.8 mm que obligan a alternar las chapitas hacia arriba y hacia abajo (180°) para acoplarlas.',
     whyEfficiencyNote:
-      'Aunque 6 triángulos sí suman 360° (6 × 60°), para rodear un círculo de madera el triángulo necesita puntas muy largas y agudas, consumiendo ~68% más plástico PLA y tiempo de impresión que el hexágono.',
-    relativePlaFactor: '+68% más PLA y tiempo que el hexágono',
+      'Aunque 6 triángulos sí suman 360° (6 × 60°), para rodear el mismo círculo de madera necesita 3 puntas muy largas, consumiendo más del doble de plástico PLA y tiempo de impresión que el hexágono.',
+    relativePlaFactor: '+135% más PLA y tiempo que el hexágono',
   },
 };
 
@@ -340,22 +338,24 @@ export const PLA_COLORS_PALETTE = [
 ];
 
 /**
- * Distancia del centro (0,0) a cada cara plana del polígono (apotema base),
- * garantizando pared sólida suficiente detrás de las cajas hembra Cola de Milano y del orificio interno.
+ * Apotema ultra-eficiente del marco (distancia del centro a cada cara plana):
+ * Con Cola de Milano fija en 1.8 mm, basta un ancho de pared de 3.5–3.6 mm alrededor del centro de madera,
+ * dejando ~1.65 mm de pared sólida detrás de las cajas hembra y minimizando al máximo el uso de PLA.
  */
 export function getBadgeHoneycombApothem(
   cavityRadiusMm: number,
-  dovetailSizeMm = 2.4,
+  dovetailSizeMm = FIXED_DOVETAIL_SIZE_MM,
   geometry: FrameGeometryId = 'hexagono'
 ): number {
   if (geometry === 'triangulo') {
-    return cavityRadiusMm + 3.8 + dovetailSizeMm;
+    return cavityRadiusMm + 1.65 + dovetailSizeMm; // rCav + 3.45 mm
   }
-  return cavityRadiusMm + 4.2 + dovetailSizeMm;
+  return cavityRadiusMm + 1.8 + dovetailSizeMm; // rCav + 3.60 mm
 }
 
 /**
- * Posición del orificio interno para argolla de llavero (dentro del vértice superior en theta = -90°, sin sobresalir).
+ * Posición del orificio interno para argolla de llavero alojado en el vértice superior (-90°),
+ * aprovechando el espacio natural de la esquina del polígono sin engrosar las paredes laterales.
  */
 export function getInternalKeychainHoleSpec(
   geometry: FrameGeometryId,
@@ -365,20 +365,21 @@ export function getInternalKeychainHoleSpec(
   const holeRadiusMm = holeDiameterMm / 2;
   if (geometry === 'triangulo') {
     return {
-      offsetFromCenterMm: cavityRadiusMm + 3.1 + holeRadiusMm,
+      offsetFromCenterMm: cavityRadiusMm + 1.45 + holeRadiusMm,
       holeRadiusMm,
       holeDiameterMm,
     };
   }
   if (geometry === 'pentagono') {
     return {
-      offsetFromCenterMm: cavityRadiusMm + 2.5 + holeRadiusMm,
+      offsetFromCenterMm: cavityRadiusMm + 1.2 + holeRadiusMm,
       holeRadiusMm,
       holeDiameterMm,
     };
   }
+  // Hexágono: alojado dentro del vértice superior (-90°) con pared interior de 1.1 mm y exterior > 1.4 mm
   return {
-    offsetFromCenterMm: cavityRadiusMm + 2.35 + holeRadiusMm,
+    offsetFromCenterMm: cavityRadiusMm + 1.1 + holeRadiusMm,
     holeRadiusMm,
     holeDiameterMm,
   };
@@ -389,22 +390,19 @@ export function getInternalKeychainHoleSpec(
  * comenzando exactamente en el vértice superior O_top (x = 0, y < 0, ángulo -90°).
  * Cada cara emite exactamente 6 vértices:
  *   V0 (esquina inicial), V1 (cuello izq), V2 (cabeza izq), V3 (centro cresta/base), V4 (cabeza der), V5 (cuello der).
- * De este modo:
- *   - El índice 0 es SIEMPRE O_top = (0, y_top < 0)
- *   - El índice N_out / 2 es SIEMPRE O_bot = (0, y_bot > 0)
  */
 export function computeOuterFrameContourPoints(
   geometry: FrameGeometryId,
   cavityRadiusMm: number,
   clearanceMm: number,
-  dovetailSizeMm = 2.4
+  dovetailSizeMm = FIXED_DOVETAIL_SIZE_MM
 ): { x: number; y: number; theta: number }[] {
   const apothem = getBadgeHoneycombApothem(cavityRadiusMm, dovetailSizeMm, geometry);
   const pts: { x: number; y: number; theta: number }[] = [];
 
-  const hMale = dovetailSizeMm;
-  const neckHalfMale = dovetailSizeMm * 0.9;
-  const headHalfMale = dovetailSizeMm * 1.36;
+  const hMale = dovetailSizeMm; // 1.8 mm
+  const neckHalfMale = dovetailSizeMm * 0.92; // 1.66 mm
+  const headHalfMale = dovetailSizeMm * 1.36; // 2.45 mm
 
   const hFemale = hMale + clearanceMm;
   const neckHalfFemale = neckHalfMale + clearanceMm;
@@ -413,10 +411,6 @@ export function computeOuterFrameContourPoints(
   const sides = geometry === 'hexagono' ? 6 : geometry === 'pentagono' ? 5 : 3;
   const L_half = apothem * Math.tan(Math.PI / sides);
 
-  // Orden de las caras comenzando por la cara superior-derecha (cuyo vértice inicial V0 está en -90° -> x = 0, y < 0):
-  // - Hexágono (6): -60° (H), 0° (M), +60° (M), +120° (M), 180° (H), -120° (H)
-  // - Pentágono (5): -54° (M), +18° (M), +90° (M), +162° (H), -126° (H)
-  // - Triángulo (3): -30° (M), +90° (M), -150° (H)
   const faceNormalsRad: { alpha: number; isMale: boolean }[] =
     geometry === 'hexagono'
       ? [
@@ -460,13 +454,12 @@ export function computeOuterFrameContourPoints(
       pts.push({ x, y, theta: Math.atan2(y, x) });
     };
 
-    // 6 vértices exactos por cara (sin duplicar la esquina final +L_half que es la inicial de la siguiente cara):
-    pushUV(-L_half, 0); // V0: Esquina inicial de la cara
-    pushUV(-neckHalf, 0); // V1: Cuello izquierdo Cola de Milano
-    pushUV(-headHalf, depth); // V2: Cabeza izquierda Cola de Milano
-    pushUV(0, depth); // V3: Punto medio exacto de la Cola de Milano
-    pushUV(headHalf, depth); // V4: Cabeza derecha Cola de Milano
-    pushUV(neckHalf, 0); // V5: Cuello derecho Cola de Milano
+    pushUV(-L_half, 0);
+    pushUV(-neckHalf, 0);
+    pushUV(-headHalf, depth);
+    pushUV(0, depth);
+    pushUV(headHalf, depth);
+    pushUV(neckHalf, 0);
   }
 
   return pts;
@@ -485,7 +478,7 @@ export interface BadgesManufacturingTelemetry {
 
 /**
  * Calcula los tiempos estimados de corte/grabado láser en Falcon Design Space
- * y de impresión 3D en PLA para el equipo completo (con anillo de apoyo de 0.8 mm y cilindro de 3.5 mm).
+ * y de impresión 3D en PLA para el marco plano de 3.0 mm sin anillo de apoyo.
  */
 export function estimateBadgesManufacturingTimes(
   params: BadgesTeamParams
@@ -503,20 +496,16 @@ export function estimateBadgesManufacturingTimes(
 
   const efficiencyScorePct = Math.round((woodCircleAreaMm2 / outerPolygonAreaMm2) * 100);
 
-  // Volumen neto de PLA por marco:
-  // - Anillo de apoyo inferior de 0.8 mm de altura y 1.8 mm de ancho
-  // - Cuerpo exterior de 4.3 mm de altura total (0.8 mm apoyo + 3.5 mm cilindro de encaje)
-  const supportInnerRadius = rCav - 1.8;
-  const supportRingAreaMm2 = cavityAreaMm2 - Math.PI * supportInnerRadius * supportInnerRadius;
-  const outerFrameWallAreaMm2 = Math.max(120, outerPolygonAreaMm2 - cavityAreaMm2 - holeAreaMm2);
-  const rawVolumeMm3 =
-    supportRingAreaMm2 * FIXED_SUPPORT_RING_HEIGHT_MM +
-    outerFrameWallAreaMm2 * FIXED_TOTAL_FRAME_HEIGHT_MM;
+  // Volumen neto de PLA por marco plano de 3.0 mm (sin anillo de apoyo inferior)
+  const netFrameAreaMm2 = Math.max(80, outerPolygonAreaMm2 - cavityAreaMm2 - holeAreaMm2);
+  const rawVolumeMm3 = netFrameAreaMm2 * FIXED_FRAME_HEIGHT_MM;
 
-  const plaWeightPerFrameGrams = Number(((rawVolumeMm3 / 1000) * 0.68 * 1.24).toFixed(1));
+  // Factor de laminado 3D (perímetros + relleno en 3.0 mm de altura, densidad PLA 1.24 g/cm³)
+  const plaWeightPerFrameGrams = Number(((rawVolumeMm3 / 1000) * 0.78 * 1.24).toFixed(1));
   const plaTotalWeightGrams = Number((plaWeightPerFrameGrams * count).toFixed(1));
 
-  const printTimePerFrameMin = Math.max(8, Math.round(plaWeightPerFrameGrams * 2.95));
+  // Tiempo de impresión 3D (~2.8 min por gramo de PLA en altura plana de 3.0 mm)
+  const printTimePerFrameMin = Math.max(4, Math.round(plaWeightPerFrameGrams * 2.8));
   const totalPrintMin = printTimePerFrameMin * count;
   const printHours = Math.floor(totalPrintMin / 60);
   const printRemMin = totalPrintMin % 60;
@@ -613,7 +602,6 @@ export function generateBadgesLaserSvg(params: BadgesTeamParams): string {
       Math.max(2.35, (woodCenterDiameterMm * 0.55) / Math.max(5, primaryLabel.length))
     );
 
-    // 1. ARRIBA (Sobre el ícono): Nombre del Equipo / Texto Secundario
     if (secondaryLabel) {
       lines.push(
         `    <text x="${cx.toFixed(2)}" y="${(cy - radius * 0.52).toFixed(
@@ -626,7 +614,6 @@ export function generateBadgesLaserSvg(params: BadgesTeamParams): string {
       );
     }
 
-    // 2. CENTRO: Ícono Central
     lines.push(
       `    <g transform="translate(${cx.toFixed(2)}, ${iconCenterY.toFixed(
         2
@@ -637,7 +624,6 @@ export function generateBadgesLaserSvg(params: BadgesTeamParams): string {
     }
     lines.push(`    </g>`);
 
-    // 3. DEBAJO DEL ÍCONO: Nombre del Estudiante o Mascota
     lines.push(
       `    <text x="${cx.toFixed(2)}" y="${(cy + radius * 0.34).toFixed(
         2
@@ -648,7 +634,6 @@ export function generateBadgesLaserSvg(params: BadgesTeamParams): string {
       )}</text>`
     );
 
-    // 4. ABAJO (Bajo el nombre del estudiante): Logo Oficial de MakerBox
     const logoWidthMm = radius * 0.88;
     const logoTopY = cy + radius * 0.45;
     const logoPathD = buildMakerboxLogoVectorPath(cx, logoTopY, logoWidthMm);
@@ -677,11 +662,11 @@ export function generateBadgesLaserSvg(params: BadgesTeamParams): string {
 export { buildMakerboxLogoVectorPath, MAKERBOX_LOGO_ASPECT_RATIO };
 
 // ============================================================================
-// Generador 3D (.STL) 100% Cerrado (2-Manifold, 0 bordes abiertos, 1 único sólido por marco):
-// - Anillo de apoyo inferior: 0.8 mm de altura (z = 0.0 -> 0.8 mm)
-// - Cilindro donde encaja el centro de madera: 3.5 mm de altura (z = 0.8 -> 4.3 mm)
-// - Unión Cola de Milano + Geometría Exterior + Orificio de Llavero triangulados
-//   como una única malla continua cerrada mediante descomposición simétrica + Ear-Clipping 2D.
+// Generador 3D (.STL) de 1 Marco Conector Plano de 3.0 mm (Sin anillo de apoyo):
+// - Altura total plana = 3.0 mm (z = 0.0 -> 3.0 mm), idéntica a la madera de 3.0 mm
+// - Cavidad cilíndrica pasante press-fit para el centro de madera
+// - Unión Cola de Milano fija de 1.8 mm + Orificio interno de llavero
+// - Malla 100% cerrada (2-Manifold, 0 bordes abiertos, 1 único sólido listo para replicar en el laminador)
 // ============================================================================
 
 interface Vec2 {
@@ -707,11 +692,6 @@ function pointInTriangle2D(p: Vec2, a: Vec2, b: Vec2, c: Vec2): boolean {
   return c1 >= eps && c2 >= eps && c3 >= eps;
 }
 
-/**
- * Triangulador Ear-Clipping exacto para un polígono 2D simple (sin agujeros) con área firmada positiva.
- * Devuelve una lista de tripletes de índices [i, j, k] que usan exclusivamente los vértices de `poly`,
- * garantizando 0 vértices T-junction y emparejamiento exacto de aristas en 3D.
- */
 function triangulateSimplePolygon2D(poly: Vec2[]): [number, number, number][] {
   const n = poly.length;
   if (n < 3) return [];
@@ -736,14 +716,13 @@ function triangulateSimplePolygon2D(poly: Vec2[]): [number, number, number][] {
       const c = poly[iNext];
 
       const area2 = cross2D(a, b, c);
-      if (area2 <= 1e-6) continue; // No es oreja convexa
+      if (area2 <= 1e-6) continue;
 
       let containsOther = false;
       for (let j = 0; j < m; j++) {
         const idx = active[j];
         if (idx === iPrev || idx === iCurr || idx === iNext) continue;
         const p = poly[idx];
-        // Si coincide exactamente con alguno de los vértices del triángulo, ignorar
         if (
           Math.hypot(p.x - a.x, p.y - a.y) < 1e-6 ||
           Math.hypot(p.x - b.x, p.y - b.y) < 1e-6 ||
@@ -758,7 +737,6 @@ function triangulateSimplePolygon2D(poly: Vec2[]): [number, number, number][] {
       }
 
       if (!containsOther) {
-        // Puntaje de calidad del triángulo (2 * área / suma de lados al cuadrado -> premia triángulos equiláteros)
         const dAB2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
         const dBC2 = (c.x - b.x) ** 2 + (c.y - b.y) ** 2;
         const dCA2 = (a.x - c.x) ** 2 + (a.y - c.y) ** 2;
@@ -771,7 +749,6 @@ function triangulateSimplePolygon2D(poly: Vec2[]): [number, number, number][] {
     }
 
     if (bestEarIdx === -1) {
-      // Fallback por tolerancia numérica: elegir la oreja con mayor cross2D positivo
       for (let i = 0; i < m; i++) {
         const iPrev = active[(i - 1 + m) % m];
         const iCurr = active[i];
@@ -834,22 +811,16 @@ function pushQuad(lines: string[], a: Vec3, b: Vec3, c: Vec3, d: Vec3) {
 function appendSingleFrameStlFacets(
   lines: string[],
   params: BadgesTeamParams,
-  offsetX: number,
-  offsetY: number
+  offsetX = 0,
+  offsetY = 0
 ) {
   const cavityDiameter = params.woodCenterDiameterMm + 2 * params.clearanceMm;
   const rCavity = cavityDiameter / 2;
-  const rSupport = rCavity - 1.8; // Anillo donde se apoya el centro de madera (1.8 mm de ancho radial)
 
-  // Alturas Z solicitadas:
-  // - Anillo de apoyo inferior: 0.8 mm (z0 = 0.0 -> z1 = 0.8 mm)
-  // - Cilindro donde encaja el centro de madera: 3.5 mm (z1 = 0.8 -> z2 = 4.3 mm)
+  // Chapa completamente plana de 3.0 mm (z0 = 0.0 -> z1 = 3.0 mm), sin anillo de apoyo
   const z0 = 0.0;
-  const z1 = FIXED_SUPPORT_RING_HEIGHT_MM; // 0.8 mm
-  const z2 = FIXED_TOTAL_FRAME_HEIGHT_MM; // 4.3 mm (0.8 + 3.5 mm)
+  const z1 = FIXED_FRAME_HEIGHT_MM; // 3.0 mm
 
-  // 1. Contorno exterior con Cola de Milano (N_out par: 36, 30 o 18)
-  //    outerLoop[0] está en (0, y_top < 0) y outerLoop[N_out/2] está en (0, y_bot > 0)
   const outerLoop = computeOuterFrameContourPoints(
     params.geometry,
     rCavity,
@@ -859,22 +830,16 @@ function appendSingleFrameStlFacets(
   const nOut = outerLoop.length;
   const halfOut = nOut / 2;
 
-  // 2. Círculo de la cavidad de madera (rCavity) y círculo interior del anillo de apoyo (rSupport)
-  //    nCav = 72 (par): índice 0 en -90° (0, -r) e índice 36 en +90° (0, +r)
   const nCav = 72;
   const halfCav = nCav / 2;
   const cavityLoop: Vec2[] = [];
-  const supportLoop: Vec2[] = [];
   for (let j = 0; j < nCav; j++) {
     const angle = -Math.PI / 2 + (2 * Math.PI * j) / nCav;
     const c = Math.abs(Math.cos(angle)) < 1e-7 ? 0 : Math.cos(angle);
     const s = Math.abs(Math.sin(angle)) < 1e-7 ? 0 : Math.sin(angle);
     cavityLoop.push({ x: rCavity * c, y: rCavity * s });
-    supportLoop.push({ x: rSupport * c, y: rSupport * s });
   }
 
-  // 3. Círculo del orificio pasante interno para llavero (centrado en (0, -holeOffset))
-  //    nHole = 36 (par): índice 0 en -90° (0, -(holeOffset + rHole)) e índice 18 en +90° (0, -(holeOffset - rHole))
   const holeSpec = getInternalKeychainHoleSpec(
     params.geometry,
     rCavity,
@@ -892,10 +857,6 @@ function appendSingleFrameStlFacets(
     holeLoop.push({ x: rHole * c, y: holeCenterY + rHole * s });
   }
 
-  // 4. Descomposición exacta de la corona superior/inferior en DOS polígonos simples sin agujeros:
-  //    - Mitad Derecha (x >= 0)
-  //    - Mitad Izquierda (x <= 0)
-  //    Ambos comparten exactamente las 3 costuras sobre el eje X = 0 con orientación opuesta.
   const rightPoly: Vec2[] = [];
   for (let i = 0; i <= halfOut; i++) rightPoly.push(outerLoop[i]);
   for (let i = halfCav; i >= 0; i--) rightPoly.push(cavityLoop[i]);
@@ -918,23 +879,23 @@ function appendSingleFrameStlFacets(
     z,
   });
 
-  // 5. Tapa Superior (z = z2 = 4.3 mm, normal +Z) y Tapa Inferior de la Corona (z = z0 = 0.0 mm, normal -Z)
+  // 1. Tapa Superior (z = 3.0 mm, normal +Z) y Tapa Inferior (z = 0.0 mm, normal -Z)
   for (const [ia, ib, ic] of rightTris) {
     const a = rightPoly[ia];
     const b = rightPoly[ib];
     const c = rightPoly[ic];
-    pushTriangle(lines, to3D(a, z2), to3D(b, z2), to3D(c, z2));
+    pushTriangle(lines, to3D(a, z1), to3D(b, z1), to3D(c, z1));
     pushTriangle(lines, to3D(a, z0), to3D(c, z0), to3D(b, z0));
   }
   for (const [ia, ib, ic] of leftTris) {
     const a = leftPoly[ia];
     const b = leftPoly[ib];
     const c = leftPoly[ic];
-    pushTriangle(lines, to3D(a, z2), to3D(b, z2), to3D(c, z2));
+    pushTriangle(lines, to3D(a, z1), to3D(b, z1), to3D(c, z1));
     pushTriangle(lines, to3D(a, z0), to3D(c, z0), to3D(b, z0));
   }
 
-  // 6. Pared Perimetral Exterior (Geometría + Cola de Milano unificadas) desde z0 = 0.0 hasta z2 = 4.3 mm
+  // 2. Pared Perimetral Exterior (Polígono + Cola de Milano de 1.8 mm) de z = 0.0 a z = 3.0 mm
   for (let i = 0; i < nOut; i++) {
     const inext = (i + 1) % nOut;
     const p0 = outerLoop[i];
@@ -943,13 +904,12 @@ function appendSingleFrameStlFacets(
       lines,
       to3D(p0, z0),
       to3D(p1, z0),
-      to3D(p1, z2),
-      to3D(p0, z2)
+      to3D(p1, z1),
+      to3D(p0, z1)
     );
   }
 
-  // 7. Pared Cilíndrica del Orificio Interno para Llavero desde z0 = 0.0 hasta z2 = 4.3 mm
-  //    (Cosida vértice a vértice con holeLoop en z0 y z2)
+  // 3. Pared Cilíndrica del Orificio Interno para Llavero de z = 0.0 a z = 3.0 mm
   for (let j = 0; j < nHole; j++) {
     const jnext = (j + 1) % nHole;
     const h0 = holeLoop[j];
@@ -958,84 +918,35 @@ function appendSingleFrameStlFacets(
       lines,
       to3D(h1, z0),
       to3D(h0, z0),
-      to3D(h0, z2),
-      to3D(h1, z2)
+      to3D(h0, z1),
+      to3D(h1, z1)
     );
   }
 
-  // 8. Cilindro de Encaje del Centro de Madera (3.5 mm de altura: z1 = 0.8 -> z2 = 4.3 mm)
-  //    + Anillo de Apoyo Inferior (0.8 mm de altura: z0 = 0.0 -> z1 = 0.8 mm)
-  //    (Cosidos vértice a vértice con cavityLoop en z0 y z2)
+  // 4. Pared Cilíndrica Pasante donde encaja el Centro de Madera (3.0 mm de altura plana, sin anillo inferior)
   for (let j = 0; j < nCav; j++) {
     const jnext = (j + 1) % nCav;
     const c0 = cavityLoop[j];
     const c1 = cavityLoop[jnext];
-    const s0 = supportLoop[j];
-    const s1 = supportLoop[jnext];
-
-    // 8a. Pared cilíndrica vertical donde encaja la madera (altura = 3.5 mm, de z1 a z2, normal hacia el centro)
     pushQuad(
       lines,
-      to3D(c1, z1),
-      to3D(c0, z1),
-      to3D(c0, z2),
-      to3D(c1, z2)
-    );
-
-    // 8b. Cara horizontal superior del anillo de apoyo en z1 = 0.8 mm (normal +Z)
-    pushQuad(
-      lines,
-      to3D(c0, z1),
-      to3D(c1, z1),
-      to3D(s1, z1),
-      to3D(s0, z1)
-    );
-
-    // 8c. Pared cilíndrica interior del anillo de apoyo (altura = 0.8 mm, de z0 a z1, normal hacia el centro)
-    pushQuad(
-      lines,
-      to3D(s1, z0),
-      to3D(s0, z0),
-      to3D(s0, z1),
-      to3D(s1, z1)
-    );
-
-    // 8d. Cara horizontal inferior del anillo de apoyo en z0 = 0.0 mm (normal -Z, continúa hacia la tapa inferior en c0..c1)
-    pushQuad(
-      lines,
-      to3D(s0, z0),
-      to3D(s1, z0),
       to3D(c1, z0),
-      to3D(c0, z0)
+      to3D(c0, z0),
+      to3D(c0, z1),
+      to3D(c1, z1)
     );
   }
 }
 
 /**
- * Genera el contenido .STL incluyendo SIEMPRE todos los marcos conectores 3D del equipo.
+ * Genera el archivo .STL con 1 ÚNICO marco conector centrado en (0,0) de 3.0 mm de espesor plano,
+ * listo para replicarse directamente en el laminador 3D según la cantidad de integrantes.
  */
 export function generateBadgesConnectorStl(params: BadgesTeamParams): string {
-  const count = params.memberCount;
-  const solidName = `MakerBox_Taller4_Marcos_${params.geometry.toUpperCase()}_${count}x`;
+  const solidName = `MakerBox_Taller4_Marco_${params.geometry.toUpperCase()}_3mm`;
   const lines: string[] = [];
   lines.push(`solid ${solidName}`);
-
-  const apothem = getBadgeHoneycombApothem(
-    params.woodCenterDiameterMm / 2 + params.clearanceMm,
-    params.dovetailSizeMm,
-    params.geometry
-  );
-  const pitch = Math.round(apothem * 3.6 + 14);
-  const cols = Math.min(3, count);
-
-  for (let idx = 0; idx < count; idx++) {
-    const col = idx % cols;
-    const row = Math.floor(idx / cols);
-    const ox = col * pitch;
-    const oy = row * pitch;
-    appendSingleFrameStlFacets(lines, params, ox, oy);
-  }
-
+  appendSingleFrameStlFacets(lines, params, 0, 0);
   lines.push(`endsolid ${solidName}`);
   return lines.join('\n');
 }
