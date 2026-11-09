@@ -32,6 +32,9 @@ import {
   computeOuterFrameContourPoints,
   estimateBadgesManufacturingTimes,
   FIXED_PRESS_FIT_CLEARANCE_MM,
+  FIXED_SUPPORT_RING_HEIGHT_MM,
+  FIXED_TOTAL_FRAME_HEIGHT_MM,
+  FIXED_WOOD_CYLINDER_HEIGHT_MM,
   FIXED_WOOD_THICKNESS_MM,
   FRAME_GEOMETRIES,
   FrameGeometryId,
@@ -147,7 +150,7 @@ export function BadgesSection() {
   const cavityDiameterMm = Number(
     (woodCenterDiameterMm + 2 * FIXED_PRESS_FIT_CLEARANCE_MM).toFixed(2)
   );
-  const cavityDepthMm = Number((FIXED_WOOD_THICKNESS_MM + 0.1).toFixed(2));
+  const cavityDepthMm = FIXED_WOOD_CYLINDER_HEIGHT_MM;
 
   // Telemetría de tiempos de Corte/Grabado en Falcon Design Space e Impresión 3D en PLA
   const telemetry = useMemo(
@@ -1001,16 +1004,17 @@ export function BadgesSection() {
             {/* Parámetros Fijos por Material y Ajuste Press-Fit */}
             <div className="rounded-xl bg-sky-50/80 border border-sky-200 p-3 text-[11px] text-sky-950 space-y-1">
               <div className="font-extrabold flex flex-wrap items-center justify-between gap-1">
-                <span>Parámetros Fijos de Calce Press-Fit:</span>
+                <span>Parámetros Fijos de Calce Press-Fit (Malla 3D Cerrada):</span>
                 <span className="text-sky-700 font-mono">
                   Madera {FIXED_WOOD_THICKNESS_MM.toFixed(1)} mm · Tolerancia{' '}
                   {FIXED_PRESS_FIT_CLEARANCE_MM} mm
                 </span>
               </div>
               <p className="text-sky-900/80 leading-relaxed">
-                Cavidad PLA generada automáticamente: <strong>Ø {cavityDiameterMm} mm</strong> ×{' '}
-                <strong>{cavityDepthMm} mm</strong> (con tope inferior de 1.0 mm y bisel superior de
-                retención para encaje a presión sin pegamento).
+                Cilindro de encaje: <strong>Ø {cavityDiameterMm} mm</strong> ×{' '}
+                <strong>{cavityDepthMm.toFixed(1)} mm de altura</strong> · Anillo inferior de apoyo:{' '}
+                <strong>{FIXED_SUPPORT_RING_HEIGHT_MM.toFixed(1)} mm</strong> · Altura total del
+                sólido único: <strong>{FIXED_TOTAL_FRAME_HEIGHT_MM.toFixed(1)} mm</strong>.
               </p>
             </div>
           </div>
