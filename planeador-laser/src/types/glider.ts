@@ -1,51 +1,146 @@
-export interface GliderParams {
-  /** Largo total del fuselaje en mm (Rango en balsa 300x100: 170 a 260 mm) */
-  fuselageLengthMm: number;
-  /** Envergadura total de las 2 alas en mm (Rango en balsa 300x100: 170 a 260 mm -> 85 a 130 mm c/u) */
+export type PlaGliderModelId = 'x1c' | 'b747';
+
+export interface PlaGliderParams {
+  modelId: PlaGliderModelId;
+  /** Envergadura total de punta a punta de las alas en mm */
   wingspanMm: number;
-  /** Ancho (cuerda) del ala en mm (Rango equilibrado: 28 a 45 mm) */
+  /** Largo total del fuselaje desde la nariz hasta la cola en mm */
+  fuselageLengthMm: number;
+  /** Ancho (cuerda) del ala principal en mm */
+  wingChordMm: number;
+  /** Ancho central del fuselaje / nariz en mm */
+  fuselageWidthMm: number;
+}
+
+export interface PlaGliderModelLimits {
+  id: PlaGliderModelId;
+  name: string;
+  shortName: string;
+  badge: string;
+  description: string;
+  wingspan: { min: number; max: number; default: number; step: number };
+  fuselageLength: { min: number; max: number; default: number; step: number };
+  wingChord: { min: number; max: number; default: number; step: number };
+  fuselageWidth: { min: number; max: number; default: number; step: number };
+  wingSkinThicknessMm: number;
+  ribThicknessMm: number;
+  noseHeightMm: number;
+  tailHeightMm: number;
+  slicerProfileSummary: string;
+}
+
+export const PLA_GLIDER_MODELS: Record<PlaGliderModelId, PlaGliderModelLimits> = {
+  x1c: {
+    id: 'x1c',
+    name: 'Planeador Ligero X1C (Ala Recta Nervada)',
+    shortName: 'X1C Ala Recta',
+    badge: '4.9 g · 25 min · Relleno 100%',
+    description:
+      'Planeador de alta eficiencia con alas rectas ultra-delgadas (0.2–0.3 mm), nervaduras estructurales de 0.6 mm, contrapeso de nariz integrado con muesca de lanzamiento y estabilizador de cola nervado.',
+    wingspan: { min: 140, max: 240, default: 200, step: 2 },
+    fuselageLength: { min: 140, max: 220, default: 177, step: 1 },
+    wingChord: { min: 22, max: 48, default: 32, step: 1 },
+    fuselageWidth: { min: 3.6, max: 7.6, default: 4.6, step: 0.2 },
+    wingSkinThicknessMm: 0.25,
+    ribThicknessMm: 0.6,
+    noseHeightMm: 10.14,
+    tailHeightMm: 25.2,
+    slicerProfileSummary:
+      'PLA · Capas 1–2 a 0.1 mm y resto a 0.2 mm · 2 perímetros · 100% relleno · Sin soportes',
+  },
+  b747: {
+    id: 'b747',
+    name: 'Planeador Jet Boeing 747 (Ala en Flecha + Winglets)',
+    shortName: 'Boeing 747 Jet',
+    badge: '4.6 g · 22 min · Relleno 15%',
+    description:
+      'Diseño tipo jet comercial con alas en flecha regresiva (0.3 mm de espesor), winglets verticales de 5 mm en puntas de ala y estabilizador, nervio central de rigidez (2 mm) y cabina frontal de contrapeso.',
+    wingspan: { min: 120, max: 220, default: 158, step: 2 },
+    fuselageLength: { min: 140, max: 220, default: 174, step: 1 },
+    wingChord: { min: 24, max: 48, default: 33.5, step: 0.5 },
+    fuselageWidth: { min: 11.0, max: 22.0, default: 15.4, step: 0.5 },
+    wingSkinThicknessMm: 0.3,
+    ribThicknessMm: 2.0,
+    noseHeightMm: 5.0,
+    tailHeightMm: 14.77,
+    slicerProfileSummary:
+      'PLA · Altura de capa 0.2 mm · 2 perímetros · 15% relleno · Sin soportes',
+  },
+};
+
+export interface PlaGliderTelemetry {
+  /** Volumen real 3D calculado sobre la malla cerrada (cm³) */
+  volumeCm3: number;
+  volumeMm3: number;
+  /** Masa estimada en gramos de PLA según volumen y perfil de relleno */
+  estimatedWeightGrams: number;
+  /** Tiempo estimado de impresión en minutos */
+  estimatedPrintTimeMin: number;
+  /** Longitud estimada de filamento PLA 1.75 mm en metros */
+  estimatedFilamentMeters: number;
+  /** Área alar proyectada en cm² y mm² */
+  wingAreaCm2: number;
+  wingAreaMm2: number;
+  /** Relación de aspecto (AR = b² / Sw) */
+  aspectRatio: number;
+  /** Relación Envergadura / Largo del Fuselaje */
+  spanToFuselageRatio: number;
+  /** Carga alar en g/dm² */
+  wingLoadingGPerDm2: number;
+  /** Posición real del Centro de Gravedad 3D (CG) desde la nariz (mm) */
+  actualCgFromNoseMm: number;
+  /** Posición ideal del Centro Aerodinámico / CG óptimo desde la nariz (mm) */
+  idealCgFromNoseMm: number;
+  /** Desviación del CG en mm (negativo = nariz ligeramente pesada, positivo = cola pesada) */
+  cgOffsetMm: number;
+  /** Velocidad estimada de planeo (m/s) */
+  estimatedGlideSpeedMs: number;
+  /** Razón de planeo estimada (L/D) */
+  estimatedGlideRatioLD: number;
+  /** Puntaje global de equilibrio aerodinámico (0 a 100) */
+  balanceScore: number;
+  /** Estado del diseño */
+  balanceStatus: 'optimo' | 'estable' | 'advertencia';
+  /** Explicación del comportamiento de vuelo */
+  flightBehaviorSummary: string;
+  /** Si cabe recto en una cama estándar de 256x256 mm (X1C/P1S/Prusa/Ender) */
+  fitsStandardBed220: boolean;
+  /** Si cabe recto en una cama compacta de 180x180 mm (A1 Mini) */
+  fitsMiniBed180: boolean;
+  /** Número de vértices y triángulos de la malla 3D */
+  vertexCount: number;
+  triangleCount: number;
+  /** Altura máxima en eje Z (mm) */
+  maxHeightMm: number;
+}
+
+// Legacy types kept for backward compatibility with /api/planeador route
+export interface GliderParams {
+  fuselageLengthMm: number;
+  wingspanMm: number;
   wingWidthMm: number;
-  /** Espesor del material con tolerancia para ranuras en mm (Madera de balsa 3 mm -> 2.95 / 3.00 mm) */
   slotThicknessMm: number;
-  /** Si es true, incluye cotas, bordes de lámina 300x100 y etiquetas pedagógicas */
   includeAnnotations?: boolean;
-  /** Qué láminas exportar: 'all' (ambas), 'sheet1' (Lámina 1: 300x100), 'sheet2' (Lámina 2: 300x100) */
   targetSheet?: 'all' | 'sheet1' | 'sheet2';
-  /** Color de trazo de corte láser (por defecto #FF0000 para LightBurn/RDWorks) */
   cutStrokeColor?: string;
 }
 
 export interface AerodynamicData {
-  /** Área alar total efectiva de ambas alas en cm² y mm² (considerando factor elíptico de punta 0.892) */
   wingAreaCm2: number;
   wingAreaMm2: number;
-  /** Alargamiento alar (Aspect Ratio AR = b² / Sw) */
   aspectRatio: number;
-  /** Relación Envergadura / Largo del Fuselaje (equilibrio longitudinal) */
   spanToFuselageRatio: number;
-  /** Relación Largo del Fuselaje / Ancho del Ala */
   finenessRatio: number;
-  /** Coeficiente de volumen de cola horizontal (VH) para estabilidad de cabeceo */
   tailVolumeCoefficient: number;
-  /** Posición recomendada del Centro de Gravedad (CG) medida desde la punta de la nariz (mm) */
   recommendedCgFromNoseMm: number;
-  /** Posición natural del Centro de Gravedad (CG) de la madera de balsa sola sin lastre en la nariz (mm) */
   unbalancedCgFromNoseMm: number;
-  /** Masa recomendada del disco de contrapeso impreso en PLA para la punta de la nariz (g) */
   recommendedNoseWeightGrams: number;
-  /** Masa total estimada del planeador armado en madera de balsa de 3 mm (densidad ~0.14 g/cm³) */
   estimatedWeightGrams: number;
-  /** Carga alar estimada en g/dm² */
   wingLoadingGPerDm2: number;
-  /** Velocidad teórica de planeo estable en m/s */
   estimatedGlideSpeedMs: number;
-  /** Razón de planeo estimada (L/D: cuántos metros avanza por cada metro que desciende) */
   estimatedGlideRatioLD: number;
-  /** Puntaje de equilibrio global (0 a 100) */
   balanceScore: number;
-  /** Estado del diseño: 'optimo' | 'estable' | 'advertencia' */
   balanceStatus: 'optimo' | 'estable' | 'advertencia';
-  /** Recomendación pedagógica para los estudiantes */
   flightBehaviorSummary: string;
 }
 
@@ -84,9 +179,6 @@ export interface ProcessedGliderResult {
   baseMetrics: GliderMetrics;
 }
 
-/**
- * Límites de diseño equilibrado para planchas de madera de balsa de 300 x 100 x 3 mm
- */
 export const BALSA_DESIGN_LIMITS = {
   sheetWidthMm: 300,
   sheetHeightMm: 100,
@@ -99,7 +191,7 @@ export const BALSA_DESIGN_LIMITS = {
 
 export const BASE_GLIDER_PARAMS: GliderMetrics = {
   fuselageLengthMm: 230.0,
-  fuselageHeightMm: 44.94,
+  fuselageHeightMm: 46.94,
   wingSaddleLengthMm: 36.0,
   wingspanTotalMm: 240.0,
   singleWingLengthMm: 120.0,

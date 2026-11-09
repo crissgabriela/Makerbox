@@ -109,7 +109,7 @@ export default function HomePage() {
             </div>
           </Link>
 
-          {/* TALLER 2: Ingeniería de Vuelo (Planeadores) */}
+          {/* TALLER 2: Ingeniería de Vuelo (Planeadores 3D en PLA) */}
           <Link
             href="/planeador"
             className="group relative bg-white rounded-3xl border-2 border-sky-200 hover:border-sky-500 p-6 sm:p-8 shadow-sm hover:shadow-2xl transition-all duration-300 flex flex-col justify-between overflow-hidden"
@@ -122,7 +122,7 @@ export default function HomePage() {
                   Taller 2
                 </span>
                 <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
-                  Balsa 3 mm .SVG + Pesos PLA .STL
+                  Impresión 3D PLA (.3MF / .STL)
                 </span>
               </div>
 
@@ -135,34 +135,34 @@ export default function HomePage() {
                     Ingeniería de Vuelo
                   </h2>
                   <p className="text-xs sm:text-sm font-bold text-sky-700">
-                    Planeador en Balsa · Contrapesos de Nariz 3D
+                    Planeadores 3D en PLA · X1C Ala Recta & Boeing 747 Jet
                   </p>
                 </div>
               </div>
 
               <p className="text-sm text-slate-600 leading-relaxed">
-                Modifica el <strong>largo del fuselaje</strong>, la <strong>envergadura de alas</strong> y el <strong>ancho alar</strong> manteniendo el calce de <strong>3 mm</strong> y descargando los <strong>discos de contrapeso en PLA (.STL)</strong> para equilibrar el Centro de Gravedad.
+                Parametriza en 3D los modelos funcionales en <strong>PLA (.3MF y .STL)</strong>: modifica la <strong>envergadura</strong>, el <strong>largo del fuselaje</strong> y el <strong>ancho del ala y fuselaje</strong> manteniendo el espesor laminar (<code className="text-sky-700">0.2–0.3 mm</code>) y el equilibrio del Centro de Gravedad.
               </p>
 
               <ul className="space-y-2 text-xs font-semibold text-slate-700 bg-sky-50/60 border border-sky-200/80 rounded-2xl p-4">
                 <li className="flex items-center gap-2">
                   <Plane className="w-4 h-4 text-sky-600 shrink-0" />
-                  <span>Control de Fuselaje y Envergadura (170–260 mm) con gancho de elástico +2 mm</span>
+                  <span>2 modelos base: Planeador Ligero X1C (4.9 g) y Jet Boeing 747 (4.6 g)</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Compass className="w-4 h-4 text-sky-600 shrink-0" />
-                  <span>Cálculo de Centro de Gravedad (CG) y kit de 3 discos ranurados PLA (.STL)</span>
+                  <span>Cálculo 3D real de Volumen, Masa PLA, Centro de Gravedad (CG) y L/D</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Layers className="w-4 h-4 text-sky-600 shrink-0" />
-                  <span>Distribución automática en 1 o 2 láminas de balsa de 300 × 100 × 3 mm</span>
+                  <span>Descarga directa en .3MF (con perfil de laminado PLA) y .STL universal</span>
                 </li>
               </ul>
             </div>
 
             <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500">
-                Corte Láser (.SVG) + Pesos Nariz (.STL)
+                Proyecto .3MF (Bambu/Prusa) + Malla .STL
               </span>
               <span className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-extrabold text-xs sm:text-sm shadow-sm group-hover:shadow-md group-hover:translate-x-0.5 transition-all">
                 <span>Abrir Taller 2</span>
