@@ -15,6 +15,8 @@ import {
   Compass,
   Box,
   Clock,
+  Hexagon,
+  Users,
 } from 'lucide-react';
 
 export default function HomePage() {
@@ -45,8 +47,8 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Tarjetas de Selección Visual de los 3 Talleres */}
-        <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Tarjetas de Selección Visual de los 4 Talleres */}
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* TALLER 1: Dibujo Grupal + Rompecabezas Láser */}
           <Link
             href="/zoologico"
@@ -232,6 +234,68 @@ export default function HomePage() {
               </span>
             </div>
           </Link>
+
+          {/* TALLER 4: Co-creación de Chapitas Híbridas (Láser + 3D) */}
+          <Link
+            href="/chapitas"
+            className="group relative bg-white rounded-3xl border-2 border-purple-200 hover:border-purple-500 p-6 sm:p-8 shadow-sm hover:shadow-2xl transition-all duration-300 flex flex-col justify-between overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 w-44 h-44 bg-gradient-to-bl from-purple-100/80 to-transparent rounded-bl-full pointer-events-none transition-transform group-hover:scale-110" />
+
+            <div className="space-y-5 relative z-10">
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-purple-100 text-purple-900 font-extrabold text-xs uppercase tracking-wider border border-purple-300">
+                  Taller 4
+                </span>
+                <span className="text-xs font-bold text-fuchsia-700 bg-fuchsia-50 border border-fuchsia-200 px-3 py-1 rounded-full">
+                  Madera 3 mm .SVG + Marco PLA .STL
+                </span>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 to-fuchsia-600 text-white flex items-center justify-center text-3xl shadow-md group-hover:scale-105 transition-transform shrink-0">
+                  🏅
+                </div>
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-black text-slate-900 group-hover:text-purple-700 transition-colors">
+                    Chapitas Híbridas
+                  </h2>
+                  <p className="text-xs sm:text-sm font-bold text-purple-700">
+                    Co-creación en Equipo · Encaje Press-Fit · Panal 3D
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Diseña en grupo (2 a 5 integrantes, 5° a 8° básico) un set de chapitas o llaveros con <strong>centro de madera de 36 mm</strong> grabado con láser que encaja a presión dentro de un <strong>marco conector impreso en 3D (PLA)</strong>.
+              </p>
+
+              <ul className="space-y-2 text-xs font-semibold text-slate-700 bg-purple-50/60 border border-purple-200/80 rounded-2xl p-4">
+                <li className="flex items-center gap-2">
+                  <Hexagon className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>3 geometrías conectoras: Hexágono Panal, Engranaje y Circular con Muesca</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>Personalización por integrante (textos + 8 emblemas) y sugerencias con IA</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Box className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>Exporta centros láser (.SVG #FF0000/#0000FF) y marcos press-fit (.STL)</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500">
+                Corte/Grabado Láser (.SVG) + Marcos 3D (.STL)
+              </span>
+              <span className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white font-extrabold text-xs sm:text-sm shadow-sm group-hover:shadow-md group-hover:translate-x-0.5 transition-all">
+                <span>Abrir Taller 4</span>
+                <ArrowRight className="w-4 h-4" />
+              </span>
+            </div>
+          </Link>
         </section>
 
         {/* Barra Informativa Inferior para Docentes y Estudiantes */}
@@ -239,7 +303,7 @@ export default function HomePage() {
           <div className="flex items-start sm:items-center gap-3">
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5 sm:mt-0" />
             <div className="text-xs text-slate-600">
-              <strong className="text-slate-900">Estándar de Fabricación MakerBox:</strong> Los tres talleres generan archivos parametrizados con unidades exactas en <strong>milímetros (mm)</strong>, trazos de corte láser en <strong className="text-red-600">#FF0000</strong>, grabado vectorial en <strong className="text-blue-600">#0000FF</strong> y mallas 3D listas para laminar en <strong>.STL</strong>.
+              <strong className="text-slate-900">Estándar de Fabricación MakerBox:</strong> Los cuatro talleres generan archivos parametrizados con unidades exactas en <strong>milímetros (mm)</strong>, trazos de corte láser en <strong className="text-red-600">#FF0000</strong>, grabado vectorial en <strong className="text-blue-600">#0000FF</strong> y mallas 3D listas para laminar en <strong>.STL / .3MF</strong>.
             </div>
           </div>
         </section>
