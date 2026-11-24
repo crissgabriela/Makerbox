@@ -47,7 +47,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Tarjetas de Selección Visual de los 4 Talleres */}
+        {/* Tarjetas de Selección Visual de los 5 Talleres */}
         <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* TALLER 1: Dibujo Grupal + Rompecabezas Láser */}
           <Link
@@ -296,6 +296,68 @@ export default function HomePage() {
               </span>
             </div>
           </Link>
+
+          {/* TALLER 5: Laminador 3D a Puzzles MDF 3 mm + Ensamble 3D PLA */}
+          <Link
+            href="/laminador"
+            className="md:col-span-2 group relative bg-white rounded-3xl border-2 border-orange-200 hover:border-orange-500 p-6 sm:p-8 shadow-sm hover:shadow-2xl transition-all duration-300 flex flex-col justify-between overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 w-56 h-56 bg-gradient-to-bl from-orange-100/80 to-transparent rounded-bl-full pointer-events-none transition-transform group-hover:scale-110" />
+
+            <div className="space-y-5 relative z-10">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-orange-100 text-orange-900 font-extrabold text-xs uppercase tracking-wider border border-orange-300">
+                  Taller 5 · Nuevo
+                </span>
+                <span className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-3 py-1 rounded-full">
+                  MDF 3 mm Corte Láser (.SVG) + Kit Ensamble PLA (.STL)
+                </span>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-rose-600 text-white flex items-center justify-center text-3xl shadow-md group-hover:scale-105 transition-transform shrink-0">
+                  🧊
+                </div>
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-black text-slate-900 group-hover:text-orange-700 transition-colors">
+                    Laminador 3D · Puzzles MDF & Planos Seriados
+                  </h2>
+                  <p className="text-xs sm:text-sm font-bold text-orange-700">
+                    Estudio CAD 3D (Tipo Tinkercad) · Carga .STL/.OBJ · Costillas Encajables & Planos Seriados
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-600 leading-relaxed max-w-4xl">
+                Supera una actividad pedagógica previa (individual o grupal), modela animales, planetas o vehículos combinando primitivas 3D (o carga tu propio archivo <strong>.STL / .OBJ</strong>) y lamínalo automáticamente en <strong>piezas planas de MDF de 3 mm (.SVG)</strong> con ranuras exactas a media madera o planos seriados, más un <strong>kit liviano de pasadores/trabas y pedestal en 3D (PLA)</strong>.
+              </p>
+
+              <ul className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-semibold text-slate-700 bg-orange-50/60 border border-orange-200/80 rounded-2xl p-4">
+                <li className="flex items-center gap-2">
+                  <Box className="w-4 h-4 text-orange-600 shrink-0" />
+                  <span>Estudio CAD básico (Sólido/Hueco) + 6 plantillas y carga .STL/.OBJ</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-orange-600 shrink-0" />
+                  <span>Costillas encajables (X+Y) y Planos Seriados con vista explosión 3D</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Scissors className="w-4 h-4 text-orange-600 shrink-0" />
+                  <span>Patrón .SVG numerado (#FF0000/#0000FF) + Kit Ensamble PLA (.STL)</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between flex-wrap gap-3">
+              <span className="text-xs font-bold text-slate-500">
+                Falcon Design Space (.SVG MDF 3 mm) + Conectores 3D (.STL)
+              </span>
+              <span className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-600 text-white font-extrabold text-xs sm:text-sm shadow-sm group-hover:shadow-md group-hover:translate-x-0.5 transition-all">
+                <span>Abrir Taller 5</span>
+                <ArrowRight className="w-4 h-4" />
+              </span>
+            </div>
+          </Link>
         </section>
 
         {/* Barra Informativa Inferior para Docentes y Estudiantes */}
@@ -303,7 +365,7 @@ export default function HomePage() {
           <div className="flex items-start sm:items-center gap-3">
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5 sm:mt-0" />
             <div className="text-xs text-slate-600">
-              <strong className="text-slate-900">Estándar de Fabricación MakerBox:</strong> Los cuatro talleres generan archivos parametrizados con unidades exactas en <strong>milímetros (mm)</strong>, trazos de corte láser en <strong className="text-red-600">#FF0000</strong>, grabado vectorial en <strong className="text-blue-600">#0000FF</strong> y mallas 3D listas para laminar en <strong>.STL / .3MF</strong>.
+              <strong className="text-slate-900">Estándar de Fabricación MakerBox:</strong> Los cinco talleres generan archivos parametrizados con unidades exactas en <strong>milímetros (mm)</strong>, trazos de corte láser en <strong className="text-red-600">#FF0000</strong>, grabado vectorial en <strong className="text-blue-600">#0000FF</strong> y mallas 3D listas para laminar en <strong>.STL / .3MF</strong>.
             </div>
           </div>
         </section>

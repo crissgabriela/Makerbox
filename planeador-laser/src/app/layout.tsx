@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Talleres de Fabricación Láser: Zoológico Low-Poly y Planeadores | MakerBox UTalca',
+  title: 'Talleres Maker · Plataforma de Fabricación Digital | MakerBox UTalca',
   description:
-    'Plataforma multi-taller para estudiantes: Taller 1 (Zoológico Low-Poly con escalado y ranuras automáticas) y Taller 2 (Ingeniería de Vuelo - Planeadores paramétricos) para corte láser en madera de balsa de 300x100x3 mm.',
+    'Plataforma multi-taller educativa de fabricación digital (Láser + Impresión 3D): Taller 1 (Dibujo Grupal + Puzzle), Taller 2 (Ingeniería de Vuelo 3D/Láser), Taller 3 (Tangrama CAD Híbrido), Taller 4 (Chapitas Híbridas) y Taller 5 (Laminador 3D a Puzzles MDF 3 mm + Conectores PLA).',
 };
 
 export default function RootLayout({
