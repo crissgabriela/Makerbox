@@ -15,6 +15,8 @@ import {
   Compass,
   Box,
   Clock,
+  Cog,
+  Grid,
   Hexagon,
   Users,
 } from 'lucide-react';
@@ -47,7 +49,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Tarjetas de Selección Visual de los 5 Talleres */}
+        {/* Tarjetas de Selección Visual de los 6 Talleres */}
         <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* TALLER 1: Dibujo Grupal + Rompecabezas Láser */}
           <Link
@@ -300,17 +302,17 @@ export default function HomePage() {
           {/* TALLER 5: Laminador 3D a Puzzles MDF 3 mm + Ensamble 3D PLA */}
           <Link
             href="/laminador"
-            className="md:col-span-2 group relative bg-white rounded-3xl border-2 border-orange-200 hover:border-orange-500 p-6 sm:p-8 shadow-sm hover:shadow-2xl transition-all duration-300 flex flex-col justify-between overflow-hidden"
+            className="group relative bg-white rounded-3xl border-2 border-orange-200 hover:border-orange-500 p-6 sm:p-8 shadow-sm hover:shadow-2xl transition-all duration-300 flex flex-col justify-between overflow-hidden"
           >
-            <div className="absolute top-0 right-0 w-56 h-56 bg-gradient-to-bl from-orange-100/80 to-transparent rounded-bl-full pointer-events-none transition-transform group-hover:scale-110" />
+            <div className="absolute top-0 right-0 w-44 h-44 bg-gradient-to-bl from-orange-100/80 to-transparent rounded-bl-full pointer-events-none transition-transform group-hover:scale-110" />
 
             <div className="space-y-5 relative z-10">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-orange-100 text-orange-900 font-extrabold text-xs uppercase tracking-wider border border-orange-300">
-                  Taller 5 · Nuevo
+                  Taller 5
                 </span>
                 <span className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-3 py-1 rounded-full">
-                  MDF 3 mm Corte Láser (.SVG) + Kit Ensamble PLA (.STL)
+                  MDF 3 mm .SVG + Kit PLA .STL
                 </span>
               </div>
 
@@ -320,26 +322,26 @@ export default function HomePage() {
                 </div>
                 <div>
                   <h2 className="text-2xl sm:text-3xl font-black text-slate-900 group-hover:text-orange-700 transition-colors">
-                    Laminador 3D · Puzzles MDF & Planos Seriados
+                    Laminador 3D · Puzzles MDF
                   </h2>
                   <p className="text-xs sm:text-sm font-bold text-orange-700">
-                    Estudio CAD 3D (Tipo Tinkercad) · Carga .STL/.OBJ · Costillas Encajables & Planos Seriados
+                    Estudio CAD 3D · Carga .STL/.OBJ · Planos Seriados y Costillas
                   </p>
                 </div>
               </div>
 
-              <p className="text-sm text-slate-600 leading-relaxed max-w-4xl">
-                Supera una actividad pedagógica previa (individual o grupal), modela animales, planetas o vehículos combinando primitivas 3D (o carga tu propio archivo <strong>.STL / .OBJ</strong>) y lamínalo automáticamente en <strong>piezas planas de MDF de 3 mm (.SVG)</strong> con ranuras exactas a media madera o planos seriados, más un <strong>kit liviano de pasadores/trabas y pedestal en 3D (PLA)</strong>.
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Supera una actividad pedagógica previa, modela animales, planetas o vehículos combinando primitivas 3D (o sube un archivo <strong>.STL / .OBJ</strong>) y lamínalo en <strong>piezas planas de MDF de 3 mm (.SVG)</strong> más un <strong>kit liviano de ensamble en PLA</strong>.
               </p>
 
-              <ul className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-semibold text-slate-700 bg-orange-50/60 border border-orange-200/80 rounded-2xl p-4">
+              <ul className="space-y-2 text-xs font-semibold text-slate-700 bg-orange-50/60 border border-orange-200/80 rounded-2xl p-4">
                 <li className="flex items-center gap-2">
                   <Box className="w-4 h-4 text-orange-600 shrink-0" />
                   <span>Estudio CAD básico (Sólido/Hueco) + 6 plantillas y carga .STL/.OBJ</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Layers className="w-4 h-4 text-orange-600 shrink-0" />
-                  <span>Costillas encajables (X+Y) y Planos Seriados con vista explosión 3D</span>
+                  <span>Costillas encajables (X+Y) y Planos Seriados con explosión 3D</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Scissors className="w-4 h-4 text-orange-600 shrink-0" />
@@ -350,10 +352,72 @@ export default function HomePage() {
 
             <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between flex-wrap gap-3">
               <span className="text-xs font-bold text-slate-500">
-                Falcon Design Space (.SVG MDF 3 mm) + Conectores 3D (.STL)
+                Falcon Design Space (.SVG MDF 3 mm) + Kit (.STL)
               </span>
               <span className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-orange-500 to-rose-600 text-white font-extrabold text-xs sm:text-sm shadow-sm group-hover:shadow-md group-hover:translate-x-0.5 transition-all">
                 <span>Abrir Taller 5</span>
+                <ArrowRight className="w-4 h-4" />
+              </span>
+            </div>
+          </Link>
+
+          {/* TALLER 6: Trenes de Engranajes & Tablero Matricial */}
+          <Link
+            href="/engranajes"
+            className="group relative bg-white rounded-3xl border-2 border-teal-200 hover:border-teal-500 p-6 sm:p-8 shadow-sm hover:shadow-2xl transition-all duration-300 flex flex-col justify-between overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 w-44 h-44 bg-gradient-to-bl from-teal-100/80 to-transparent rounded-bl-full pointer-events-none transition-transform group-hover:scale-110" />
+
+            <div className="space-y-5 relative z-10">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-teal-100 text-teal-900 font-extrabold text-xs uppercase tracking-wider border border-teal-300">
+                  Taller 6 · Nuevo
+                </span>
+                <span className="text-xs font-bold text-cyan-800 bg-cyan-50 border border-cyan-200 px-3 py-1 rounded-full">
+                  Matriz 30×30 / 40×40 · MDF + PLA
+                </span>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-600 text-white flex items-center justify-center text-3xl shadow-md group-hover:scale-105 transition-transform shrink-0">
+                  ⚙️
+                </div>
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-black text-slate-900 group-hover:text-teal-700 transition-colors">
+                    Trenes de Engranajes
+                  </h2>
+                  <p className="text-xs sm:text-sm font-bold text-teal-700">
+                    Diámetros Primitivos · Tablero Matricial · Sentido y Velocidad
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Conecta la esquina inferior izquierda (<strong>Inicio</strong>) con la superior derecha (<strong>Meta</strong>) usando <strong>4 círculos primitivos (2, 4, 6 y 8 cm)</strong> sobre una matriz perforada cada <strong>10 mm</strong>, y genera los engranajes con orificio central (.SVG) y los ejes 3D (.STL).
+              </p>
+
+              <ul className="space-y-2 text-xs font-semibold text-slate-700 bg-teal-50/60 border border-teal-200/80 rounded-2xl p-4">
+                <li className="flex items-center gap-2">
+                  <Cog className="w-4 h-4 text-teal-600 shrink-0" />
+                  <span>4 tamaños (10T, 20T, 30T, 40T · m=2 mm) con simulación de giro real</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Grid className="w-4 h-4 text-teal-600 shrink-0" />
+                  <span>Tablero matricial reutilizable 30×30 o 40×40 cm con hoyos tangentes</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Box className="w-4 h-4 text-teal-600 shrink-0" />
+                  <span>4 retos progresivos (libre, inversor, 4× velocidad y obstáculo) + Ejes PLA</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between flex-wrap gap-3">
+              <span className="text-xs font-bold text-slate-500">
+                Engranajes & Tablero (.SVG) + Ejes 3D (.STL)
+              </span>
+              <span className="inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-extrabold text-xs sm:text-sm shadow-sm group-hover:shadow-md group-hover:translate-x-0.5 transition-all">
+                <span>Abrir Taller 6</span>
                 <ArrowRight className="w-4 h-4" />
               </span>
             </div>
@@ -365,7 +429,7 @@ export default function HomePage() {
           <div className="flex items-start sm:items-center gap-3">
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5 sm:mt-0" />
             <div className="text-xs text-slate-600">
-              <strong className="text-slate-900">Estándar de Fabricación MakerBox:</strong> Los cinco talleres generan archivos parametrizados con unidades exactas en <strong>milímetros (mm)</strong>, trazos de corte láser en <strong className="text-red-600">#FF0000</strong>, grabado vectorial en <strong className="text-blue-600">#0000FF</strong> y mallas 3D listas para laminar en <strong>.STL / .3MF</strong>.
+              <strong className="text-slate-900">Estándar de Fabricación MakerBox:</strong> Los seis talleres generan archivos parametrizados con unidades exactas en <strong>milímetros (mm)</strong>, trazos de corte láser en <strong className="text-red-600">#FF0000</strong>, grabado vectorial en <strong className="text-blue-600">#0000FF</strong> y mallas 3D listas para laminar en <strong>.STL / .3MF</strong>.
             </div>
           </div>
         </section>
