@@ -393,21 +393,21 @@ export default function HomePage() {
               </div>
 
               <p className="text-sm text-slate-600 leading-relaxed">
-                Conecta la esquina inferior izquierda (<strong>Inicio</strong>) con la superior derecha (<strong>Meta</strong>) usando <strong>4 círculos primitivos (2, 4, 6 y 8 cm)</strong> sobre una matriz perforada cada <strong>10 mm</strong>, y genera los engranajes con orificio central (.SVG) y los ejes 3D (.STL).
+                Arrastra <strong>3 círculos primitivos (4, 6 y 8 cm)</strong> sobre una <strong>matriz triangular (diagonales 60°)</strong> o cuadrada de tamaño configurable para conectar Inicio y Meta, y exporta los engranajes con orificio central (.SVG) y los ejes 3D (.STL).
               </p>
 
               <ul className="space-y-2 text-xs font-semibold text-slate-700 bg-teal-50/60 border border-teal-200/80 rounded-2xl p-4">
                 <li className="flex items-center gap-2">
                   <Cog className="w-4 h-4 text-teal-600 shrink-0" />
-                  <span>4 tamaños (10T, 20T, 30T, 40T · m=2 mm) con simulación de giro real</span>
+                  <span>3 tamaños (4, 6 y 8 cm · 20T, 30T, 40T) arrastrables con basurero</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Grid className="w-4 h-4 text-teal-600 shrink-0" />
-                  <span>Tablero matricial reutilizable 30×30 o 40×40 cm con hoyos tangentes</span>
+                  <span>Diagonales exactas (60°) y tamaño de tablero configurable (20–44 cm)</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <Box className="w-4 h-4 text-teal-600 shrink-0" />
-                  <span>4 retos progresivos (libre, inversor, 4× velocidad y obstáculo) + Ejes PLA</span>
+                  <span>4 retos progresivos (libre, inversor, 2× velocidad y obstáculo) + Ejes PLA</span>
                 </li>
               </ul>
             </div>

@@ -13,30 +13,32 @@ import {
   Flame,
   GraduationCap,
   Grid,
+  Hand,
   Info,
   Pause,
   Play,
   RotateCcw,
-  RotateCw,
   Scissors,
+  Sliders,
   Sparkles,
   Trash2,
 } from 'lucide-react';
 import {
   BOARD_HOLE_DIAMETER_MM,
-  GEAR_BOARD_PRESETS,
+  BOARD_SIZE_PRESETS,
   GEAR_BORE_DIAMETER_MM,
   GEAR_CATALOG,
   GEAR_CATALOG_LIST,
   GEAR_CHALLENGES,
   GEAR_MODULE_MM,
-  GearBoardPresetId,
   GearChallengeId,
   GearSizeId,
+  MatrixPatternId,
   PlacedGear,
 } from '@/types/gears';
 import {
   analyzeGearTrain,
+  buildBoardSpec,
   buildGearToothPolygon,
   createInitialGearsForChallenge,
   findValidTangentHoles,
@@ -44,27 +46,51 @@ import {
   generateGearPinsAndCrankStl,
   generateGearsOnlyLaserSvg,
   generateMatrixPegboardLaserSvg,
+  getAllBoardHoles,
   getChallengeObstacles,
   gridToMm,
   snapGearToMatrix,
 } from '@/lib/gears-processor';
 
+interface ActiveDragState {
+  mode: 'palette' | 'existing';
+  sizeId: GearSizeId;
+  gearId?: string;
+  clientX: number;
+  clientY: number;
+  overBoard: boolean;
+  overTrash: boolean;
+  snappedPreview: {
+    col: number;
+    row: number;
+    x: number;
+    y: number;
+    isExactTangent: boolean;
+    tangentCount: number;
+  } | null;
+}
+
 export function GearsSection() {
-  const [boardPresetId, setBoardPresetId] = useState<GearBoardPresetId>('30x30');
+  // Configuración del Espacio de Trabajo del Tablero (Ancho × Alto en cm + Tipo de Matriz)
+  const [boardWidthCm, setBoardWidthCm] = useState<number>(30);
+  const [boardHeightCm, setBoardHeightCm] = useState<number>(30);
+  const [matrixPattern, setMatrixPattern] = useState<MatrixPatternId>('triangular');
   const [challengeId, setChallengeId] = useState<GearChallengeId>('libre');
   const [teamName, setTeamName] = useState<string>('Equipo Engranajes');
 
-  const board = GEAR_BOARD_PRESETS[boardPresetId];
+  const board = useMemo(
+    () => buildBoardSpec(boardWidthCm, boardHeightCm, matrixPattern),
+    [boardWidthCm, boardHeightCm, matrixPattern]
+  );
   const challenge = GEAR_CHALLENGES[challengeId];
 
   const [gears, setGears] = useState<PlacedGear[]>(() =>
-    createInitialGearsForChallenge(GEAR_CHALLENGES.libre, GEAR_BOARD_PRESETS['30x30'])
+    createInitialGearsForChallenge(GEAR_CHALLENGES.libre, buildBoardSpec(30, 30, 'triangular'))
   );
   const [activeToolSize, setActiveToolSize] = useState<GearSizeId>('m');
-  const [selectedGearId, setSelectedGearId] = useState<string | null>(null);
-  const [draggingGearId, setDraggingGearId] = useState<string | null>(null);
+  const [activeDrag, setActiveDrag] = useState<ActiveDragState | null>(null);
 
-  // Modos de visualización y simulación
+  // Visualización y Simulación
   const [viewMode, setViewMode] = useState<'circles' | 'gears' | 'svg'>('circles');
   const [svgPreviewType, setSvgPreviewType] = useState<'gears' | 'board_matrix' | 'board_fast'>(
     'gears'
@@ -74,11 +100,24 @@ export function GearsSection() {
   const [simTimeSec, setSimTimeSec] = useState<number>(0);
 
   const svgBoardRef = useRef<SVGSVGElement | null>(null);
+  const trashZoneRef = useRef<HTMLDivElement | null>(null);
 
-  // Pre-calcular los caminos SVG dentados para los 4 tamaños (rápido para animación 60fps)
+  // Mantener referencias frescas para los listeners globales de pointermove/pointerup
+  const gearsRef = useRef(gears);
+  gearsRef.current = gears;
+  const boardRef = useRef(board);
+  boardRef.current = board;
+
+  const obstacles = useMemo(
+    () => getChallengeObstacles(challenge, board),
+    [challenge, board]
+  );
+  const obstaclesRef = useRef(obstacles);
+  obstaclesRef.current = obstacles;
+
+  // Pre-calcular los contornos dentados para los 3 tamaños (4, 6 y 8 cm)
   const toothPathsBySize = useMemo(() => {
     const map: Record<GearSizeId, string> = {
-      s: gearPolygonToSvgPath(buildGearToothPolygon(GEAR_CATALOG.s.teeth, GEAR_MODULE_MM)),
       m: gearPolygonToSvgPath(buildGearToothPolygon(GEAR_CATALOG.m.teeth, GEAR_MODULE_MM)),
       l: gearPolygonToSvgPath(buildGearToothPolygon(GEAR_CATALOG.l.teeth, GEAR_MODULE_MM)),
       xl: gearPolygonToSvgPath(buildGearToothPolygon(GEAR_CATALOG.xl.teeth, GEAR_MODULE_MM)),
@@ -86,29 +125,26 @@ export function GearsSection() {
     return map;
   }, []);
 
-  const obstacles = useMemo(
-    () => getChallengeObstacles(challenge, board),
-    [challenge, board]
-  );
-
   // Análisis cinemático en vivo
   const analysis = useMemo(
     () => analyzeGearTrain(gears, challenge, board),
     [gears, challenge, board]
   );
 
-  // Hoyos tangentes válidos para el tamaño de círculo seleccionado (o el engranaje en arrastre)
-  const validTangentHoles = useMemo(() => {
-    const sizeToShow = draggingGearId
-      ? gears.find((g) => g.id === draggingGearId)?.sizeId ?? activeToolSize
-      : activeToolSize;
-    const referenceGears = draggingGearId
-      ? gears.filter((g) => g.id !== draggingGearId)
-      : gears;
-    return findValidTangentHoles(sizeToShow, referenceGears, board, obstacles);
-  }, [activeToolSize, draggingGearId, gears, board, obstacles]);
+  // Todos los hoyos de la matriz física
+  const matrixHoles = useMemo(() => getAllBoardHoles(board), [board]);
 
-  // Bucle de animación suave (requestAnimationFrame)
+  // Hoyos tangentes válidos (ortogonales y diagonales exactas) para el círculo que se arrastra o está activo
+  const validTangentHoles = useMemo(() => {
+    const sizeToShow = activeDrag ? activeDrag.sizeId : activeToolSize;
+    const refGears =
+      activeDrag?.mode === 'existing' && activeDrag.gearId
+        ? gears.filter((g) => g.id !== activeDrag.gearId)
+        : gears;
+    return findValidTangentHoles(sizeToShow, refGears, board, obstacles);
+  }, [activeDrag, activeToolSize, gears, board, obstacles]);
+
+  // Animación continua de rotación
   useEffect(() => {
     if (!isPlaying || analysis.isJammed) return;
     let rafId = 0;
@@ -123,47 +159,175 @@ export function GearsSection() {
     return () => cancelAnimationFrame(rafId);
   }, [isPlaying, analysis.isJammed]);
 
-  // Cambiar de desafío o tamaño de tablero
-  const handleSelectChallenge = (newId: GearChallengeId) => {
-    setChallengeId(newId);
-    setGears(createInitialGearsForChallenge(GEAR_CHALLENGES[newId], board));
-    setSelectedGearId(null);
-  };
+  // Listeners globales de Arrastre y Soltar (Palette -> Tablero y Tablero -> Basurero)
+  useEffect(() => {
+    if (!activeDrag) return;
 
-  const handleSelectBoardPreset = (newBoardId: GearBoardPresetId) => {
-    const nextBoard = GEAR_BOARD_PRESETS[newBoardId];
-    setBoardPresetId(newBoardId);
-    setGears(createInitialGearsForChallenge(challenge, nextBoard));
-    setSelectedGearId(null);
+    const evaluatePointer = (clientX: number, clientY: number) => {
+      const curBoard = boardRef.current;
+      const curGears = gearsRef.current;
+      const curObs = obstaclesRef.current;
+
+      // 1. Verificar si está sobre la zona del Basurero (con margen generoso de +16 px)
+      let overTrash = false;
+      const trashEl = trashZoneRef.current;
+      if (trashEl) {
+        const tr = trashEl.getBoundingClientRect();
+        if (
+          clientX >= tr.left - 16 &&
+          clientX <= tr.right + 16 &&
+          clientY >= tr.top - 16 &&
+          clientY <= tr.bottom + 16
+        ) {
+          overTrash = true;
+        }
+      }
+
+      // 2. Verificar si está sobre el Tablero SVG y calcular snap exacto a la matriz
+      let overBoard = false;
+      let snappedPreview: ActiveDragState['snappedPreview'] = null;
+      const svgEl = svgBoardRef.current;
+      if (svgEl && !overTrash) {
+        const br = svgEl.getBoundingClientRect();
+        if (
+          clientX >= br.left &&
+          clientX <= br.right &&
+          clientY >= br.top &&
+          clientY <= br.bottom
+        ) {
+          overBoard = true;
+          const mmX = ((clientX - br.left) / br.width) * curBoard.widthMm;
+          const mmY = ((clientY - br.top) / br.height) * curBoard.heightMm;
+          const otherGears =
+            activeDrag.mode === 'existing' && activeDrag.gearId
+              ? curGears.filter((g) => g.id !== activeDrag.gearId)
+              : curGears;
+          snappedPreview = snapGearToMatrix(
+            mmX,
+            mmY,
+            activeDrag.sizeId,
+            otherGears,
+            curBoard,
+            curObs
+          );
+        }
+      }
+
+      return { overTrash, overBoard, snappedPreview };
+    };
+
+    const handleMove = (e: PointerEvent) => {
+      const { overTrash, overBoard, snappedPreview } = evaluatePointer(e.clientX, e.clientY);
+      setActiveDrag((prev) =>
+        prev
+          ? {
+              ...prev,
+              clientX: e.clientX,
+              clientY: e.clientY,
+              overTrash,
+              overBoard,
+              snappedPreview,
+            }
+          : null
+      );
+    };
+
+    const handleUp = (e: PointerEvent) => {
+      const { overTrash, overBoard, snappedPreview } = evaluatePointer(e.clientX, e.clientY);
+
+      if (activeDrag.mode === 'existing' && activeDrag.gearId) {
+        if (overTrash) {
+          // Eliminar engranaje arrastrado al basurero
+          setGears((prev) =>
+            prev.filter((g) => !(g.id === activeDrag.gearId && g.role === 'idler'))
+          );
+        } else if (overBoard && snappedPreview) {
+          // Mover engranaje al nuevo hoyo si no está ocupado por otro eje
+          setGears((prev) => {
+            const occupied = prev.some(
+              (g) =>
+                g.id !== activeDrag.gearId &&
+                g.col === snappedPreview.col &&
+                g.row === snappedPreview.row
+            );
+            if (occupied) return prev;
+            return prev.map((g) =>
+              g.id === activeDrag.gearId
+                ? {
+                    ...g,
+                    col: snappedPreview.col,
+                    row: snappedPreview.row,
+                    x: snappedPreview.x,
+                    y: snappedPreview.y,
+                  }
+                : g
+            );
+          });
+        }
+      } else if (activeDrag.mode === 'palette') {
+        if (!overTrash && overBoard && snappedPreview) {
+          setGears((prev) => {
+            const occupied = prev.some(
+              (g) => g.col === snappedPreview.col && g.row === snappedPreview.row
+            );
+            if (occupied) return prev;
+            return [
+              ...prev,
+              {
+                id: `gear-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                sizeId: activeDrag.sizeId,
+                col: snappedPreview.col,
+                row: snappedPreview.row,
+                x: snappedPreview.x,
+                y: snappedPreview.y,
+                role: 'idler',
+              },
+            ];
+          });
+        }
+      }
+
+      setActiveDrag(null);
+    };
+
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', handleUp);
+    window.addEventListener('pointercancel', handleUp);
+    return () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', handleUp);
+      window.removeEventListener('pointercancel', handleUp);
+    };
+  }, [activeDrag]);
+
+  // Reiniciar tablero al cambiar desafío, dimensiones o patrón de matriz
+  const applyBoardAndChallenge = (
+    nextChallengeId: GearChallengeId,
+    nextW: number,
+    nextH: number,
+    nextPattern: MatrixPatternId
+  ) => {
+    const nextBoard = buildBoardSpec(nextW, nextH, nextPattern);
+    setChallengeId(nextChallengeId);
+    setBoardWidthCm(nextW);
+    setBoardHeightCm(nextH);
+    setMatrixPattern(nextPattern);
+    setGears(createInitialGearsForChallenge(GEAR_CHALLENGES[nextChallengeId], nextBoard));
   };
 
   const handleResetBoard = () => {
     setGears(createInitialGearsForChallenge(challenge, board));
-    setSelectedGearId(null);
   };
 
-  // Convertir coordenadas de puntero del navegador a mm del tablero SVG
-  const pointerToBoardMm = (clientX: number, clientY: number): { x: number; y: number } | null => {
-    const svgEl = svgBoardRef.current;
-    if (!svgEl) return null;
-    const rect = svgEl.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-    const x = ((clientX - rect.left) / rect.width) * board.widthMm;
-    const y = ((clientY - rect.top) / rect.height) * board.heightMm;
-    return { x, y };
-  };
-
-  // Colocar un círculo primitivo directamente en un hoyo de la matriz
-  const handlePlaceAtHole = (col: number, row: number, sizeId = activeToolSize) => {
-    // Evitar duplicar exactamente sobre el mismo hoyo
+  // Clic rápido en un hoyo verde (atajo complementario al arrastre)
+  const handleQuickPlaceAtHole = (col: number, row: number) => {
     if (gears.some((g) => g.col === col && g.row === row)) return;
     const pos = gridToMm(board, col, row);
-    const newId = `gear-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     setGears((prev) => [
       ...prev,
       {
-        id: newId,
-        sizeId,
+        id: `gear-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        sizeId: activeToolSize,
         col,
         row,
         x: pos.x,
@@ -171,68 +335,48 @@ export function GearsSection() {
         role: 'idler',
       },
     ]);
-    setSelectedGearId(newId);
   };
 
-  const handleBoardBackgroundClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (draggingGearId) return;
-    const target = e.target as SVGElement;
-    if (target.dataset.role === 'gear-hit') return;
-    const pt = pointerToBoardMm(e.clientX, e.clientY);
-    if (!pt) return;
-    const snapped = snapGearToMatrix(pt.x, pt.y, activeToolSize, gears, board, obstacles);
-    handlePlaceAtHole(snapped.col, snapped.row, activeToolSize);
+  // Iniciar arrastre desde el catálogo derecho
+  const handleStartPaletteDrag = (e: React.PointerEvent, sizeId: GearSizeId) => {
+    e.preventDefault();
+    setActiveToolSize(sizeId);
+    if (viewMode === 'svg') setViewMode('circles');
+    setActiveDrag({
+      mode: 'palette',
+      sizeId,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      overBoard: false,
+      overTrash: false,
+      snappedPreview: null,
+    });
   };
 
-  const handleGearPointerDown = (e: React.PointerEvent, gear: PlacedGear) => {
+  // Iniciar arrastre de un engranaje ya ubicado en el tablero
+  const handleStartExistingGearDrag = (e: React.PointerEvent, gear: PlacedGear) => {
+    if (gear.role !== 'idler') return; // Inicio y Meta están fijos en las esquinas
     e.stopPropagation();
-    setSelectedGearId(gear.id);
-    if (gear.role !== 'idler') return; // Inicio y Meta están anclados en las esquinas
-    setDraggingGearId(gear.id);
-    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    e.preventDefault();
+    setActiveToolSize(gear.sizeId);
+    setActiveDrag({
+      mode: 'existing',
+      sizeId: gear.sizeId,
+      gearId: gear.id,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      overBoard: true,
+      overTrash: false,
+      snappedPreview: {
+        col: gear.col,
+        row: gear.row,
+        x: gear.x,
+        y: gear.y,
+        isExactTangent: true,
+        tangentCount: 1,
+      },
+    });
   };
-
-  const handleBoardPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!draggingGearId) return;
-    const pt = pointerToBoardMm(e.clientX, e.clientY);
-    if (!pt) return;
-    const moving = gears.find((g) => g.id === draggingGearId);
-    if (!moving) return;
-    const others = gears.filter((g) => g.id !== draggingGearId);
-    const snapped = snapGearToMatrix(pt.x, pt.y, moving.sizeId, others, board, obstacles);
-    if (snapped.col !== moving.col || snapped.row !== moving.row) {
-      setGears((prev) =>
-        prev.map((g) =>
-          g.id === draggingGearId
-            ? { ...g, col: snapped.col, row: snapped.row, x: snapped.x, y: snapped.y }
-            : g
-        )
-      );
-    }
-  };
-
-  const handleBoardPointerUp = () => {
-    if (draggingGearId) setDraggingGearId(null);
-  };
-
-  const handleDeleteSelected = () => {
-    if (!selectedGearId) return;
-    setGears((prev) =>
-      prev.filter((g) => !(g.id === selectedGearId && g.role === 'idler'))
-    );
-    setSelectedGearId(null);
-  };
-
-  const handleChangeSelectedSize = (newSize: GearSizeId) => {
-    if (!selectedGearId) return;
-    setGears((prev) =>
-      prev.map((g) =>
-        g.id === selectedGearId && g.role === 'idler' ? { ...g, sizeId: newSize } : g
-      )
-    );
-  };
-
-  const selectedGear = gears.find((g) => g.id === selectedGearId) ?? null;
 
   // Vista previa SVG de corte láser
   const previewSvgContent = useMemo(() => {
@@ -268,13 +412,16 @@ export function GearsSection() {
     triggerDownload(
       svg,
       'image/svg+xml;charset=utf-8',
-      `engranajes-mdf3mm-${safeTeam}-${gears.length}ruedas-m2.svg`
+      `engranajes-mdf3mm-${safeTeam}-${gears.length}ruedas-4-6-8cm.svg`
     );
   };
 
   const handleDownloadBoardSvg = (mode: 'full_matrix' | 'project_only') => {
     const svg = generateMatrixPegboardLaserSvg(board, gears, mode);
-    const suffix = mode === 'full_matrix' ? `matriz-${board.id}` : `rapido-${board.id}`;
+    const suffix =
+      mode === 'full_matrix'
+        ? `matriz-${board.matrixPattern}-${boardWidthCm}x${boardHeightCm}cm`
+        : `rapido-${boardWidthCm}x${boardHeightCm}cm`;
     triggerDownload(
       svg,
       'image/svg+xml;charset=utf-8',
@@ -291,17 +438,6 @@ export function GearsSection() {
     );
   };
 
-  // Puntos de la matriz de perforaciones (para renderizar en el tablero virtual)
-  const matrixHoles = useMemo(() => {
-    const pts: { col: number; row: number; x: number; y: number }[] = [];
-    for (let r = 0; r < board.rows; r++) {
-      for (let c = 0; c < board.cols; c++) {
-        pts.push({ col: c, row: r, ...gridToMm(board, c, r) });
-      }
-    }
-    return pts;
-  }, [board]);
-
   return (
     <div className="space-y-6">
       {/* Encabezado Principal Taller 6 */}
@@ -310,17 +446,17 @@ export function GearsSection() {
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-400/20 border border-teal-300/30 text-teal-200 text-xs font-semibold tracking-wide uppercase">
               <Cog className="w-3.5 h-3.5" />
-              Taller 6 · Simulador de Trenes de Engranajes (MDF 3 mm + Ejes 3D PLA)
+              Taller 6 · Simulador de Trenes de Engranajes (4, 6 y 8 cm · Diagonales 60°)
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
               Tablero Matricial de Engranajes & Diámetros Primitivos
             </h2>
             <p className="text-teal-100/90 text-sm max-w-3xl leading-relaxed">
-              Conecta la esquina inferior izquierda (<strong>Inicio</strong>) con la esquina
-              superior derecha (<strong>Meta</strong>) usando <strong>4 tamaños de círculos primitivos</strong>{' '}
-              (<strong>2, 4, 6 y 8 cm</strong>) sobre una matriz física de paso <strong>10 mm</strong>.
-              Luego corta tus engranajes con orificio central en <strong>MDF 3 mm (.SVG)</strong> y
-              móntalos con <strong>ejes impresos en 3D (.STL)</strong> sobre el tablero perforado.
+              Arrastra los <strong>3 tamaños de círculos primitivos</strong> (
+              <strong>4, 6 y 8 cm</strong>) hacia los hoyos iluminados (horizontales y{' '}
+              <strong>diagonales exactas a 60°</strong>) para conectar el <strong>Inicio</strong> con
+              la <strong>Meta</strong>. Si te equivocas, arrastra el círculo al{' '}
+              <strong>basurero 🗑️</strong>.
             </p>
           </div>
 
@@ -339,7 +475,9 @@ export function GearsSection() {
               className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl font-bold text-xs sm:text-sm bg-sky-400 hover:bg-sky-300 text-slate-950 shadow-lg transition cursor-pointer"
             >
               <Grid className="w-4 h-4" />
-              <span>Tablero {board.id} (.SVG)</span>
+              <span>
+                Tablero {boardWidthCm}×{boardHeightCm} (.SVG)
+              </span>
             </button>
             <button
               type="button"
@@ -353,13 +491,13 @@ export function GearsSection() {
         </div>
       </div>
 
-      {/* BARRA DE SELECCIÓN DE DESAFÍO Y TABLERO FÍSICO */}
+      {/* PANEL 1: CONFIGURACIÓN DEL ESPACIO DE TRABAJO (TABLERO) Y DESAFÍO */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2">
             <GraduationCap className="w-5 h-5 text-teal-600" />
             <h3 className="font-black text-slate-900 text-base">
-              1. Elige el Desafío Mecánico y el Tamaño del Tablero Real
+              1. Configura el Tablero de Trabajo y Elige un Desafío
             </h3>
           </div>
 
@@ -370,27 +508,113 @@ export function GearsSection() {
               onChange={(e) => setTeamName(e.target.value)}
               placeholder="Nombre del equipo..."
               maxLength={22}
-              className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:border-teal-500 w-44"
+              className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:border-teal-500 w-40"
             />
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
-              {(['30x30', '40x40'] as GearBoardPresetId[]).map((bid) => (
-                <button
-                  key={bid}
-                  type="button"
-                  onClick={() => handleSelectBoardPreset(bid)}
-                  className={`px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer ${
-                    boardPresetId === bid
-                      ? 'bg-teal-600 text-white shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  Tablero {bid} cm
-                </button>
-              ))}
+              <button
+                type="button"
+                onClick={() =>
+                  applyBoardAndChallenge(challengeId, boardWidthCm, boardHeightCm, 'triangular')
+                }
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
+                  matrixPattern === 'triangular'
+                    ? 'bg-teal-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                🔺 Matriz Diagonal (60°)
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  applyBoardAndChallenge(challengeId, boardWidthCm, boardHeightCm, 'square')
+                }
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
+                  matrixPattern === 'square'
+                    ? 'bg-slate-800 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                ⬜ Matriz Cuadrada (90°)
+              </button>
             </div>
           </div>
         </div>
 
+        {/* Controles Configurables del Tamaño del Tablero (Ancho × Alto en cm) */}
+        <div className="rounded-xl bg-slate-50 border border-slate-200 p-3.5 grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
+          <div className="lg:col-span-4 flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-extrabold text-slate-700 flex items-center gap-1 mr-1">
+              <Sliders className="w-3.5 h-3.5 text-teal-600" />
+              Espacio:
+            </span>
+            {BOARD_SIZE_PRESETS.map((pr) => {
+              const active = boardWidthCm === pr.widthCm && boardHeightCm === pr.heightCm;
+              return (
+                <button
+                  key={pr.label}
+                  type="button"
+                  onClick={() =>
+                    applyBoardAndChallenge(challengeId, pr.widthCm, pr.heightCm, matrixPattern)
+                  }
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                    active
+                      ? 'bg-teal-600 text-white border-teal-600'
+                      : 'bg-white text-slate-700 border-slate-200 hover:border-teal-300'
+                  }`}
+                >
+                  {pr.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="lg:col-span-4 flex items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-700 shrink-0">
+              Ancho: <strong className="text-teal-700">{boardWidthCm} cm</strong>
+            </span>
+            <input
+              type="range"
+              min={22}
+              max={44}
+              step={2}
+              value={boardWidthCm}
+              onChange={(e) =>
+                applyBoardAndChallenge(
+                  challengeId,
+                  Number(e.target.value),
+                  boardHeightCm,
+                  matrixPattern
+                )
+              }
+              className="flex-1 accent-teal-600 cursor-pointer"
+            />
+          </div>
+
+          <div className="lg:col-span-4 flex items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-700 shrink-0">
+              Alto: <strong className="text-teal-700">{boardHeightCm} cm</strong>
+            </span>
+            <input
+              type="range"
+              min={20}
+              max={44}
+              step={2}
+              value={boardHeightCm}
+              onChange={(e) =>
+                applyBoardAndChallenge(
+                  challengeId,
+                  boardWidthCm,
+                  Number(e.target.value),
+                  matrixPattern
+                )
+              }
+              className="flex-1 accent-teal-600 cursor-pointer"
+            />
+          </div>
+        </div>
+
+        {/* Selector de los 4 Desafíos */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
           {(['libre', 'inversor', 'velocidad', 'obstaculo'] as GearChallengeId[]).map((cid) => {
             const ch = GEAR_CHALLENGES[cid];
@@ -399,7 +623,9 @@ export function GearsSection() {
               <button
                 key={cid}
                 type="button"
-                onClick={() => handleSelectChallenge(cid)}
+                onClick={() =>
+                  applyBoardAndChallenge(cid, boardWidthCm, boardHeightCm, matrixPattern)
+                }
                 className={`p-3 rounded-xl border-2 text-left transition cursor-pointer space-y-1 ${
                   active
                     ? 'bg-teal-50/90 border-teal-600 shadow-2xs'
@@ -408,9 +634,7 @@ export function GearsSection() {
               >
                 <span
                   className={`inline-block text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                    active
-                      ? 'bg-teal-600 text-white'
-                      : 'bg-slate-200 text-slate-700'
+                    active ? 'bg-teal-600 text-white' : 'bg-slate-200 text-slate-700'
                   }`}
                 >
                   {ch.levelBadge}
@@ -424,7 +648,7 @@ export function GearsSection() {
           })}
         </div>
 
-        {/* Estado en vivo del Desafío */}
+        {/* Barra de Estado Cinemático en Vivo */}
         <div
           className={`rounded-xl p-3.5 border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
             analysis.statusType === 'success'
@@ -447,12 +671,12 @@ export function GearsSection() {
             <div className="space-y-0.5">
               <div className="font-extrabold">{analysis.statusMessage}</div>
               <div className="text-[11px] opacity-85">
-                🎯 <strong>Objetivo Pedagógico:</strong> {challenge.learningGoal}
+                🎯 <strong>Objetivo:</strong> {challenge.learningGoal}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0 text-xs font-mono bg-white/80 px-3 py-1.5 rounded-xl border border-slate-200">
+          <div className="flex items-center gap-3 shrink-0 text-xs font-mono bg-white/85 px-3 py-1.5 rounded-xl border border-slate-200">
             <div>
               <span className="text-[10px] text-slate-500 block font-sans font-bold">Inicio</span>
               <strong className="text-slate-900">
@@ -462,11 +686,7 @@ export function GearsSection() {
             <span className="text-slate-300">→</span>
             <div>
               <span className="text-[10px] text-slate-500 block font-sans font-bold">Meta</span>
-              <strong
-                className={
-                  analysis.endReached ? 'text-emerald-700' : 'text-slate-400'
-                }
-              >
+              <strong className={analysis.endReached ? 'text-emerald-700' : 'text-slate-400'}>
                 {analysis.endReached
                   ? `${analysis.endRpm} RPM ${analysis.endDirection === 1 ? '↻' : '↺'}`
                   : 'Detenida'}
@@ -476,12 +696,11 @@ export function GearsSection() {
         </div>
       </div>
 
-      {/* ÁREA DE TRABAJO PRINCIPAL: TABLERO VIRTUAL (IZQUIERDA 8 COLS) + PALETA DE CÍRCULOS PRIMITIVOS (DERECHA 4 COLS) */}
+      {/* ÁREA INTERACTIVA PRINCIPAL: TABLERO (IZQ 8 COLS) + CÍRCULOS ARRASTRABLES Y BASURERO (DER 4 COLS) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* IZQUIERDA (8 COLS): TABLERO MATRICIAL INTERACTIVO + PLANO SVG */}
+        {/* IZQUIERDA (8 COLS): TABLERO MATRICIAL INTERACTIVO */}
         <div className="lg:col-span-8 space-y-4">
           <div className="bg-slate-900 rounded-2xl border border-slate-800 shadow-xl overflow-hidden">
-            {/* Barra de herramientas del tablero */}
             <div className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-1.5">
                 <button
@@ -522,56 +741,50 @@ export function GearsSection() {
                 </button>
               </div>
 
-              <div className="flex items-center gap-2">
-                {viewMode !== 'svg' && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setShowValidHoles((v) => !v)}
-                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
-                        showValidHoles
-                          ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/40'
-                          : 'bg-slate-800 text-slate-400 border-slate-700'
-                      }`}
-                    >
-                      {showValidHoles ? '🟢 Hoyos Tangentes: ON' : 'Hoyos Tangentes: OFF'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsPlaying((p) => !p)}
-                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
-                    >
-                      {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                      {isPlaying ? 'Pausa' : 'Girar'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleResetBoard}
-                      title="Limpiar engranajes intermedios"
-                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-600/80 text-slate-200 text-xs font-bold flex items-center gap-1 cursor-pointer"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      Limpiar
-                    </button>
-                  </>
-                )}
-              </div>
+              {viewMode !== 'svg' && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowValidHoles((v) => !v)}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                      showValidHoles
+                        ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/40'
+                        : 'bg-slate-800 text-slate-400 border-slate-700'
+                    }`}
+                  >
+                    {showValidHoles ? '🟢 Guías Tangentes' : 'Guías OFF'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsPlaying((p) => !p)}
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    {isPlaying ? 'Pausa' : 'Girar'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResetBoard}
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-600/80 text-slate-200 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Limpiar
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Contenido del Tablero Virtual o Vista SVG */}
             <div className="p-4">
               {viewMode !== 'svg' ? (
                 <div className="flex flex-col items-center gap-3">
                   <svg
                     ref={svgBoardRef}
                     viewBox={`0 0 ${board.widthMm} ${board.heightMm}`}
-                    onClick={handleBoardBackgroundClick}
-                    onPointerMove={handleBoardPointerMove}
-                    onPointerUp={handleBoardPointerUp}
-                    onPointerCancel={handleBoardPointerUp}
-                    className="w-full max-w-[540px] aspect-square rounded-xl bg-[#f3e3c8] border-4 border-amber-900/60 shadow-inner select-none touch-none cursor-crosshair"
+                    className="w-full max-h-[520px] rounded-xl bg-[#f3e3c8] border-4 border-amber-900/60 shadow-inner select-none touch-none"
+                    style={{
+                      aspectRatio: `${board.widthMm} / ${board.heightMm}`,
+                    }}
                   >
-                    {/* Marco exterior y textura sutil de MDF */}
                     <rect
                       x="1"
                       y="1"
@@ -583,7 +796,7 @@ export function GearsSection() {
                       strokeWidth="1.2"
                     />
 
-                    {/* Coordenadas de la matriz en los bordes (cada 5 columnas/filas) */}
+                    {/* Coordenadas de borde */}
                     {Array.from({ length: board.cols }).map((_, c) =>
                       c === 0 || (c + 1) % 5 === 0 || c === board.cols - 1 ? (
                         <text
@@ -604,7 +817,7 @@ export function GearsSection() {
                         <text
                           key={`row-${r}`}
                           x={board.marginMm - 8}
-                          y={board.marginMm + r * board.gridPitchMm + 1.8}
+                          y={gridToMm(board, 0, r).y + 1.8}
                           textAnchor="middle"
                           fontSize="5.2"
                           fontWeight="bold"
@@ -615,71 +828,66 @@ export function GearsSection() {
                       ) : null
                     )}
 
-                    {/* Matriz de perforaciones físicas Ø 5.0 mm (paso 10 mm) */}
+                    {/* Matriz de perforaciones físicas Ø 5.0 mm */}
                     <g>
                       {matrixHoles.map((h) => (
                         <circle
                           key={`${h.col}-${h.row}`}
                           cx={h.x}
                           cy={h.y}
-                          r="1.35"
+                          r="1.3"
                           fill="#a88b67"
-                          opacity="0.65"
+                          opacity="0.62"
                         />
                       ))}
                     </g>
 
-                    {/* Obstáculos del desafío */}
-                    {obstacles.map((obs) => {
-                      const rx = board.marginMm + obs.colStart * board.gridPitchMm;
-                      const ry = board.marginMm + obs.rowStart * board.gridPitchMm;
-                      const rw = obs.colSpan * board.gridPitchMm;
-                      const rh = obs.rowSpan * board.gridPitchMm;
-                      return (
-                        <g key={obs.id}>
-                          <rect
-                            x={rx}
-                            y={ry}
-                            width={rw}
-                            height={rh}
-                            rx="4"
-                            fill="rgba(225, 29, 72, 0.18)"
-                            stroke="#e11d48"
-                            strokeWidth="1.5"
-                            strokeDasharray="4 3"
-                          />
-                          <text
-                            x={rx + rw / 2}
-                            y={ry + rh / 2 + 2}
-                            textAnchor="middle"
-                            fontSize="5.5"
-                            fontWeight="900"
-                            fill="#be123c"
-                          >
-                            {obs.label}
-                          </text>
-                        </g>
-                      );
-                    })}
+                    {/* Obstáculos */}
+                    {obstacles.map((obs) => (
+                      <g key={obs.id}>
+                        <rect
+                          x={obs.x}
+                          y={obs.y}
+                          width={obs.width}
+                          height={obs.height}
+                          rx="4"
+                          fill="rgba(225, 29, 72, 0.18)"
+                          stroke="#e11d48"
+                          strokeWidth="1.5"
+                          strokeDasharray="4 3"
+                        />
+                        <text
+                          x={obs.x + obs.width / 2}
+                          y={obs.y + obs.height / 2 + 2}
+                          textAnchor="middle"
+                          fontSize="5.5"
+                          fontWeight="900"
+                          fill="#be123c"
+                        >
+                          {obs.label}
+                        </text>
+                      </g>
+                    ))}
 
-                    {/* Hoyos Tangentes Exactos (verdes si conectan 1 rueda, dorados si cierran 2 ruedas!) */}
+                    {/* Hoyos Tangentes Exactos (horizontales y diagonales 60°) */}
                     {showValidHoles &&
                       validTangentHoles.map((vh) => {
                         const isDual = vh.tangentCount >= 2;
                         return (
                           <g
                             key={`vh-${vh.col}-${vh.row}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handlePlaceAtHole(vh.col, vh.row);
-                            }}
+                            onClick={() => handleQuickPlaceAtHole(vh.col, vh.row)}
                             className="cursor-pointer"
                           >
                             <circle
                               cx={vh.x}
                               cy={vh.y}
-                              r={isDual ? 4.2 : 3.2}
-                              fill={isDual ? 'rgba(250, 204, 21, 0.45)' : 'rgba(16, 185, 129, 0.35)'}
+                              r={isDual ? 4.4 : 3.4}
+                              fill={
+                                isDual
+                                  ? 'rgba(250, 204, 21, 0.48)'
+                                  : 'rgba(16, 185, 129, 0.36)'
+                              }
                               stroke={isDual ? '#ca8a04' : '#059669'}
                               strokeWidth="1.1"
                             />
@@ -693,7 +901,7 @@ export function GearsSection() {
                         );
                       })}
 
-                    {/* Líneas y puntos de tangencia activa entre engranajes engranados */}
+                    {/* Líneas y puntos de tangencia activa */}
                     {analysis.meshingEdges.map(([idA, idB]) => {
                       const a = gears.find((g) => g.id === idA);
                       const b = gears.find((g) => g.id === idB);
@@ -710,53 +918,56 @@ export function GearsSection() {
                             y1={a.y}
                             x2={b.x}
                             y2={b.y}
-                            stroke="rgba(15, 23, 42, 0.25)"
+                            stroke="rgba(15, 23, 42, 0.22)"
                             strokeWidth="1"
                             strokeDasharray="2 2"
                           />
-                          <circle cx={tx} cy={ty} r="2.1" fill="#10b981" stroke="#ffffff" strokeWidth="0.7" />
+                          <circle
+                            cx={tx}
+                            cy={ty}
+                            r="2.2"
+                            fill="#10b981"
+                            stroke="#ffffff"
+                            strokeWidth="0.7"
+                          />
                         </g>
                       );
                     })}
 
-                    {/* Renderizado de cada Engranaje / Círculo Primitivo */}
+                    {/* Engranajes / Círculos Primitivos colocados */}
                     {gears.map((g) => {
                       const spec = GEAR_CATALOG[g.sizeId];
                       const node = analysis.nodes[g.id];
-                      const isSelected = g.id === selectedGearId;
+                      const isBeingDragged =
+                        activeDrag?.mode === 'existing' && activeDrag.gearId === g.id;
                       const isColliding =
                         analysis.collisionPairs.some(([a, b]) => a === g.id || b === g.id) ||
                         analysis.obstacleCollisions.includes(g.id);
 
-                      // Ángulo animado en grados (1 RPM = 6 deg/s)
                       const angleDeg =
                         ((node?.phaseOffsetRad ?? 0) * 180) / Math.PI +
                         (node?.rpm ?? 0) * 6 * simTimeSec;
-
-                      const strokeCol = isColliding
-                        ? '#e11d48'
-                        : isSelected
-                          ? '#0f172a'
-                          : spec.color;
 
                       return (
                         <g
                           key={g.id}
                           transform={`translate(${g.x}, ${g.y})`}
-                          onPointerDown={(e) => handleGearPointerDown(e, g)}
-                          className={g.role === 'idler' ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}
+                          opacity={isBeingDragged ? 0.25 : 1}
+                          onPointerDown={(e) => handleStartExistingGearDrag(e, g)}
+                          className={
+                            g.role === 'idler'
+                              ? 'cursor-grab active:cursor-grabbing'
+                              : 'cursor-default'
+                          }
                         >
                           {viewMode === 'gears' ? (
-                            /* VISTA ENGRANAJE DENTADO REAL GIRANDO */
                             <g transform={`rotate(${angleDeg.toFixed(2)})`}>
                               <path
-                                data-role="gear-hit"
                                 d={toothPathsBySize[g.sizeId]}
                                 fill={isColliding ? 'rgba(225, 29, 72, 0.35)' : `${spec.color}cc`}
                                 stroke={isColliding ? '#be123c' : '#451a03'}
-                                strokeWidth={isSelected ? 1.5 : 0.9}
+                                strokeWidth="0.9"
                               />
-                              {/* Círculo primitivo punteado de referencia */}
                               <circle
                                 cx="0"
                                 cy="0"
@@ -767,14 +978,13 @@ export function GearsSection() {
                                 strokeDasharray="2.5 2"
                                 pointerEvents="none"
                               />
-                              {/* Radio indicador de giro */}
                               <line
                                 x1="0"
                                 y1="0"
                                 x2={spec.pitchRadiusMm * 0.72}
                                 y2="0"
                                 stroke="#ffffff"
-                                strokeWidth="1.5"
+                                strokeWidth="1.6"
                                 strokeLinecap="round"
                                 pointerEvents="none"
                               />
@@ -791,39 +1001,36 @@ export function GearsSection() {
                               )}
                             </g>
                           ) : (
-                            /* VISTA CÍRCULOS DE DIÁMETRO PRIMITIVO */
                             <g>
                               <circle
-                                data-role="gear-hit"
                                 cx="0"
                                 cy="0"
                                 r={spec.pitchRadiusMm}
-                                fill={isColliding ? 'rgba(225, 29, 72, 0.25)' : `${spec.color}30`}
-                                stroke={strokeCol}
-                                strokeWidth={isSelected ? 2.2 : 1.6}
+                                fill={isColliding ? 'rgba(225, 29, 72, 0.25)' : `${spec.color}32`}
+                                stroke={isColliding ? '#e11d48' : spec.color}
+                                strokeWidth="1.8"
                               />
-                              {/* Línea giratoria interna para visualizar sentido y velocidad de giro */}
                               <g transform={`rotate(${angleDeg.toFixed(2)})`} pointerEvents="none">
                                 <line
                                   x1="0"
                                   y1="0"
-                                  x2={spec.pitchRadiusMm - 2}
+                                  x2={spec.pitchRadiusMm - 2.2}
                                   y2="0"
                                   stroke={spec.color}
-                                  strokeWidth="1.8"
+                                  strokeWidth="2"
                                   strokeLinecap="round"
                                 />
                                 <circle
-                                  cx={spec.pitchRadiusMm - 3.5}
+                                  cx={spec.pitchRadiusMm - 3.6}
                                   cy="0"
-                                  r="1.8"
+                                  r="2"
                                   fill={spec.color}
                                 />
                               </g>
                             </g>
                           )}
 
-                          {/* Orificio central Ø 5.2 mm / Eje PLA */}
+                          {/* Orificio central Ø 5.2 mm */}
                           <circle
                             cx="0"
                             cy="0"
@@ -834,20 +1041,22 @@ export function GearsSection() {
                             pointerEvents="none"
                           />
 
-                          {/* Insignia de Rol (INICIO / META) o Dientes */}
                           {g.role !== 'idler' ? (
-                            <g transform={`translate(0, ${-spec.pitchRadiusMm - 5.5})`} pointerEvents="none">
+                            <g
+                              transform={`translate(0, ${-spec.pitchRadiusMm - 5.5})`}
+                              pointerEvents="none"
+                            >
                               <rect
-                                x="-17"
+                                x="-18"
                                 y="-5.5"
-                                width="34"
-                                height="10"
+                                width="36"
+                                height="10.5"
                                 rx="3"
                                 fill={g.role === 'start' ? '#0284c7' : '#059669'}
                               />
                               <text
                                 x="0"
-                                y="1.4"
+                                y="1.6"
                                 textAnchor="middle"
                                 fontSize="5.4"
                                 fontWeight="900"
@@ -859,30 +1068,62 @@ export function GearsSection() {
                           ) : (
                             <text
                               x="0"
-                              y={spec.pitchRadiusMm > 14 ? 9.5 : 8}
+                              y={10.5}
                               textAnchor="middle"
-                              fontSize="4.8"
+                              fontSize="5.2"
                               fontWeight="900"
                               fill="#0f172a"
                               pointerEvents="none"
                             >
-                              {spec.teeth}T
+                              {spec.pitchDiameterMm / 10} cm
                             </text>
                           )}
                         </g>
                       );
                     })}
+
+                    {/* Vista previa magnética del círculo mientras se arrastra sobre el tablero */}
+                    {activeDrag && activeDrag.overBoard && activeDrag.snappedPreview && (
+                      <g
+                        transform={`translate(${activeDrag.snappedPreview.x}, ${activeDrag.snappedPreview.y})`}
+                        pointerEvents="none"
+                      >
+                        <circle
+                          cx="0"
+                          cy="0"
+                          r={GEAR_CATALOG[activeDrag.sizeId].pitchRadiusMm}
+                          fill={
+                            activeDrag.snappedPreview.isExactTangent
+                              ? 'rgba(16, 185, 129, 0.28)'
+                              : 'rgba(245, 158, 11, 0.22)'
+                          }
+                          stroke={
+                            activeDrag.snappedPreview.isExactTangent ? '#059669' : '#d97706'
+                          }
+                          strokeWidth="2.2"
+                          strokeDasharray="4 2"
+                        />
+                        <circle
+                          cx="0"
+                          cy="0"
+                          r={GEAR_BORE_DIAMETER_MM / 2}
+                          fill="#ffffff"
+                          stroke="#059669"
+                          strokeWidth="1.2"
+                        />
+                      </g>
+                    )}
                   </svg>
 
                   <div className="flex flex-wrap items-center justify-center gap-4 text-[11px] text-slate-300">
                     <span>
-                      🟢 <strong>Hoyo Verde:</strong> Tangencia exacta (1 contacto)
+                      ✋ <strong>Arrastra</strong> círculos desde la derecha o muévelos en el tablero
                     </span>
                     <span>
-                      🟡 <strong>Hoyo Dorado:</strong> Cierre doble (2 contactos simultáneos)
+                      🟢 <strong>Hoyos Verdes:</strong> Diagonales (60°) y horizontales exactos
                     </span>
                     <span>
-                      📐 <strong>Matriz:</strong> Paso 10 mm · Orificio tablero Ø{BOARD_HOLE_DIAMETER_MM} mm
+                      🗑️ <strong>Eliminar:</strong> Arrastra una rueda al basurero
                     </span>
                   </div>
                 </div>
@@ -910,7 +1151,7 @@ export function GearsSection() {
                           : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                       }`}
                     >
-                      2. Tablero Matricial Completo ({board.id} cm)
+                      2. Tablero Matricial ({boardWidthCm}×{boardHeightCm} cm)
                     </button>
                     <button
                       type="button"
@@ -945,12 +1186,12 @@ export function GearsSection() {
             </div>
           </div>
 
-          {/* TELEMETRÍA DE FABRICACIÓN Y COORDENADAS FÍSICAS PARA EL TABLERO REAL */}
+          {/* Telemetría de Fabricación */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-extrabold uppercase text-rose-600 block">
-                  Corte Láser Engranajes
+                  Corte Engranajes
                 </span>
                 <span className="text-base font-black text-slate-900">
                   ~{analysis.estimatedGearsLaserTimeFormatted}
@@ -968,7 +1209,7 @@ export function GearsSection() {
                   Tablero Reutilizable
                 </span>
                 <span className="text-sm font-black text-slate-900">
-                  {board.widthMm / 10} × {board.heightMm / 10} cm
+                  {boardWidthCm} × {boardHeightCm} cm
                 </span>
                 <span className="text-[10px] text-slate-500 block">
                   {analysis.estimatedBoardLaserTimeFormatted}
@@ -980,7 +1221,7 @@ export function GearsSection() {
             <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-extrabold uppercase text-indigo-600 block">
-                  Kit Ejes + Manivela PLA
+                  Kit Ejes + Manivela
                 </span>
                 <span className="text-base font-black text-slate-900">
                   ~{analysis.estimatedPlaPrintMin} min · {analysis.estimatedPlaGrams} g
@@ -994,235 +1235,201 @@ export function GearsSection() {
           </div>
         </div>
 
-        {/* DERECHA (4 COLS): CATÁLOGO DE 4 CÍRCULOS PRIMITIVOS + INSPECTOR + GUÍA DE MONTAJE */}
+        {/* DERECHA (4 COLS): 3 CÍRCULOS ARRASTRABLES + ZONA BASURERO + DESCARGAS */}
         <div className="lg:col-span-4 space-y-4">
-          {/* Catálogo de los 4 Círculos de Diámetro Primitivo */}
+          {/* Paleta Arrastrable de los 3 Círculos (4, 6 y 8 cm) */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3.5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-teal-600" />
+                <Hand className="w-4 h-4 text-teal-600" />
                 <h3 className="font-black text-slate-900 text-sm">
-                  2. Círculos Primitivos (Módulo {GEAR_MODULE_MM} mm)
+                  2. Arrastra Círculos al Tablero
                 </h3>
               </div>
-              <span className="text-[10px] font-bold text-slate-500">4 tamaños</span>
+              <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">
+                4 · 6 · 8 cm
+              </span>
             </div>
 
             <p className="text-[11px] text-slate-600 leading-snug">
-              Selecciona un diámetro primitivo y haz clic sobre cualquier{' '}
-              <strong className="text-emerald-700">hoyo verde</strong> del tablero (o arrastra una
-              rueda ya puesta para moverla).
+              Toma cualquiera de estos <strong>3 diámetros primitivos</strong> y arrástralo directo
+              al tablero (se imantará a los hoyos verdes en diagonal u horizontal).
             </p>
 
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="space-y-2.5">
               {GEAR_CATALOG_LIST.map((item) => {
                 const active = activeToolSize === item.id;
                 return (
-                  <button
+                  <div
                     key={item.id}
-                    type="button"
+                    onPointerDown={(e) => handleStartPaletteDrag(e, item.id)}
                     onClick={() => setActiveToolSize(item.id)}
-                    className={`p-3 rounded-2xl border-2 text-center transition cursor-pointer flex flex-col items-center gap-1.5 ${
+                    className={`p-3 rounded-2xl border-2 transition cursor-grab active:cursor-grabbing flex items-center justify-between gap-3 select-none touch-none ${
                       active
-                        ? 'bg-slate-900 text-white border-teal-500 shadow-md scale-[1.02]'
-                        : 'bg-slate-50 text-slate-800 border-slate-200 hover:border-teal-300'
+                        ? 'bg-slate-900 text-white border-teal-500 shadow-md'
+                        : 'bg-slate-50 text-slate-800 border-slate-200 hover:border-teal-400 hover:bg-teal-50/40'
                     }`}
                   >
-                    <svg viewBox="-46 -46 92 92" className="w-16 h-16">
-                      <circle
-                        cx="0"
-                        cy="0"
-                        r={item.pitchRadiusMm}
-                        fill={`${item.color}38`}
-                        stroke={item.color}
-                        strokeWidth="3"
-                        strokeDasharray={active ? 'none' : '4 2'}
-                      />
-                      <circle cx="0" cy="0" r="3" fill={active ? '#ffffff' : '#0f172a'} />
-                    </svg>
-                    <div className="text-xs font-black leading-tight">{item.name}</div>
-                    <div
-                      className={`text-[11px] font-extrabold px-2 py-0.5 rounded-full ${
+                    <div className="flex items-center gap-3">
+                      <svg viewBox="-46 -46 92 92" className="w-14 h-14 shrink-0">
+                        <circle
+                          cx="0"
+                          cy="0"
+                          r={item.pitchRadiusMm}
+                          fill={`${item.color}38`}
+                          stroke={item.color}
+                          strokeWidth="3.5"
+                        />
+                        <circle cx="0" cy="0" r="3.5" fill={active ? '#ffffff' : '#0f172a'} />
+                      </svg>
+                      <div>
+                        <div className="text-sm font-black leading-tight">{item.name}</div>
+                        <div
+                          className={`text-xs font-extrabold mt-0.5 ${
+                            active ? 'text-teal-300' : 'text-teal-700'
+                          }`}
+                        >
+                          Ø {item.pitchDiameterMm / 10} cm · {item.teeth} dientes
+                        </div>
+                        <div
+                          className={`text-[10px] font-mono ${
+                            active ? 'text-slate-300' : 'text-slate-500'
+                          }`}
+                        >
+                          Radio = {item.gridRadiusUnits} espacios ({item.pitchRadiusMm} mm)
+                        </div>
+                      </div>
+                    </div>
+
+                    <span
+                      className={`text-[10px] font-extrabold px-2.5 py-1 rounded-xl shrink-0 ${
                         active
-                          ? 'bg-teal-500/20 text-teal-300'
-                          : 'bg-white border border-slate-200 text-slate-700'
+                          ? 'bg-teal-500/20 text-teal-200 border border-teal-400/30'
+                          : 'bg-white text-slate-600 border border-slate-200'
                       }`}
                     >
-                      Ø {item.pitchDiameterMm / 10} cm · {item.teeth}T
-                    </div>
-                    <div
-                      className={`text-[9px] font-mono ${
-                        active ? 'text-slate-300' : 'text-slate-500'
-                      }`}
-                    >
-                      Radio = {item.gridRadiusUnits} {item.gridRadiusUnits === 1 ? 'hoyo' : 'hoyos'}
-                    </div>
-                  </button>
+                      ✋ Arrastrar
+                    </span>
+                  </div>
                 );
               })}
             </div>
 
-            {/* Panel de Edición del Engranaje Seleccionado */}
-            {selectedGear && (
-              <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-slate-900">
-                    {selectedGear.role === 'start'
-                      ? '🟢 Engranaje INICIO (Fijo)'
-                      : selectedGear.role === 'end'
-                        ? '🏁 Engranaje META (Fijo)'
-                        : `⚙️ Engranaje Intermedio (${GEAR_CATALOG[selectedGear.sizeId].teeth}T)`}
-                  </span>
-                  {selectedGear.role === 'idler' && (
-                    <button
-                      type="button"
-                      onClick={handleDeleteSelected}
-                      className="text-[11px] font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded-lg flex items-center gap-1 cursor-pointer"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                      Quitar
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between text-[11px] text-slate-600 font-mono bg-white px-2.5 py-1.5 rounded-lg border border-slate-200">
-                  <span>
-                    Hoyo: <strong>(Col {selectedGear.col + 1}, Fila {selectedGear.row + 1})</strong>
-                  </span>
-                  <span>
-                    {analysis.nodes[selectedGear.id]?.connectedToStart && !analysis.isJammed
-                      ? `${Math.abs(analysis.nodes[selectedGear.id].rpm).toFixed(1)} RPM ${
-                          analysis.nodes[selectedGear.id].direction === 1 ? '↻' : '↺'
-                        }`
-                      : 'Sin giro'}
-                  </span>
-                </div>
-
-                {selectedGear.role === 'idler' && (
-                  <div className="grid grid-cols-4 gap-1">
-                    {GEAR_CATALOG_LIST.map((opt) => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => handleChangeSelectedSize(opt.id)}
-                        className={`py-1 rounded-lg text-[10px] font-extrabold border cursor-pointer ${
-                          selectedGear.sizeId === opt.id
-                            ? 'bg-slate-900 text-white border-slate-900'
-                            : 'bg-white text-slate-700 border-slate-200'
-                        }`}
-                      >
-                        {opt.pitchDiameterMm / 10} cm
-                      </button>
-                    ))}
-                  </div>
-                )}
+            {/* ZONA BASURERO PARA ELIMINAR POR ARRASTRE */}
+            <div
+              ref={trashZoneRef}
+              className={`rounded-2xl border-2 border-dashed p-4 text-center transition-all flex flex-col items-center justify-center gap-1.5 ${
+                activeDrag?.overTrash
+                  ? 'bg-rose-600 border-rose-700 text-white scale-[1.03] shadow-lg'
+                  : activeDrag?.mode === 'existing'
+                    ? 'bg-rose-50 border-rose-400 text-rose-800 animate-pulse'
+                    : 'bg-slate-50 border-slate-300 text-slate-500'
+              }`}
+            >
+              <Trash2
+                className={`w-6 h-6 transition-transform ${
+                  activeDrag?.overTrash ? 'scale-125 text-white' : ''
+                }`}
+              />
+              <div className="text-xs font-black">
+                {activeDrag?.overTrash
+                  ? '¡Suelta aquí para eliminar!'
+                  : activeDrag?.mode === 'existing'
+                    ? 'Arrastra aquí para botar el engranaje'
+                    : 'Basurero (Arrastra aquí cualquier círculo para borrarlo)'}
               </div>
-            )}
+            </div>
           </div>
 
-          {/* Tabla de Posiciones Físicas para Armar en el Tablero Real */}
+          {/* Panel de Descargas para Fabricación */}
           <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-2.5">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-black text-slate-900 flex items-center gap-1.5">
-                <RotateCw className="w-3.5 h-3.5 text-teal-600" />
-                Mapa de Montaje Físico ({gears.length} ejes)
+                <Sparkles className="w-3.5 h-3.5 text-teal-600" />
+                3. Descargar Patrones ({gears.length} ruedas)
               </h4>
               <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">
                 Relación {analysis.transmissionRatio}×
               </span>
             </div>
 
-            <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
-              {gears.map((g, idx) => {
-                const spec = GEAR_CATALOG[g.sizeId];
-                const node = analysis.nodes[g.id];
-                const tag =
-                  g.role === 'start' ? 'INICIO' : g.role === 'end' ? 'META' : `Rueda #${idx}`;
-                return (
-                  <div
-                    key={g.id}
-                    onClick={() => setSelectedGearId(g.id)}
-                    className={`px-2.5 py-1.5 rounded-lg border text-[11px] flex items-center justify-between cursor-pointer ${
-                      g.id === selectedGearId
-                        ? 'bg-teal-50 border-teal-400 font-bold'
-                        : 'bg-slate-50 border-slate-200/80'
-                    }`}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: spec.color }}
-                      />
-                      <strong className="text-slate-900">{tag}</strong>
-                      <span className="text-slate-500">
-                        ({spec.pitchDiameterMm / 10} cm · {spec.teeth}T)
-                      </span>
-                    </span>
-                    <span className="font-mono text-[10px] text-slate-700">
-                      ({g.col + 1},{g.row + 1}){' '}
-                      {node?.connectedToStart && !analysis.isJammed
-                        ? node.direction === 1
-                          ? '↻'
-                          : '↺'
-                        : '·'}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Botones de Descarga Completos */}
-            <div className="pt-2 border-t border-slate-100 space-y-2">
+            <button
+              type="button"
+              onClick={handleDownloadGearsSvg}
+              className="w-full py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              1. Descargar Engranajes MDF 3 mm (.SVG)
+            </button>
+            <div className="grid grid-cols-2 gap-1.5">
               <button
                 type="button"
-                onClick={handleDownloadGearsSvg}
-                className="w-full py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
+                onClick={() => handleDownloadBoardSvg('full_matrix')}
+                className="py-2 px-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer"
               >
-                <Download className="w-4 h-4" />
-                1. Descargar Engranajes MDF 3 mm (.SVG)
+                <Grid className="w-3.5 h-3.5" />
+                Tablero Matriz (.SVG)
               </button>
-              <div className="grid grid-cols-2 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleDownloadBoardSvg('full_matrix')}
-                  className="py-2 px-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer"
-                >
-                  <Grid className="w-3.5 h-3.5" />
-                  Tablero Matriz (.SVG)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDownloadBoardSvg('project_only')}
-                  className="py-2 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer"
-                >
-                  <Scissors className="w-3.5 h-3.5" />
-                  Solo Hoyos (.SVG)
-                </button>
-              </div>
               <button
                 type="button"
-                onClick={handleDownloadPinsStl}
-                className="w-full py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
+                onClick={() => handleDownloadBoardSvg('project_only')}
+                className="py-2 px-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer"
               >
-                <Box className="w-4 h-4" />
-                3. Descargar {gears.length} Ejes + Manivela PLA (.STL)
+                <Scissors className="w-3.5 h-3.5" />
+                Solo Hoyos (.SVG)
               </button>
             </div>
+            <button
+              type="button"
+              onClick={handleDownloadPinsStl}
+              className="w-full py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
+            >
+              <Box className="w-4 h-4" />
+              3. Descargar {gears.length} Ejes + Manivela PLA (.STL)
+            </button>
           </div>
 
-          {/* Nota Matemática sobre la Matriz 10 mm */}
+          {/* Nota Matemática */}
           <div className="rounded-2xl bg-emerald-50/80 border border-emerald-200 p-3.5 text-[11px] text-emerald-950 flex items-start gap-2">
             <Info className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
             <div>
-              <strong>¿Por qué encajan en la matriz de 10 mm?</strong> Con módulo{' '}
-              <strong>m = 2.0 mm</strong> y <strong>10, 20, 30 y 40 dientes</strong>, los radios
-              primitivos son exactos (<strong>1, 2, 3 y 4 hoyos</strong>): cualquier par engrana en
-              horizontal/vertical, y las parejas <strong>4+6 cm</strong> o <strong>2+8 cm</strong>{' '}
-              (suma 5 cm) además engranan en <strong>diagonal pitagórica 3-4-5</strong>.
+              <strong>¿Por qué 4, 6 y 8 cm en Matriz Triangular 60°?</strong> Sus radios exactos (2,
+              3 y 4 espacios de 10 mm) permiten que <strong>todos los pares</strong> engranen tanto
+              en horizontal como en <strong>diagonales a 60°</strong> (a diferencia de 5 cm, cuyo
+              radio de 2.5 cm quedaría fuera de la retícula de 10 mm).
             </div>
           </div>
         </div>
       </div>
+
+      {/* CÍRCULO FLOTANTE DURANTE EL ARRASTRE (Fuera del tablero o rumbo al basurero) */}
+      {activeDrag && (!activeDrag.overBoard || activeDrag.overTrash) && (
+        <div
+          className="fixed pointer-events-none z-50 -translate-x-1/2 -translate-y-1/2 transition-transform"
+          style={{ left: activeDrag.clientX, top: activeDrag.clientY }}
+        >
+          <div
+            className={`rounded-full flex flex-col items-center justify-center font-black shadow-2xl border-4 ${
+              activeDrag.overTrash
+                ? 'bg-rose-500/80 border-rose-700 text-white scale-75'
+                : 'bg-white/90 text-slate-900'
+            }`}
+            style={{
+              width: GEAR_CATALOG[activeDrag.sizeId].pitchDiameterMm * 1.45,
+              height: GEAR_CATALOG[activeDrag.sizeId].pitchDiameterMm * 1.45,
+              borderColor: activeDrag.overTrash
+                ? '#be123c'
+                : GEAR_CATALOG[activeDrag.sizeId].color,
+            }}
+          >
+            <span className="text-xs">
+              {activeDrag.overTrash
+                ? '🗑️'
+                : `${GEAR_CATALOG[activeDrag.sizeId].pitchDiameterMm / 10} cm`}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

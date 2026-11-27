@@ -9,6 +9,7 @@ import {
   GearKinematicsNode,
   GearSizeId,
   GearTrainAnalysis,
+  MatrixPatternId,
   PlacedGear,
 } from '@/types/gears';
 import { buildMakerboxLogoVectorPath } from '@/lib/makerbox-logo-vector';
@@ -24,11 +25,84 @@ interface Vec3 {
   z: number;
 }
 
+const SQRT3_HALF = Math.sqrt(3) / 2; // 0.8660254037844386
+
+/**
+ * Construye dinámicamente la especificación del tablero matricial para cualquier tamaño (Ancho × Alto en cm)
+ * y patrón (Matriz Triangular 60° con diagonales exactas o Matriz Cuadrada 90°).
+ */
+export function buildBoardSpec(
+  widthCm: number,
+  heightCm: number,
+  matrixPattern: MatrixPatternId = 'triangular'
+): GearBoardSpec {
+  const widthMm = Math.round(Math.max(200, Math.min(460, widthCm * 10)));
+  const heightMm = Math.round(Math.max(180, Math.min(460, heightCm * 10)));
+  const marginMm = 20;
+  const gridPitchMm = 10;
+
+  const usableW = widthMm - marginMm * 2;
+  const usableH = heightMm - marginMm * 2;
+  const rowPitchY = matrixPattern === 'triangular' ? gridPitchMm * SQRT3_HALF : gridPitchMm;
+
+  const cols = Math.max(12, Math.floor(usableW / gridPitchMm) + 1);
+  const rows = Math.max(12, Math.floor(usableH / rowPitchY) + 1);
+
+  // Anclar Inicio en esquina inferior izquierda y Meta en esquina superior derecha
+  // con margen suficiente para el engranaje más grande (8 cm -> radio 40 mm = 4 espacios)
+  const startCol = Math.min(Math.floor(cols / 4), 4);
+  const endCol = Math.max(Math.ceil((cols * 3) / 4), cols - 5);
+  const rowMargin = matrixPattern === 'triangular' ? 4 : 4;
+  const startRow = Math.max(Math.ceil((rows * 3) / 4), rows - 1 - rowMargin);
+  const endRow = Math.min(Math.floor(rows / 4), rowMargin);
+
+  return {
+    widthMm,
+    heightMm,
+    marginMm,
+    gridPitchMm,
+    matrixPattern,
+    cols,
+    rows,
+    startGrid: { col: startCol, row: startRow },
+    endGrid: { col: endCol, row: endRow },
+  };
+}
+
 export function gridToMm(board: GearBoardSpec, col: number, row: number): { x: number; y: number } {
+  if (board.matrixPattern === 'triangular') {
+    const rowShift = row % 2 === 1 ? board.gridPitchMm * 0.5 : 0;
+    return {
+      x: Number((board.marginMm + col * board.gridPitchMm + rowShift).toFixed(3)),
+      y: Number((board.marginMm + row * board.gridPitchMm * SQRT3_HALF).toFixed(3)),
+    };
+  }
   return {
     x: board.marginMm + col * board.gridPitchMm,
     y: board.marginMm + row * board.gridPitchMm,
   };
+}
+
+export function getRowColsCount(board: GearBoardSpec, row: number): number {
+  if (board.matrixPattern === 'triangular' && row % 2 === 1) {
+    // Las filas impares desplazadas +5 mm tienen 1 columna menos si la última se saldría del margen
+    const maxX = board.marginMm + (board.cols - 1) * board.gridPitchMm + board.gridPitchMm * 0.5;
+    return maxX <= board.widthMm - board.marginMm + 0.1 ? board.cols : board.cols - 1;
+  }
+  return board.cols;
+}
+
+export function getAllBoardHoles(
+  board: GearBoardSpec
+): { col: number; row: number; x: number; y: number }[] {
+  const holes: { col: number; row: number; x: number; y: number }[] = [];
+  for (let r = 0; r < board.rows; r++) {
+    const colCount = getRowColsCount(board, r);
+    for (let c = 0; c < colCount; c++) {
+      holes.push({ col: c, row: r, ...gridToMm(board, c, r) });
+    }
+  }
+  return holes;
 }
 
 export function getChallengeObstacles(
@@ -36,18 +110,16 @@ export function getChallengeObstacles(
   board: GearBoardSpec
 ): BoardObstacle[] {
   if (!challenge.hasCenterObstacle) return [];
-  const midC = Math.floor(board.cols / 2);
-  const midR = Math.floor(board.rows / 2);
-  const span = board.id === '40x40' ? 9 : 7;
-  const half = Math.floor(span / 2);
+  const w = Math.round(Math.max(44, Math.min(72, board.widthMm * 0.22)));
+  const h = Math.round(Math.max(44, Math.min(72, board.heightMm * 0.22)));
   return [
     {
       id: 'obs-center',
       label: 'ZONA BLOQUEADA',
-      colStart: midC - half,
-      rowStart: midR - half,
-      colSpan: span,
-      rowSpan: span,
+      x: Number(((board.widthMm - w) / 2).toFixed(1)),
+      y: Number(((board.heightMm - h) / 2).toFixed(1)),
+      width: w,
+      height: h,
     },
   ];
 }
@@ -81,12 +153,28 @@ export function createInitialGearsForChallenge(
 }
 
 // ============================================================================
-// 1. Cálculo de Hoyos Tangentes Exactos en la Matriz (Ortogonales + Pitagóricos 3-4-5)
+// 1. Búsqueda Exacta de Hoyos Tangentes (Diagonales 60° + Horizontales + 3-4-5)
 // ============================================================================
 
+function circleIntersectsObstacle(cx: number, cy: number, r: number, obs: BoardObstacle): boolean {
+  const closestX = Math.max(obs.x, Math.min(cx, obs.x + obs.width));
+  const closestY = Math.max(obs.y, Math.min(cy, obs.y + obs.height));
+  return Math.hypot(cx - closestX, cy - closestY) < r - 0.5;
+}
+
+function isGearInsideBoard(x: number, y: number, outerRadiusMm: number, board: GearBoardSpec): boolean {
+  return (
+    x - outerRadiusMm >= 2 &&
+    x + outerRadiusMm <= board.widthMm - 2 &&
+    y - outerRadiusMm >= 2 &&
+    y + outerRadiusMm <= board.heightMm - 2
+  );
+}
+
 /**
- * Encuentra todos los hoyos válidos (col, row) de la matriz donde un engranaje de tamaño `sizeId`
- * queda EXACTAMENTE tangente a al menos un engranaje existente sin chocar con ningún otro ni salirse del tablero.
+ * Encuentra TODOS los hoyos de la matriz (horizontal, vertical y diagonales exactas) donde un
+ * engranaje de tamaño `sizeId` queda exactamente tangente a al menos un engranaje existente
+ * sin chocar con ningún otro ni salirse del tablero.
  */
 export function findValidTangentHoles(
   sizeId: GearSizeId,
@@ -94,67 +182,51 @@ export function findValidTangentHoles(
   board: GearBoardSpec,
   obstacles: BoardObstacle[]
 ): { col: number; row: number; x: number; y: number; tangentCount: number }[] {
-  const rUnits = GEAR_CATALOG[sizeId].gridRadiusUnits;
-  const rMm = GEAR_CATALOG[sizeId].pitchRadiusMm;
-  const candidateMap = new Map<string, { col: number; row: number; tangentCount: number }>();
+  const spec = GEAR_CATALOG[sizeId];
+  const rMm = spec.pitchRadiusMm;
+  const outerRMm = spec.outerDiameterMm / 2;
+  const tolMm = 0.55;
 
-  for (const g of otherGears) {
-    const targetUnits = GEAR_CATALOG[g.sizeId].gridRadiusUnits + rUnits;
-    const targetSq = targetUnits * targetUnits;
-
-    // Buscar desplazamientos enteros (dc, dr) tales que dc^2 + dr^2 === targetUnits^2
-    // Incluye ortogonales (±targetUnits, 0), (0, ±targetUnits) Y diagonales exactas (ej. (±3, ±4) para suma = 5!)
-    for (let dc = -targetUnits; dc <= targetUnits; dc++) {
-      const rem = targetSq - dc * dc;
-      if (rem < 0) continue;
-      const dr = Math.round(Math.sqrt(rem));
-      if (dr * dr !== rem) continue;
-
-      const drOpts = dr === 0 ? [0] : [dr, -dr];
-      for (const dRow of drOpts) {
-        const col = g.col + dc;
-        const row = g.row + dRow;
-        if (col < rUnits || col > board.cols - 1 - rUnits) continue;
-        if (row < rUnits || row > board.rows - 1 - rUnits) continue;
-
-        const key = `${col},${row}`;
-        const prev = candidateMap.get(key);
-        if (prev) prev.tangentCount += 1;
-        else candidateMap.set(key, { col, row, tangentCount: 1 });
-      }
-    }
-  }
-
+  const allHoles = getAllBoardHoles(board);
   const valid: { col: number; row: number; x: number; y: number; tangentCount: number }[] = [];
-  for (const cand of candidateMap.values()) {
-    const { x, y } = gridToMm(board, cand.col, cand.row);
-    // Verificar que no choque con ningún otro engranaje ni obstáculo
+
+  for (const h of allHoles) {
+    if (!isGearInsideBoard(h.x, h.y, outerRMm, board)) continue;
+
+    let tangentCount = 0;
     let collides = false;
+
     for (const g of otherGears) {
-      const dist = Math.hypot(x - g.x, y - g.y);
-      const minAllowed = GEAR_CATALOG[g.sizeId].pitchRadiusMm + rMm - 0.5;
-      if (dist < minAllowed) {
+      const target = GEAR_CATALOG[g.sizeId].pitchRadiusMm + rMm;
+      const dist = Math.hypot(h.x - g.x, h.y - g.y);
+      if (dist < target - tolMm) {
         collides = true;
         break;
       }
+      if (Math.abs(dist - target) <= tolMm) {
+        tangentCount += 1;
+      }
     }
-    if (collides) continue;
+
+    if (collides || tangentCount === 0) continue;
+
     for (const obs of obstacles) {
-      if (circleIntersectsObstacle(x, y, rMm + 1.5, obs, board)) {
+      if (circleIntersectsObstacle(h.x, h.y, rMm + 1.5, obs)) {
         collides = true;
         break;
       }
     }
     if (!collides) {
-      valid.push({ ...cand, x, y });
+      valid.push({ ...h, tangentCount });
     }
   }
+
   return valid;
 }
 
 /**
- * Ajusta cualquier coordenada arrastrada (rawX, rawY) al hoyo entero más cercano de la matriz,
- * dando prioridad magnética a los hoyos tangentes exactos si el cursor está cerca.
+ * Ajusta cualquier coordenada (rawX, rawY) al hoyo más cercano de la matriz,
+ * dando prioridad magnética a los hoyos tangentes exactos (especialmente cierres dobles).
  */
 export function snapGearToMatrix(
   rawX: number,
@@ -163,17 +235,24 @@ export function snapGearToMatrix(
   otherGears: PlacedGear[],
   board: GearBoardSpec,
   obstacles: BoardObstacle[]
-): { col: number; row: number; x: number; y: number; isExactTangent: boolean } {
+): { col: number; row: number; x: number; y: number; isExactTangent: boolean; tangentCount: number } {
   const validHoles = findValidTangentHoles(sizeId, otherGears, board, obstacles);
-  let bestTangent: { col: number; row: number; x: number; y: number; dist: number; bonus: number } | null = null;
+  let bestTangent: {
+    col: number;
+    row: number;
+    x: number;
+    y: number;
+    score: number;
+    tangentCount: number;
+  } | null = null;
 
   for (const h of validHoles) {
     const dist = Math.hypot(h.x - rawX, h.y - rawY);
-    const threshold = h.tangentCount >= 2 ? 18 : 13;
+    const threshold = h.tangentCount >= 2 ? 20 : 15;
     if (dist <= threshold) {
-      const score = dist - (h.tangentCount >= 2 ? 4 : 0);
-      if (!bestTangent || score < bestTangent.bonus) {
-        bestTangent = { col: h.col, row: h.row, x: h.x, y: h.y, dist, bonus: score };
+      const score = dist - (h.tangentCount >= 2 ? 5 : 0);
+      if (!bestTangent || score < bestTangent.score) {
+        bestTangent = { ...h, score };
       }
     }
   }
@@ -185,42 +264,37 @@ export function snapGearToMatrix(
       x: bestTangent.x,
       y: bestTangent.y,
       isExactTangent: true,
+      tangentCount: bestTangent.tangentCount,
     };
   }
 
-  // Si no está cerca de un hoyo tangente, ajustar al hoyo matricial más cercano
-  const rUnits = GEAR_CATALOG[sizeId].gridRadiusUnits;
-  const col = Math.max(
-    rUnits,
-    Math.min(board.cols - 1 - rUnits, Math.round((rawX - board.marginMm) / board.gridPitchMm))
-  );
-  const row = Math.max(
-    rUnits,
-    Math.min(board.rows - 1 - rUnits, Math.round((rawY - board.marginMm) / board.gridPitchMm))
-  );
-  const pos = gridToMm(board, col, row);
-  return { col, row, x: pos.x, y: pos.y, isExactTangent: false };
+  // Fallback: hoyo más cercano dentro del tablero
+  const outerRMm = GEAR_CATALOG[sizeId].outerDiameterMm / 2;
+  const allHoles = getAllBoardHoles(board);
+  let nearest = allHoles[0];
+  let minD = Infinity;
+  for (const h of allHoles) {
+    if (!isGearInsideBoard(h.x, h.y, outerRMm, board)) continue;
+    const d = Math.hypot(h.x - rawX, h.y - rawY);
+    if (d < minD) {
+      minD = d;
+      nearest = h;
+    }
+  }
+
+  return {
+    col: nearest.col,
+    row: nearest.row,
+    x: nearest.x,
+    y: nearest.y,
+    isExactTangent: false,
+    tangentCount: 0,
+  };
 }
 
 // ============================================================================
 // 2. Motor Cinemático y Detección de Colisiones / Trabas Mecánicas
 // ============================================================================
-
-function circleIntersectsObstacle(
-  cx: number,
-  cy: number,
-  r: number,
-  obs: BoardObstacle,
-  board: GearBoardSpec
-): boolean {
-  const rx = board.marginMm + obs.colStart * board.gridPitchMm;
-  const ry = board.marginMm + obs.rowStart * board.gridPitchMm;
-  const rw = obs.colSpan * board.gridPitchMm;
-  const rh = obs.rowSpan * board.gridPitchMm;
-  const closestX = Math.max(rx, Math.min(cx, rx + rw));
-  const closestY = Math.max(ry, Math.min(cy, ry + rh));
-  return Math.hypot(cx - closestX, cy - closestY) < r - 0.5;
-}
 
 export function analyzeGearTrain(
   gears: PlacedGear[],
@@ -237,26 +311,17 @@ export function analyzeGearTrain(
   for (const g of gears) {
     adj.set(g.id, []);
     const spec = GEAR_CATALOG[g.sizeId];
-    const outerR = spec.outerDiameterMm / 2;
-
-    if (
-      g.x - outerR < 2 ||
-      g.x + outerR > board.widthMm - 2 ||
-      g.y - outerR < 2 ||
-      g.y + outerR > board.heightMm - 2
-    ) {
+    if (!isGearInsideBoard(g.x, g.y, spec.outerDiameterMm / 2, board)) {
       outOfBoundsIds.push(g.id);
     }
-
     for (const obs of obstacles) {
-      if (circleIntersectsObstacle(g.x, g.y, spec.pitchRadiusMm + 1.5, obs, board)) {
+      if (circleIntersectsObstacle(g.x, g.y, spec.pitchRadiusMm + 1.5, obs)) {
         obstacleCollisions.push(g.id);
         break;
       }
     }
   }
 
-  // En la matriz de 10 mm, la tangencia exacta tiene |dist - (ra + rb)| < 0.05 mm
   const MESH_TOL_MM = 0.6;
   const OVERLAP_TOL_MM = 0.6;
 
@@ -342,7 +407,7 @@ export function analyzeGearTrain(
         } else if (vNode.direction !== expectedDir) {
           isJammed = true;
           jamReason =
-            '¡Tren mecánico trabado! Se formó un ciclo impar (ej. 3 engranajes tocándose entre sí) que intenta girar un engranaje en ambos sentidos a la vez.';
+            '¡Tren mecánico trabado! Se formó un ciclo impar (ej. 3 engranajes tocándose en triángulo) que bloquea el giro. Arrastra uno al basurero para destrabarlo.';
         }
       }
     }
@@ -351,7 +416,7 @@ export function analyzeGearTrain(
   if (collisionPairs.length > 0) {
     isJammed = true;
     jamReason =
-      'Hay círculos primitivos superpuestos en la matriz. Muévelos a un hoyo verde (tangencia exacta).';
+      'Hay círculos primitivos superpuestos. Arrástralos hacia un hoyo verde (tangencia exacta) o al basurero.';
   } else if (obstacleCollisions.length > 0) {
     isJammed = true;
     jamReason =
@@ -375,7 +440,7 @@ export function analyzeGearTrain(
 
   let challengeCompleted = false;
   let statusMessage =
-    'Haz clic en un tamaño a la derecha o arrástralo hacia los hoyos verdes (tangentes exactos) para conectar Inicio con Meta.';
+    'Arrastra círculos primitivos (4, 6 u 8 cm) desde la derecha hacia los hoyos verdes (horizontales o diagonales) para conectar Inicio con Meta.';
   let statusType: 'success' | 'warning' | 'error' | 'info' = 'info';
 
   if (isJammed && jamReason) {
@@ -388,21 +453,20 @@ export function analyzeGearTrain(
     ) {
       const wantTxt = challenge.targetEndDirection === 1 ? 'Horario (↻)' : 'Antihorario (↺)';
       const gotTxt = endDirection === 1 ? 'Horario (↻)' : 'Antihorario (↺)';
-      statusMessage = `¡Conectaste la Meta (${endRpm} RPM ${gotTxt}), pero el desafío pide sentido ${wantTxt}! Cambia la cantidad de ruedas (par vs. impar) para invertir el giro.`;
+      statusMessage = `¡Conectaste la Meta (${endRpm} RPM ${gotTxt}), pero el desafío pide sentido ${wantTxt}! Modifica el recorrido para cambiar de par a impar.`;
       statusType = 'warning';
     } else {
       challengeCompleted = true;
       const dirTxt = endDirection === 1 ? 'Horario (↻)' : 'Antihorario (↺)';
-      statusMessage = `¡Desafío logrado! Tu tren gira continuamente hasta la Meta a ${endRpm} RPM (${dirTxt}). Ya puedes cortar tus engranajes (.SVG) y montarlos en el tablero matricial con los ejes PLA (.STL).`;
+      statusMessage = `¡Desafío logrado! Tu tren gira hasta la Meta a ${endRpm} RPM (${dirTxt}). Ya puedes descargar el patrón láser (.SVG) y los ejes 3D (.STL).`;
       statusType = 'success';
     }
   } else if (gears.length > 2) {
     const connectedCount = Object.values(nodes).filter((n) => n.connectedToStart).length;
-    statusMessage = `Tienes ${connectedCount} de ${gears.length} engranajes girando desde el Inicio. Ubica nuevos círculos en los hoyos verdes hasta alcanzar la Meta.`;
+    statusMessage = `Tienes ${connectedCount} de ${gears.length} engranajes girando desde el Inicio. Sigue arrastrando círculos hacia los hoyos verdes hasta alcanzar la Meta.`;
     statusType = 'info';
   }
 
-  // Tiempos estimados (separando el corte rápido de engranajes vs el tablero reutilizable)
   const gearsPerimMm = gears.reduce((acc, g) => {
     const spec = GEAR_CATALOG[g.sizeId];
     return acc + spec.pitchDiameterMm * Math.PI * 1.95 + Math.PI * GEAR_BORE_DIAMETER_MM;
@@ -412,10 +476,10 @@ export function analyzeGearTrain(
   const gSec = gearsLaserSec % 60;
   const estimatedGearsLaserTimeFormatted = gMin > 0 ? `${gMin} min ${gSec} s` : `${gSec} s`;
 
-  const totalBoardHoles = board.cols * board.rows;
+  const allHolesCount = getAllBoardHoles(board).length;
   const boardPerimMm =
-    2 * (board.widthMm + board.heightMm) + totalBoardHoles * Math.PI * BOARD_HOLE_DIAMETER_MM;
-  const boardLaserMin = Math.max(5, Math.round(boardPerimMm / (11.0 * 60)));
+    2 * (board.widthMm + board.heightMm) + allHolesCount * Math.PI * BOARD_HOLE_DIAMETER_MM;
+  const boardLaserMin = Math.max(4, Math.round(boardPerimMm / (11.0 * 60)));
   const estimatedBoardLaserTimeFormatted = `~${boardLaserMin} min (1 vez · reutilizable)`;
 
   const estimatedPlaGrams = Number((gears.length * 0.7 + 1.5).toFixed(1));
@@ -497,7 +561,7 @@ export function gearPolygonToSvgPath(pts: Vec2[]): string {
 }
 
 // ============================================================================
-// 4. Exportador SVG 1: SOLO ENGRANAJES DEL TREN (Corte ultra-rápido MDF 3 mm)
+// 4. Exportadores SVG para Falcon Design Space (Engranajes + Tablero Matricial)
 // ============================================================================
 
 function escapeXml(str: string): string {
@@ -509,10 +573,7 @@ function escapeXml(str: string): string {
     .replace(/'/g, '&apos;');
 }
 
-export function generateGearsOnlyLaserSvg(
-  gears: PlacedGear[],
-  teamName: string
-): string {
+export function generateGearsOnlyLaserSvg(gears: PlacedGear[], teamName: string): string {
   const sheetW = 300;
   const margin = 10;
   const topHeader = 16;
@@ -556,20 +617,19 @@ export function generateGearsOnlyLaserSvg(
     if (d > rowH) rowH = d;
   });
 
-  const totalH = Math.max(110, Math.ceil(curY + rowH + margin));
+  const totalH = Math.max(115, Math.ceil(curY + rowH + margin));
   const lines: string[] = [];
   lines.push(`<?xml version="1.0" encoding="UTF-8"?>`);
   lines.push(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${sheetW}mm" height="${totalH}mm" viewBox="0 0 ${sheetW} ${totalH}">`
   );
   lines.push(
-    `  <!-- MakerBox Taller 6 (Falcon Design Space): ${gears.length} Engranajes MDF 3 mm (m=${GEAR_MODULE_MM}mm, orificio central Ø${GEAR_BORE_DIAMETER_MM}mm) -->`
+    `  <!-- MakerBox Taller 6 (Falcon Design Space): ${gears.length} Engranajes MDF 3 mm (4/6/8 cm · m=${GEAR_MODULE_MM}mm · eje Ø${GEAR_BORE_DIAMETER_MM}mm) -->`
   );
 
-  // Capa Grabado Azul (#0000FF)
   lines.push(`  <g id="CAPA_GRABADO_AZUL" fill="#0000FF" stroke="none">`);
   lines.push(
-    `    <text x="${margin}" y="8.5" font-family="Arial, sans-serif" font-size="3.3" font-weight="bold">MAKERBOX TALLER 6 · ${gears.length} ENGRANAJES MDF 3MM (MÓDULO ${GEAR_MODULE_MM}MM · EJE Ø${GEAR_BORE_DIAMETER_MM}MM) · ${escapeXml(
+    `    <text x="${margin}" y="8.5" font-family="Arial, sans-serif" font-size="3.3" font-weight="bold">MAKERBOX TALLER 6 · ${gears.length} ENGRANAJES MDF 3MM (4/6/8 CM · EJE Ø${GEAR_BORE_DIAMETER_MM}MM) · ${escapeXml(
       teamName.toUpperCase()
     )}</text>`
   );
@@ -578,43 +638,36 @@ export function generateGearsOnlyLaserSvg(
 
   for (const pg of placed) {
     const spec = GEAR_CATALOG[pg.gear.sizeId];
-    const rText = Math.max(5.5, spec.pitchRadiusMm * 0.56);
-    const fontSize = spec.teeth <= 10 ? 2.1 : 2.7;
+    const rText = Math.max(8, spec.pitchRadiusMm * 0.56);
     lines.push(
       `    <text x="${pg.cx.toFixed(2)}" y="${(pg.cy + rText).toFixed(
         2
-      )}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${fontSize}" font-weight="bold">${escapeXml(
+      )}" text-anchor="middle" font-family="Arial, sans-serif" font-size="2.7" font-weight="bold">${escapeXml(
         pg.label
       )}</text>`
     );
-    if (spec.teeth >= 20) {
-      lines.push(
-        `    <text x="${pg.cx.toFixed(2)}" y="${(pg.cy - rText + 2).toFixed(
-          2
-        )}" text-anchor="middle" font-family="Arial, sans-serif" font-size="2.3" font-weight="bold">Hoyo ${escapeXml(
-          pg.coordLabel
-        )}</text>`
-      );
-    }
+    lines.push(
+      `    <text x="${pg.cx.toFixed(2)}" y="${(pg.cy - rText + 2).toFixed(
+        2
+      )}" text-anchor="middle" font-family="Arial, sans-serif" font-size="2.3" font-weight="bold">Hoyo ${escapeXml(
+        pg.coordLabel
+      )}</text>`
+    );
   }
   lines.push(`  </g>`);
 
-  // Capa Corte Rojo (#FF0000, 0.1 mm): primero orificios interiores, luego dientes exteriores
   lines.push(`  <g id="CAPA_CORTE_ROJO" stroke="#FF0000" stroke-width="0.1" fill="none">`);
   for (const pg of placed) {
     const spec = GEAR_CATALOG[pg.gear.sizeId];
-    // 1. Orificio central del eje
     lines.push(
       `    <circle cx="${pg.cx.toFixed(3)}" cy="${pg.cy.toFixed(3)}" r="${boreR.toFixed(3)}" />`
     );
-    // 2. Orificio excéntrico Ø 4.2 mm para la manivela en el engranaje de Inicio
-    if (pg.gear.role === 'start' && spec.pitchRadiusMm >= 14) {
+    if (pg.gear.role === 'start') {
       const offset = Number((spec.pitchRadiusMm * 0.56).toFixed(2));
       lines.push(
         `    <circle cx="${(pg.cx + offset).toFixed(3)}" cy="${pg.cy.toFixed(3)}" r="2.100" />`
       );
     }
-    // 3. Contorno exterior dentado exacto
     const pts = buildGearToothPolygon(spec.teeth, GEAR_MODULE_MM);
     const polyStr = pts
       .map((p) => `${(pg.cx + p.x).toFixed(3)},${(pg.cy + p.y).toFixed(3)}`)
@@ -626,34 +679,31 @@ export function generateGearsOnlyLaserSvg(
   return lines.join('\n');
 }
 
-// ============================================================================
-// 5. Exportador SVG 2: TABLERO MATRICIAL PERFORADO REUTILIZABLE (30x30 o 40x40 cm)
-// ============================================================================
-
 export function generateMatrixPegboardLaserSvg(
   board: GearBoardSpec,
   gears: PlacedGear[],
   mode: 'full_matrix' | 'project_only' = 'full_matrix'
 ): string {
   const holeR = BOARD_HOLE_DIAMETER_MM / 2;
+  const patternName =
+    board.matrixPattern === 'triangular' ? 'MATRIZ TRIANGULAR 60°' : 'MATRIZ CUADRADA 90°';
+
   const lines: string[] = [];
   lines.push(`<?xml version="1.0" encoding="UTF-8"?>`);
   lines.push(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${board.widthMm}mm" height="${board.heightMm}mm" viewBox="0 0 ${board.widthMm} ${board.heightMm}">`
   );
   lines.push(
-    `  <!-- MakerBox Taller 6: Tablero Matricial ${board.widthMm}x${board.heightMm} mm · Paso ${board.gridPitchMm} mm · Perforaciones Ø${BOARD_HOLE_DIAMETER_MM} mm -->`
+    `  <!-- MakerBox Taller 6: Tablero ${board.widthMm}x${board.heightMm} mm · ${patternName} · Paso ${board.gridPitchMm} mm · Hoyos Ø${BOARD_HOLE_DIAMETER_MM} mm -->`
   );
 
-  // Capa Grabado Azul (#0000FF): Coordenadas de columnas/filas y logo MakerBox
   lines.push(`  <g id="CAPA_GRABADO_AZUL" fill="#0000FF" stroke="none">`);
   lines.push(
-    `    <text x="${board.marginMm}" y="10" font-family="Arial, sans-serif" font-size="4.0" font-weight="bold">MAKERBOX · TABLERO MATRICIAL DE ENGRANAJES (${board.widthMm / 10}×${board.heightMm / 10} CM · PASO 10 MM)</text>`
+    `    <text x="${board.marginMm}" y="10" font-family="Arial, sans-serif" font-size="3.8" font-weight="bold">MAKERBOX · TABLERO ${board.widthMm / 10}×${board.heightMm / 10} CM · ${patternName} (PASO 10 MM)</text>`
   );
   const logoD = buildMakerboxLogoVectorPath(board.widthMm - 34, 4, 26);
   lines.push(`    <path d="${logoD}" fill="#0000FF" fill-rule="evenodd" />`);
 
-  // Numeración cada 5 columnas y filas en los bordes del tablero para ubicar ejes fácilmente
   for (let c = 0; c < board.cols; c++) {
     if (c === 0 || (c + 1) % 5 === 0 || c === board.cols - 1) {
       const x = board.marginMm + c * board.gridPitchMm;
@@ -668,9 +718,9 @@ export function generateMatrixPegboardLaserSvg(
   }
   for (let r = 0; r < board.rows; r++) {
     if (r === 0 || (r + 1) % 5 === 0 || r === board.rows - 1) {
-      const y = board.marginMm + r * board.gridPitchMm;
+      const p = gridToMm(board, 0, r);
       lines.push(
-        `    <text x="${(board.marginMm - 6.5).toFixed(1)}" y="${(y + 1).toFixed(
+        `    <text x="${(board.marginMm - 6.5).toFixed(1)}" y="${(p.y + 1).toFixed(
           1
         )}" text-anchor="middle" font-family="Arial, sans-serif" font-size="2.8" font-weight="bold">${
           r + 1
@@ -679,28 +729,22 @@ export function generateMatrixPegboardLaserSvg(
     }
   }
 
-  // Marcar INICIO y META sobre el tablero
   const sPos = gridToMm(board, board.startGrid.col, board.startGrid.row);
   const ePos = gridToMm(board, board.endGrid.col, board.endGrid.row);
   lines.push(
-    `    <circle cx="${sPos.x}" cy="${sPos.y}" r="4.6" fill="none" stroke="#0000FF" stroke-width="0.35" />`
+    `    <circle cx="${sPos.x}" cy="${sPos.y}" r="4.8" fill="none" stroke="#0000FF" stroke-width="0.35" />`
   );
   lines.push(
-    `    <circle cx="${ePos.x}" cy="${ePos.y}" r="4.6" fill="none" stroke="#0000FF" stroke-width="0.35" />`
+    `    <circle cx="${ePos.x}" cy="${ePos.y}" r="4.8" fill="none" stroke="#0000FF" stroke-width="0.35" />`
   );
   lines.push(`  </g>`);
 
-  // Capa Corte Rojo (#FF0000, 0.1 mm): Perforaciones de matriz y borde exterior
   lines.push(`  <g id="CAPA_CORTE_ROJO" stroke="#FF0000" stroke-width="0.1" fill="none">`);
   if (mode === 'full_matrix') {
-    for (let r = 0; r < board.rows; r++) {
-      const cy = board.marginMm + r * board.gridPitchMm;
-      for (let c = 0; c < board.cols; c++) {
-        const cx = board.marginMm + c * board.gridPitchMm;
-        lines.push(
-          `    <circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${holeR.toFixed(3)}" />`
-        );
-      }
+    for (const h of getAllBoardHoles(board)) {
+      lines.push(
+        `    <circle cx="${h.x.toFixed(2)}" cy="${h.y.toFixed(2)}" r="${holeR.toFixed(3)}" />`
+      );
     }
   } else {
     for (const g of gears) {
@@ -710,7 +754,6 @@ export function generateMatrixPegboardLaserSvg(
     }
   }
 
-  // Contorno exterior del tablero rectangular
   lines.push(
     `    <rect x="0.5" y="0.5" width="${(board.widthMm - 1).toFixed(1)}" height="${(
       board.heightMm - 1
@@ -722,7 +765,7 @@ export function generateMatrixPegboardLaserSvg(
 }
 
 // ============================================================================
-// 6. Exportador 3D .STL: Kit de Ejes Escalonados PLA + Manivela (100% 2-Manifold)
+// 5. Exportador 3D .STL: Kit de Ejes Escalonados PLA + Manivela (100% 2-Manifold)
 // ============================================================================
 
 function pushTri(lines: string[], a: Vec3, b: Vec3, c: Vec3) {
@@ -749,11 +792,6 @@ function pushQuad(lines: string[], a: Vec3, b: Vec3, c: Vec3, d: Vec3) {
   pushTri(lines, a, c, d);
 }
 
-/**
- * Genera un eje de 2 escalones (sólido 100% cerrado 2-manifold apoyado sobre Z = 0):
- * - Base ancha inferior (Z=0 -> hBase): tope que apoya bajo el tablero MDF.
- * - Vástago de giro (Z=hBase -> hTotal): atraviesa el tablero (3 mm) y sostiene el engranaje (3 mm) con giro libre.
- */
 function appendSteppedPinSolid(
   lines: string[],
   ox: number,
@@ -806,12 +844,6 @@ function appendSteppedPinSolid(
   }
 }
 
-/**
- * Genera el archivo .STL con:
- * - `gearCount` ejes PLA (Base Ø 10 mm × 2 mm + Eje Ø 4.8 mm × 9.5 mm) que encajan en los hoyos Ø 5.0 mm
- *   del tablero matricial y dejan girar libremente los engranajes de orificio central Ø 5.2 mm.
- * - 1 manivela ergonómica (Base Ø 11 mm × 3 mm + Mango Ø 3.9 mm × 16 mm) para el engranaje de Inicio.
- */
 export function generateGearPinsAndCrankStl(gearCount: number, teamName: string): string {
   const safeName = (teamName || 'Equipo').replace(/[^a-zA-Z0-9]+/g, '_');
   const solidName = `MakerBox_Taller6_EjesPLA_${safeName}`;
@@ -828,7 +860,6 @@ export function generateGearPinsAndCrankStl(gearCount: number, teamName: string)
     appendSteppedPinSolid(lines, col * spacing, row * spacing, 5.0, 2.0, 2.4, 9.5, 24);
   }
 
-  // Perilla / Manivela para el orificio excéntrico Ø 4.2 mm del engranaje de inicio
   appendSteppedPinSolid(lines, (cols + 0.35) * spacing, 0, 5.5, 3.0, 1.95, 16.0, 24);
 
   lines.push(`endsolid ${solidName}`);
