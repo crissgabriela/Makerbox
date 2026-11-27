@@ -15,6 +15,8 @@ import {
   Grid,
   Hand,
   Info,
+  Lightbulb,
+  Lock,
   Pause,
   Play,
   RotateCcw,
@@ -22,6 +24,7 @@ import {
   Sliders,
   Sparkles,
   Trash2,
+  X,
 } from 'lucide-react';
 import {
   BOARD_HOLE_DIAMETER_MM,
@@ -41,14 +44,18 @@ import {
   buildBoardSpec,
   buildGearToothPolygon,
   createInitialGearsForChallenge,
+  findNextBestGearHint,
   findValidTangentHoles,
   gearPolygonToSvgPath,
   generateGearPinsAndCrankStl,
   generateGearsOnlyLaserSvg,
+  generateMathHintProblem,
   generateMatrixPegboardLaserSvg,
+  GearHintSuggestion,
   getAllBoardHoles,
   getChallengeObstacles,
   gridToMm,
+  MathHintProblem,
   snapGearToMatrix,
 } from '@/lib/gears-processor';
 
@@ -89,6 +96,13 @@ export function GearsSection() {
   );
   const [activeToolSize, setActiveToolSize] = useState<GearSizeId>('m');
   const [activeDrag, setActiveDrag] = useState<ActiveDragState | null>(null);
+
+  // Asistente Pedagógico Matemático (10 años): Retos de suma/resta para desbloquear pistas
+  const [showMathModal, setShowMathModal] = useState<boolean>(false);
+  const [currentMathProblem, setCurrentMathProblem] = useState<MathHintProblem | null>(null);
+  const [mathFeedback, setMathFeedback] = useState<string | null>(null);
+  const [activeHint, setActiveHint] = useState<GearHintSuggestion | null>(null);
+  const [mathSolvedCount, setMathSolvedCount] = useState<number>(0);
 
   // Visualización y Simulación
   const [viewMode, setViewMode] = useState<'circles' | 'gears' | 'svg'>('circles');
@@ -313,11 +327,62 @@ export function GearsSection() {
     setBoardHeightCm(nextH);
     setMatrixPattern(nextPattern);
     setGears(createInitialGearsForChallenge(GEAR_CHALLENGES[nextChallengeId], nextBoard));
+    setActiveHint(null);
   };
 
   const handleResetBoard = () => {
     setGears(createInitialGearsForChallenge(challenge, board));
+    setActiveHint(null);
   };
+
+  // Abrir desafío matemático de suma/resta para ganar una pista
+  const handleRequestHint = () => {
+    if (analysis.challengeCompleted) {
+      setActiveHint({
+        status: 'already_done',
+        message: '¡Ya conectaste Inicio y Meta! No necesitas más pistas.',
+      });
+      return;
+    }
+    setCurrentMathProblem(generateMathHintProblem());
+    setMathFeedback(null);
+    setShowMathModal(true);
+  };
+
+  const handleAnswerMathProblem = (chosenValue: number) => {
+    if (!currentMathProblem) return;
+    if (chosenValue === currentMathProblem.correctAnswer) {
+      const suggestion = findNextBestGearHint(gears, challenge, board);
+      setMathSolvedCount((c) => c + 1);
+      setActiveHint(suggestion);
+      if (suggestion.sizeId) {
+        setActiveToolSize(suggestion.sizeId);
+      }
+      if (viewMode === 'svg') setViewMode('circles');
+      setShowMathModal(false);
+      setMathFeedback(null);
+    } else {
+      setMathFeedback(
+        `¡Casi! ${chosenValue} no es el resultado de ${currentMathProblem.hintFormula}. ¡Vuelve a calcularlo con calma!`
+      );
+    }
+  };
+
+  // Limpiar automáticamente la pista cuando el estudiante coloca un engranaje en el hoyo sugerido
+  useEffect(() => {
+    if (
+      activeHint?.status === 'place_gear' &&
+      typeof activeHint.col === 'number' &&
+      typeof activeHint.row === 'number'
+    ) {
+      const fulfilled = gears.some(
+        (g) => g.col === activeHint.col && g.row === activeHint.row
+      );
+      if (fulfilled) {
+        setActiveHint(null);
+      }
+    }
+  }, [gears, activeHint]);
 
   // Clic rápido en un hoyo verde (atajo complementario al arrastre)
   const handleQuickPlaceAtHole = (col: number, row: number) => {
@@ -614,34 +679,54 @@ export function GearsSection() {
           </div>
         </div>
 
-        {/* Selector de los 4 Desafíos */}
+        {/* Selector de Niveles (Nivel 1 Básico activo para 10 años; Niveles 2–4 bloqueados por ahora) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
           {(['libre', 'inversor', 'velocidad', 'obstaculo'] as GearChallengeId[]).map((cid) => {
             const ch = GEAR_CHALLENGES[cid];
+            const isLocked = cid !== 'libre';
             const active = challengeId === cid;
             return (
               <button
                 key={cid}
                 type="button"
-                onClick={() =>
-                  applyBoardAndChallenge(cid, boardWidthCm, boardHeightCm, matrixPattern)
-                }
-                className={`p-3 rounded-xl border-2 text-left transition cursor-pointer space-y-1 ${
-                  active
-                    ? 'bg-teal-50/90 border-teal-600 shadow-2xs'
-                    : 'bg-slate-50/70 border-slate-200 hover:border-teal-300'
+                disabled={isLocked}
+                onClick={() => {
+                  if (!isLocked) {
+                    applyBoardAndChallenge(cid, boardWidthCm, boardHeightCm, matrixPattern);
+                  }
+                }}
+                className={`p-3 rounded-xl border-2 text-left transition space-y-1 ${
+                  isLocked
+                    ? 'bg-slate-100/80 border-slate-200 opacity-65 cursor-not-allowed'
+                    : active
+                      ? 'bg-teal-50/90 border-teal-600 shadow-2xs cursor-pointer'
+                      : 'bg-slate-50/70 border-slate-200 hover:border-teal-300 cursor-pointer'
                 }`}
               >
-                <span
-                  className={`inline-block text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                    active ? 'bg-teal-600 text-white' : 'bg-slate-200 text-slate-700'
-                  }`}
-                >
-                  {ch.levelBadge}
-                </span>
+                <div className="flex items-center justify-between gap-1">
+                  <span
+                    className={`inline-block text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                      isLocked
+                        ? 'bg-slate-200 text-slate-500'
+                        : active
+                          ? 'bg-teal-600 text-white'
+                          : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {isLocked ? ch.levelBadge : 'Nivel 1 · Básico (10 años)'}
+                  </span>
+                  {isLocked && (
+                    <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase text-slate-500 bg-white px-2 py-0.5 rounded-full border border-slate-200">
+                      <Lock className="w-2.5 h-2.5" />
+                      Próximamente
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs font-black text-slate-900 leading-snug">{ch.title}</div>
                 <p className="text-[10px] text-slate-600 leading-snug line-clamp-2">
-                  {ch.description}
+                  {isLocked
+                    ? 'Nivel reservado para próximos cursos y desafíos avanzados.'
+                    : ch.description}
                 </p>
               </button>
             );
@@ -742,7 +827,15 @@ export function GearsSection() {
               </div>
 
               {viewMode !== 'svg' && (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRequestHint}
+                    className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 text-xs font-black shadow flex items-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Lightbulb className="w-3.5 h-3.5" />
+                    <span>Pedir Pista</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => setShowValidHoles((v) => !v)}
@@ -1082,6 +1175,71 @@ export function GearsSection() {
                       );
                     })}
 
+                    {/* Pista Matemática Desbloqueada: Estrella y Silueta Sugerida sobre el Tablero */}
+                    {activeHint &&
+                      activeHint.sizeId &&
+                      typeof activeHint.x === 'number' &&
+                      typeof activeHint.y === 'number' && (
+                        <g
+                          transform={`translate(${activeHint.x}, ${activeHint.y})`}
+                          onClick={() =>
+                            typeof activeHint.col === 'number' &&
+                            typeof activeHint.row === 'number' &&
+                            handleQuickPlaceAtHole(activeHint.col, activeHint.row)
+                          }
+                          className="cursor-pointer"
+                        >
+                          <circle
+                            cx="0"
+                            cy="0"
+                            r={GEAR_CATALOG[activeHint.sizeId].pitchRadiusMm}
+                            fill="rgba(250, 204, 21, 0.22)"
+                            stroke="#eab308"
+                            strokeWidth="2.4"
+                            strokeDasharray="5 3"
+                          />
+                          <circle
+                            cx="0"
+                            cy="0"
+                            r="6.2"
+                            fill="#facc15"
+                            stroke="#854d0e"
+                            strokeWidth="1.4"
+                          />
+                          <text
+                            x="0"
+                            y="2.1"
+                            textAnchor="middle"
+                            fontSize="6.5"
+                            fontWeight="900"
+                            fill="#713f12"
+                            pointerEvents="none"
+                          >
+                            ★
+                          </text>
+                          <g transform="translate(0, -11.5)" pointerEvents="none">
+                            <rect
+                              x="-22"
+                              y="-5.5"
+                              width="44"
+                              height="10.5"
+                              rx="3"
+                              fill="#ca8a04"
+                            />
+                            <text
+                              x="0"
+                              y="1.5"
+                              textAnchor="middle"
+                              fontSize="5.2"
+                              fontWeight="900"
+                              fill="#ffffff"
+                            >
+                              PISTA: {GEAR_CATALOG[activeHint.sizeId].pitchDiameterMm / 10} cm
+                            </text>
+                          </g>
+                        </g>
+                      )}
+
                     {/* Vista previa magnética del círculo mientras se arrastra sobre el tablero */}
                     {activeDrag && activeDrag.overBoard && activeDrag.snappedPreview && (
                       <g
@@ -1235,8 +1393,69 @@ export function GearsSection() {
           </div>
         </div>
 
-        {/* DERECHA (4 COLS): 3 CÍRCULOS ARRASTRABLES + ZONA BASURERO + DESCARGAS */}
+        {/* DERECHA (4 COLS): ASISTENTE MATEMÁTICO + 3 CÍRCULOS ARRASTRABLES + BASURERO + DESCARGAS */}
         <div className="lg:col-span-4 space-y-4">
+          {/* Asistente Pedagógico de Pistas por Reto Matemático (10 años) */}
+          <div className="rounded-2xl bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 border-2 border-amber-300 p-4 shadow-xs space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center shadow-2xs shrink-0">
+                  <Lightbulb className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black text-amber-950 leading-tight">
+                    Asistente de Pistas (10 años)
+                  </h3>
+                  <span className="text-[10px] font-bold text-amber-800">
+                    Resuelve una suma o resta para ver el siguiente paso
+                  </span>
+                </div>
+              </div>
+              {mathSolvedCount > 0 && (
+                <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full shrink-0">
+                  ⭐ {mathSolvedCount}
+                </span>
+              )}
+            </div>
+
+            {activeHint ? (
+              <div className="rounded-xl bg-white border border-amber-300 p-3 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[11px] font-bold text-slate-800 leading-snug">
+                    ⭐ {activeHint.message}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveHint(null)}
+                    className="text-slate-400 hover:text-slate-700 cursor-pointer shrink-0"
+                    title="Ocultar pista"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {activeHint.sizeId && (
+                  <div className="flex items-center justify-between text-[10px] bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 font-bold text-amber-950">
+                    <span>
+                      Tamaño: <strong>{GEAR_CATALOG[activeHint.sizeId].name}</strong>
+                    </span>
+                    {typeof activeHint.remainingSteps === 'number' && (
+                      <span>~{activeHint.remainingSteps} pasos a Meta</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleRequestHint}
+                className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white text-xs font-black shadow-sm flex items-center justify-center gap-2 transition cursor-pointer"
+              >
+                <Lightbulb className="w-4 h-4" />
+                <span>¿Necesitas ayuda? Resuelve y gana una pista</span>
+              </button>
+            )}
+          </div>
+
           {/* Paleta Arrastrable de los 3 Círculos (4, 6 y 8 cm) */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3.5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
@@ -1401,6 +1620,78 @@ export function GearsSection() {
           </div>
         </div>
       </div>
+
+      {/* MODAL DE DESAFÍO MATEMÁTICO (SUMA Y RESTA PARA 10 AÑOS) */}
+      {showMathModal && currentMathProblem && (
+        <div className="fixed inset-0 z-50 bg-slate-950/65 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border-2 border-amber-300 shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-white flex items-center justify-center shadow-md shrink-0">
+                  <Lightbulb className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="inline-block text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full">
+                    Reto de {currentMathProblem.operationLabel} · 10 años
+                  </span>
+                  <h3 className="text-base font-black text-slate-900 mt-0.5">
+                    ¡Resuelve para desbloquear tu pista!
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMathModal(false)}
+                className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="rounded-2xl bg-amber-50/90 border border-amber-200 p-4 space-y-2">
+              <p className="text-sm font-extrabold text-slate-900 leading-relaxed">
+                {currentMathProblem.question}
+              </p>
+              <div className="inline-block text-xs font-mono font-black text-amber-900 bg-white px-2.5 py-1 rounded-lg border border-amber-200">
+                Operación: {currentMathProblem.hintFormula} = ?
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              {currentMathProblem.options.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => handleAnswerMathProblem(opt)}
+                  className="py-3.5 px-4 rounded-2xl border-2 border-slate-200 hover:border-teal-500 hover:bg-teal-50 bg-slate-50 text-lg font-black text-slate-900 transition cursor-pointer shadow-2xs"
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+
+            {mathFeedback && (
+              <div className="rounded-xl bg-rose-50 border border-rose-200 px-3.5 py-2.5 text-xs font-bold text-rose-800">
+                {mathFeedback}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-1 text-[11px] text-slate-500">
+              <span>Al acertar verás qué tamaño usar y dónde ponerlo.</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentMathProblem(generateMathHintProblem());
+                  setMathFeedback(null);
+                }}
+                className="font-bold text-teal-700 hover:text-teal-900 cursor-pointer shrink-0 ml-2"
+              >
+                Otro problema ↻
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CÍRCULO FLOTANTE DURANTE EL ARRASTRE (Fuera del tablero o rumbo al basurero) */}
       {activeDrag && (!activeDrag.overBoard || activeDrag.overTrash) && (

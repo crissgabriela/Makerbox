@@ -865,3 +865,302 @@ export function generateGearPinsAndCrankStl(gearCount: number, teamName: string)
   lines.push(`endsolid ${solidName}`);
   return lines.join('\n');
 }
+
+// ============================================================================
+// 6. Asistente Pedagógico (10 años): Retos de Suma/Resta + Buscador A* de Pistas
+// ============================================================================
+
+export interface MathHintProblem {
+  id: string;
+  operationLabel: string;
+  question: string;
+  correctAnswer: number;
+  options: number[];
+  hintFormula: string;
+}
+
+export interface GearHintSuggestion {
+  status: 'place_gear' | 'already_done' | 'clear_blocked';
+  sizeId?: GearSizeId;
+  col?: number;
+  row?: number;
+  x?: number;
+  y?: number;
+  remainingSteps?: number;
+  message: string;
+}
+
+function randInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+/**
+ * Genera problemas matemáticos de suma y resta pensados para estudiantes de 10 años (4°–5° Básico)
+ * ambientados en el taller de engranajes MakerBox.
+ */
+export function generateMathHintProblem(): MathHintProblem {
+  const kind = randInt(0, 4);
+  let question = '';
+  let correctAnswer = 0;
+  let operationLabel = 'Suma';
+  let hintFormula = '';
+
+  if (kind === 0) {
+    // Suma de 2 dígitos con reserva
+    const a = randInt(24, 68);
+    const b = randInt(17, 49);
+    correctAnswer = a + b;
+    operationLabel = 'Suma';
+    hintFormula = `${a} + ${b}`;
+    question = `Un engranaje tiene ${a} dientes y otro tiene ${b} dientes. ¿Cuántos dientes suman entre los dos?`;
+  } else if (kind === 1) {
+    // Suma de 3 dígitos + 2 dígitos
+    const a = randInt(115, 245);
+    const b = randInt(28, 76);
+    correctAnswer = a + b;
+    operationLabel = 'Suma';
+    hintFormula = `${a} + ${b}`;
+    question = `El curso cortó ${a} engranajes en la mañana y ${b} en la tarde. ¿Cuántos engranajes cortaron en total?`;
+  } else if (kind === 2) {
+    // Resta de 2 dígitos con préstamo
+    const a = randInt(62, 95);
+    const b = randInt(18, a - 19);
+    correctAnswer = a - b;
+    operationLabel = 'Resta';
+    hintFormula = `${a} − ${b}`;
+    question = `El engranaje de Meta dio ${a} vueltas y el de Inicio dio ${b} vueltas. ¿Cuántas vueltas más dio la Meta?`;
+  } else if (kind === 3) {
+    // Resta de 3 dígitos − 2 dígitos
+    const a = randInt(120, 210);
+    const b = randInt(34, 89);
+    correctAnswer = a - b;
+    operationLabel = 'Resta';
+    hintFormula = `${a} − ${b}`;
+    question = `Una caja tenía ${a} ejes impresos en 3D y los equipos usaron ${b}. ¿Cuántos ejes quedan en la caja?`;
+  } else {
+    // Operación combinada simple (suma y resta)
+    const a = randInt(35, 65);
+    const b = randInt(15, 34);
+    const c = randInt(12, 29);
+    correctAnswer = a + b - c;
+    operationLabel = 'Suma y Resta';
+    hintFormula = `${a} + ${b} − ${c}`;
+    question = `Tenías ${a} engranajes, cortaste ${b} nuevos y regalaste ${c} a otro grupo. ¿Con cuántos engranajes te quedaste?`;
+  }
+
+  // Crear 3 distractores realistas (ej. error de reserva ±10, ±2, ±1)
+  const distractorOffsets = [-10, 10, -2, 2, -1, 1, -8, 8, 12, -12];
+  const optionSet = new Set<number>([correctAnswer]);
+  while (optionSet.size < 4) {
+    const off = distractorOffsets[randInt(0, distractorOffsets.length - 1)];
+    const cand = correctAnswer + off;
+    if (cand > 0 && cand !== correctAnswer) {
+      optionSet.add(cand);
+    }
+  }
+
+  const options = Array.from(optionSet).sort(() => Math.random() - 0.5);
+
+  return {
+    id: `math-${Date.now()}-${randInt(100, 999)}`,
+    operationLabel,
+    question,
+    correctAnswer,
+    options,
+    hintFormula,
+  };
+}
+
+/**
+ * Buscador A* sobre la matriz física (60° o 90°): calcula el tamaño exacto (4, 6 u 8 cm)
+ * y el hoyo exacto (Col, Fila) del siguiente engranaje que acerca el tren actual hacia la Meta.
+ */
+export function findNextBestGearHint(
+  gears: PlacedGear[],
+  challenge: GearChallengeConfig,
+  board: GearBoardSpec
+): GearHintSuggestion {
+  const analysis = analyzeGearTrain(gears, challenge, board);
+  if (analysis.challengeCompleted) {
+    return {
+      status: 'already_done',
+      message: '¡Ya lograste conectar el Inicio con la Meta! Tu tren de engranajes funciona perfecto.',
+    };
+  }
+
+  const startGear = gears.find((g) => g.role === 'start');
+  const endGear = gears.find((g) => g.role === 'end');
+  if (!startGear || !endGear) {
+    return {
+      status: 'clear_blocked',
+      message: 'Reinicia el tablero para restaurar el Inicio y la Meta.',
+    };
+  }
+
+  const obstacles = getChallengeObstacles(challenge, board);
+  const allHoles = getAllBoardHoles(board);
+  const sizes: GearSizeId[] = ['xl', 'l', 'm']; // Preferir ruedas grandes para menos piezas
+  const tolMm = 0.55;
+
+  const runAStarFrom = (
+    frontierGears: PlacedGear[],
+    blockingGears: PlacedGear[]
+  ): { firstStep: { sizeId: GearSizeId; col: number; row: number; x: number; y: number }; totalSteps: number } | null => {
+    interface Node {
+      key: string;
+      col: number;
+      row: number;
+      x: number;
+      y: number;
+      sizeId: GearSizeId;
+      gCost: number;
+      fCost: number;
+      firstStep: { sizeId: GearSizeId; col: number; row: number; x: number; y: number } | null;
+    }
+
+    const endSpec = GEAR_CATALOG[endGear.sizeId];
+    const heuristic = (x: number, y: number, r: number) =>
+      Math.max(0, (Math.hypot(endGear.x - x, endGear.y - y) - r - endSpec.pitchRadiusMm) / 72);
+
+    const open: Node[] = [];
+    const bestG = new Map<string, number>();
+
+    for (const fg of frontierGears) {
+      const r = GEAR_CATALOG[fg.sizeId].pitchRadiusMm;
+      const key = `${fg.col},${fg.row},${fg.sizeId}`;
+      bestG.set(key, 0);
+      open.push({
+        key,
+        col: fg.col,
+        row: fg.row,
+        x: fg.x,
+        y: fg.y,
+        sizeId: fg.sizeId,
+        gCost: 0,
+        fCost: heuristic(fg.x, fg.y, r),
+        firstStep: null,
+      });
+    }
+
+    let expansions = 0;
+    const MAX_EXPANSIONS = 900;
+
+    while (open.length > 0 && expansions++ < MAX_EXPANSIONS) {
+      // Extraer nodo con menor fCost
+      let bestIdx = 0;
+      for (let i = 1; i < open.length; i++) {
+        if (open[i].fCost < open[bestIdx].fCost) bestIdx = i;
+      }
+      const cur = open.splice(bestIdx, 1)[0];
+      const curSpec = GEAR_CATALOG[cur.sizeId];
+
+      // ¿Este engranaje ya engrana directamente con la Meta?
+      const distToEnd = Math.hypot(endGear.x - cur.x, endGear.y - cur.y);
+      const targetToEnd = curSpec.pitchRadiusMm + endSpec.pitchRadiusMm;
+      if (cur.firstStep && Math.abs(distToEnd - targetToEnd) <= tolMm) {
+        return { firstStep: cur.firstStep, totalSteps: cur.gCost };
+      }
+
+      if (cur.gCost >= 10) continue;
+
+      for (const nextSize of sizes) {
+        const nextSpec = GEAR_CATALOG[nextSize];
+        const targetDist = curSpec.pitchRadiusMm + nextSpec.pitchRadiusMm;
+        const outerR = nextSpec.outerDiameterMm / 2;
+
+        for (const h of allHoles) {
+          if (Math.abs(h.x - cur.x) > targetDist + 1 || Math.abs(h.y - cur.y) > targetDist + 1) {
+            continue;
+          }
+          const d = Math.hypot(h.x - cur.x, h.y - cur.y);
+          if (Math.abs(d - targetDist) > tolMm) continue;
+          if (!isGearInsideBoard(h.x, h.y, outerR, board)) continue;
+
+          // Verificar que no choque con obstáculos ni con la Meta (debe ser >= targetToEnd - tol)
+          const dEnd = Math.hypot(endGear.x - h.x, endGear.y - h.y);
+          if (dEnd < nextSpec.pitchRadiusMm + endSpec.pitchRadiusMm - tolMm) continue;
+
+          let blocked = false;
+          for (const obs of obstacles) {
+            if (circleIntersectsObstacle(h.x, h.y, nextSpec.pitchRadiusMm + 1.5, obs)) {
+              blocked = true;
+              break;
+            }
+          }
+          if (blocked) continue;
+
+          for (const bg of blockingGears) {
+            if (bg.id === endGear.id) continue;
+            const dBg = Math.hypot(bg.x - h.x, bg.y - h.y);
+            if (dBg < GEAR_CATALOG[bg.sizeId].pitchRadiusMm + nextSpec.pitchRadiusMm - tolMm) {
+              blocked = true;
+              break;
+            }
+          }
+          if (blocked) continue;
+
+          const nKey = `${h.col},${h.row},${nextSize}`;
+          const nextG = cur.gCost + 1;
+          const prevBest = bestG.get(nKey);
+          if (prevBest !== undefined && prevBest <= nextG) continue;
+
+          bestG.set(nKey, nextG);
+          const firstStep = cur.firstStep ?? {
+            sizeId: nextSize,
+            col: h.col,
+            row: h.row,
+            x: h.x,
+            y: h.y,
+          };
+
+          open.push({
+            key: nKey,
+            col: h.col,
+            row: h.row,
+            x: h.x,
+            y: h.y,
+            sizeId: nextSize,
+            gCost: nextG,
+            fCost: nextG + heuristic(h.x, h.y, nextSpec.pitchRadiusMm),
+            firstStep,
+          });
+        }
+      }
+    }
+    return null;
+  };
+
+  // 1. Intentar continuar desde los engranajes actualmente conectados al Inicio
+  if (!analysis.isJammed) {
+    const connectedGears = gears.filter(
+      (g) => g.role !== 'end' && analysis.nodes[g.id]?.connectedToStart
+    );
+    const sol = runAStarFrom(connectedGears, gears);
+    if (sol) {
+      const spec = GEAR_CATALOG[sol.firstStep.sizeId];
+      return {
+        status: 'place_gear',
+        ...sol.firstStep,
+        remainingSteps: sol.totalSteps,
+        message: `Arrastra un círculo ${spec.name} (${spec.teeth} dientes) hasta la estrella brillante en el hoyo (Col ${sol.firstStep.col + 1}, Fila ${sol.firstStep.row + 1}).`,
+      };
+    }
+  }
+
+  // 2. Fallback si el tren está trabado o en callejón sin salida: sugerir ruta limpia desde Inicio
+  const cleanSol = runAStarFrom([startGear], [startGear, endGear]);
+  if (cleanSol) {
+    const spec = GEAR_CATALOG[cleanSol.firstStep.sizeId];
+    return {
+      status: 'clear_blocked',
+      ...cleanSol.firstStep,
+      remainingSteps: cleanSol.totalSteps,
+      message: `El camino actual quedó bloqueado o trabado. Pulsa "Limpiar" (o bota las piezas al basurero) y coloca un círculo ${spec.name} en el hoyo (Col ${cleanSol.firstStep.col + 1}, Fila ${cleanSol.firstStep.row + 1}).`,
+    };
+  }
+
+  return {
+    status: 'clear_blocked',
+    message: 'Prueba agrandar un poco el tablero (ej. 30 × 30 cm) para tener más espacio de maniobra.',
+  };
+}
